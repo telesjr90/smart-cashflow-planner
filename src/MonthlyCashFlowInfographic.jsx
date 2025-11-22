@@ -1,4 +1,15 @@
 // src/MonthlyCashFlowInfographic.jsx
+//
+// This component renders the monthly cash‑flow “infographic” dashboard.  It
+// leverages the projection engine to summarise the next 14 months of income,
+// bills, net flow and discretionary spending.  It also provides a toggle to
+// switch between Projected and Actual modes just like the Home and Planner
+// screens.  The optional `mode` and `setMode` props allow the parent
+// component (App, Home, Planner, etc.) to control the mode state; when
+// omitted the component maintains its own internal state.  The current mode
+// is passed into the projection engine and used to filter unpaid bills and
+// discretionary spend for the weekly timeline and KPI cards.
+
 import React, {
   useState,
   useCallback,
@@ -16,7 +27,7 @@ import {
 } from "./lib/cashflowEngine.js";
 
 /** =========================================================
- * Firestore-backed facts: paidBills & confirmedDiscretionary
+ * Firestore‑backed facts: paidBills & confirmedDiscretionary
  * ----------------------------------------------------------
  * - Uses props from App if provided (single source of truth).
  * - Otherwise, reads/writes its own Firestore doc.
@@ -27,6 +38,7 @@ const USE_FS_FOR_PLANNING = true;
 const FS_MERGE_DEBOUNCE_MS = 1500;
 const LOCAL_STORAGE_KEY = "cashFlowData";
 
+// Default target split for auto‑assigned bills
 const TARGET_H_SHARE = 0.51;
 const TARGET_W_SHARE = 0.49;
 
@@ -46,6 +58,13 @@ const fmt = (v) =>
 // they will be used; otherwise the planner will show an empty timeline.
 const initialBills = [];
 
+/**
+ * Split unassigned bills between partners to achieve a near‑target share.
+ * Bills that already specify a payer (H/W) are fixed.  Unassigned bills
+ * are distributed by brute forcing all combinations and selecting the
+ * assignment whose H share is closest to TARGET_H_SHARE and whose dollar
+ * error is smallest.  Returns a sorted list of bills with payer set.
+ */
 function autoAssignBills(allBills) {
   const fixedH = [],
     fixedW = [],
@@ -65,8 +84,7 @@ function autoAssignBills(allBills) {
 
   for (let mask = 0; mask < 1 << n; mask++) {
     let hExtra = 0;
-    for (let i = 0; i < n; i++)
-      if (mask & (1 << i)) hExtra += unassigned[i].amount;
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) hExtra += unassigned[i].amount;
     const hAmount = sumFixedH + hExtra;
     const hShare = hAmount / total;
     const score = Math.abs(hShare - TARGET_H_SHARE);
@@ -126,18 +144,17 @@ function getWeekStatus(totalEnd) {
 
 // Reusable Card Component (Solid White, clean shadow)
 const Card = ({ children, className = "" }) => (
-  <div
-    className={`bg-white border border-slate-200 rounded-2xl shadow-sm ${className}`}
-  >
+  <div className={`bg-white border border-slate-200 rounded-2xl shadow-sm ${className}`}>
     {children}
   </div>
 );
 
 /**
- * Simple segmented toggle component. Displays a list of options and highlights
- * the active one. When clicked, calls onChange with the option's value.
+ * Simple segmented toggle component.  Displays a list of options and highlights
+ * the active one.  When clicked, calls onChange with the option's value.
  * Mirrors the implementation used on the Planner and Home pages to keep a
- * consistent look and feel across the app.
+ * consistent look and feel across the app.  If onChange is undefined, the
+ * control becomes inert and simply displays the current mode.
  */
 function Segmented({ value, onChange, options }) {
   return (
@@ -186,7 +203,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     liveExtraIncomes,
     onUpdateExtraIncomes,
 
-    // PHASE 4 PROPS: Goals & Budgets (read-only here)
+    // PHASE 4 PROPS: Goals & Budgets (read‑only here)
     liveGoals,
     liveCategoryBudgets,
 
@@ -302,7 +319,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
   const [editingBill, setEditingBill] = useState(null);
 
-  // ---------- Firestore-backed facts ----------
+  // ---------- Firestore‑backed facts ----------
   const [confirmedDiscretionaryLocal, setConfirmedDiscretionaryLocal] =
     useState({});
   const [paidBillsLocal, setPaidBillsLocal] = useState({});
@@ -484,7 +501,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid, USE_FS_FOR_PLANNING, usePropFacts, ...planMirrorDeps]);
 
-  // ---------- FS-backed facts handlers ----------
+  // ---------- FS‑backed facts handlers ----------
   const confirmDiscretionarySpending = async (
     monthIndex,
     weekIndex,
@@ -524,8 +541,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       setFsError("Failed to save bill payment.");
     }
   };
-  const isBillPaid = (billId, monthIndex) =>
-    !!paidBills[billId]?.[monthIndex];
+  const isBillPaid = (billId, monthIndex) => !!paidBills[billId]?.[monthIndex];
 
   // ---------- Derived calculations ----------
   const finalBills = useMemo(() => autoAssignBills(bills), [bills]);
@@ -550,6 +566,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     return out;
   }, [paidBillsProp, paidBills, finalBills, startDate]);
 
+  // Run the projection engine whenever any planning inputs or mode changes
   const engineProjection = useMemo(() => {
     if (!startDate) {
       return { monthlySummary: [], finalBalancesByAccount: {} };
@@ -628,6 +645,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     };
   }, [engineProjection.monthlySummary]);
 
+  // Precompute month names for the 14‑month range
   const generateMonthNames = (startDateStr, monthsCount = 14) => {
     const start = new Date(startDateStr);
     const months = [];
@@ -642,11 +660,9 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     }
     return months;
   };
-  const monthNames = useMemo(
-    () => generateMonthNames(startDate, 14),
-    [startDate]
-  );
+  const monthNames = useMemo(() => generateMonthNames(startDate, 14), [startDate]);
 
+  // Compute monthly surplus before discretionary spending; used as fallback
   const monthlySurplusBeforeDiscretionary = useMemo(() => {
     const totalMonthlyIncome =
       hIncome * 2 +
@@ -662,13 +678,15 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   const totalMonthlyGoalSavings = useMemo(
     () =>
       goals.reduce(
-        (total, goal) =>
-          total + (goal.perMonth || goal.allocatedMonthly || 0),
+        (total, goal) => total + (goal.perMonth || goal.allocatedMonthly || 0),
         0
       ),
     [goals]
   );
 
+  // Derived discretionary budgets.  In projected mode this uses the projected
+  // net increase, while in actual mode the weekly discretionary values are
+  // overridden by confirmedDiscretionary (see weeklyFlow below).
   const discretionaryBudget = useMemo(() => {
     const weeksIn14Months = 61;
     const totalMonthlyIncome =
@@ -742,6 +760,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     totalMonthlyGoalSavings,
   ]);
 
+  // Helpers for generating week boundaries
   const getMonthDays = (year, monthIndexZeroBased) =>
     new Date(year, monthIndexZeroBased + 1, 0).getDate();
 
@@ -790,6 +809,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     ];
   };
 
+  // Transfer logic: if one partner goes negative, transfer from the other
   const enhancedTransferLogic = (hBalance, wBalance) => {
     let currentH = hBalance;
     let currentW = wBalance;
@@ -812,6 +832,8 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     return { currentH, currentW, transfer };
   };
 
+  // Build the weekly flow array for 14 months.  Each element contains start
+  // balances, income, bills, discretionary and end balances for one week.
   const weeklyFlow = useMemo(() => {
     const startDateObj = new Date(startDate);
     const startMonth = startDateObj.getMonth();
@@ -856,6 +878,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
           }
         });
 
+        // Extra incomes drop in the first week of each month
         if (weekRange.start <= 7) {
           extraIncomes.forEach((income) => {
             if (income.payer === "H") hIn += income.amount;
@@ -920,7 +943,6 @@ export default function MonthlyCashFlowInfographic(props = {}) {
         const post = enhancedTransferLogic(currentH, currentW);
         currentH = post.currentH;
         currentW = post.currentW;
-
         if (post.transfer) {
           if (transfer && transfer.from === post.transfer.from) {
             transfer = {
@@ -976,12 +998,14 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     livePaySchedule,
   ]);
 
+  // Filter by selected month for weekly display
   const filteredWeeklyFlow = useMemo(() => {
     const idx = Number(selectedWeekMonth);
     if (Number.isNaN(idx) || idx < 0) return weeklyFlow;
     return weeklyFlow.filter((w) => w.monthIndex === idx);
   }, [weeklyFlow, selectedWeekMonth]);
 
+  // Optionally zero out one partner's values when personView is set to "husband" or "wife"
   const getPersonFilteredWeeklyData = useCallback(
     (data) => {
       if (personView === "both") return data;
@@ -1019,15 +1043,18 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     [filteredWeeklyFlow, getPersonFilteredWeeklyData]
   );
 
+  /**
+   * WeeklyFlowSection renders the scrollable weekly cards.  It includes a
+   * segmented control for toggling mode and a month filter.  When mode
+   * changes the weekly timeline recomputes via useMemo dependencies.
+   */
   const WeeklyFlowSection = () => (
     <Card className="p-0">
       {/* Timeline Header */}
       <div className="p-4 md:px-6 md:py-4 border-b border-slate-100">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-slate-800">
-              Weekly Timeline
-            </div>
+            <div className="text-sm font-semibold text-slate-800">Weekly Timeline</div>
             <div className="text-xs text-slate-500 mt-0.5">
               {mode === "projected"
                 ? "Estimating discretionary spend"
@@ -1165,8 +1192,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                             )}
                           </div>
                           <div className="space-y-2">
-                            {(personView === "both" ||
-                              personView === "husband") && (
+                            {(personView === "both" || personView === "husband") && (
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-slate-600 w-12 font-medium">
                                   Partner H
@@ -1233,27 +1259,19 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                         </div>
                         <div className="flex justify-between text-xs">
                           <span className="text-slate-500">Start</span>
-                          <span className="font-medium text-slate-700">
-                            {fmt(startVal)}
-                          </span>
+                          <span className="font-medium text-slate-700">{fmt(startVal)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
                           <span className="text-emerald-600">In</span>
-                          <span className="font-medium text-emerald-700">
-                            +{fmt(inVal)}
-                          </span>
+                          <span className="font-medium text-emerald-700">+{fmt(inVal)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
                           <span className="text-rose-600">Bills</span>
-                          <span className="font-medium text-rose-700">
-                            -{fmt(billVal)}
-                          </span>
+                          <span className="font-medium text-rose-700">-{fmt(billVal)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
                           <span className="text-slate-500">Disc.</span>
-                          <span className="font-medium text-slate-600">
-                            -{fmt(discVal)}
-                          </span>
+                          <span className="font-medium text-slate-600">-{fmt(discVal)}</span>
                         </div>
                         <div className="pt-1 mt-1 border-t border-slate-100 flex justify-between text-xs font-bold">
                           <span className="text-slate-800">End</span>
@@ -1270,9 +1288,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                             </span>
                             <span
                               className={`text-lg font-bold ${
-                                week.totalEnd < 0
-                                  ? "text-rose-600"
-                                  : "text-slate-900"
+                                week.totalEnd < 0 ? "text-rose-600" : "text-slate-900"
                               }`}
                             >
                               {fmt(week.totalEnd)}
@@ -1296,6 +1312,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     </Card>
   );
 
+  // Final render
   return (
     <div className="min-h-screen bg-slate-50 py-10 font-sans text-slate-800">
       {/* Single-column stack of cards */}
@@ -1308,9 +1325,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                 <Wallet className="w-8 h-8" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                  Cash Flow Plan
-                </h1>
+                <h1 className="text-3xl font-bold tracking-tight text-slate-900">Cash Flow Plan</h1>
                 <p className="text-sm text-slate-500 mt-1 font-medium">
                   {startDate
                     ? `${new Date(startDate).toLocaleDateString(undefined, {
@@ -1328,9 +1343,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                 <div className="text-slate-400 font-medium uppercase tracking-wider text-[10px] mb-0.5">
                   Starting Balance
                 </div>
-                <div className="font-bold text-slate-700 text-base">
-                  {fmt(startingBalance)}
-                </div>
+                <div className="font-bold text-slate-700 text-base">{fmt(startingBalance)}</div>
               </div>
               <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100">
                 <div className="text-slate-400 font-medium uppercase tracking-wider text-[10px] mb-0.5">
@@ -1348,9 +1361,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
         <Card className="p-5 md:p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="text-base font-bold text-slate-900">
-                This month at a glance
-              </div>
+              <div className="text-base font-bold text-slate-900">This month at a glance</div>
               <div className="text-xs text-slate-500 mt-0.5">
                 Engine-based projection for {engineFirstMonth?.label}
               </div>
@@ -1375,47 +1386,33 @@ export default function MonthlyCashFlowInfographic(props = {}) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4 flex flex-col justify-between h-28">
               <div className="flex items-start justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-emerald-600/80">
-                  Income
-                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wide text-emerald-600/80">Income</span>
                 <TrendingUp className="w-4 h-4 text-emerald-500" />
               </div>
               <div className="text-2xl font-bold text-emerald-900">
-                {engineFirstMonth
-                  ? fmt(engineFirstMonth.income)
-                  : fmt(hIncome * 2 + wIncome * 2)}
+                {engineFirstMonth ? fmt(engineFirstMonth.income) : fmt(hIncome * 2 + wIncome * 2)}
               </div>
             </div>
 
             <div className="rounded-2xl bg-rose-50 border border-rose-100 p-4 flex flex-col justify-between h-28">
               <div className="flex items-start justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-rose-600/80">
-                  Bills
-                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wide text-rose-600/80">Bills</span>
                 <TrendingUp className="w-4 h-4 text-rose-500 rotate-180" />
               </div>
               <div className="text-2xl font-bold text-rose-900">
-                {engineFirstMonth
-                  ? fmt(engineFirstMonth.bills)
-                  : fmt(finalBills.reduce((s, b) => s + b.amount, 0))}
+                {engineFirstMonth ? fmt(engineFirstMonth.bills) : fmt(finalBills.reduce((s, b) => s + b.amount, 0))}
               </div>
             </div>
 
             <div className="rounded-2xl bg-slate-900 text-white p-4 flex flex-col justify-between h-28 shadow-lg shadow-slate-200">
               <div className="flex items-start justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                  Net Flow
-                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Net Flow</span>
                 <Wallet className="w-4 h-4 text-slate-400" />
               </div>
               <div className="text-2xl font-bold">
                 {engineFirstMonth
                   ? fmt(engineFirstMonth.net)
-                  : fmt(
-                      hIncome * 2 +
-                        wIncome * 2 -
-                        finalBills.reduce((s, b) => s + b.amount, 0)
-                    )}
+                  : fmt(hIncome * 2 + wIncome * 2 - finalBills.reduce((s, b) => s + b.amount, 0))}
               </div>
             </div>
           </div>
@@ -1423,18 +1420,12 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
         {/* Quick Summary */}
         <Card className="p-5 md:p-6">
-          <h2 className="text-sm font-semibold text-slate-900 mb-3">
-            Quick Summary
-          </h2>
+          <h2 className="text-sm font-semibold text-slate-900 mb-3">Quick Summary</h2>
           <div className="space-y-3">
             <div className="flex justify-between items-center p-3 rounded-xl bg-slate-900 text-white shadow-sm">
-              <div className="text-xs text-slate-300 font-medium">
-                Est. Net (Per Month)
-              </div>
+              <div className="text-xs text-slate-300 font-medium">Est. Net (Per Month)</div>
               <div className="text-sm font-bold">
-                {engineFirstMonth
-                  ? fmt(engineFirstMonth.net)
-                  : fmt(monthlySurplusBeforeDiscretionary)}
+                {engineFirstMonth ? fmt(engineFirstMonth.net) : fmt(monthlySurplusBeforeDiscretionary)}
               </div>
             </div>
 
@@ -1442,20 +1433,12 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
             <div className="space-y-2">
               <div className="flex justify-between items-center px-1">
-                <div className="text-xs text-slate-500">
-                  Weekly Allowance (After Goals)
-                </div>
-                <div className="text-sm font-semibold text-emerald-600">
-                  {fmt(discretionaryBudget.projectedWeeklyCombinedWithGoals)}
-                </div>
+                <div className="text-xs text-slate-500">Weekly Allowance (After Goals)</div>
+                <div className="text-sm font-semibold text-emerald-600">{fmt(discretionaryBudget.projectedWeeklyCombinedWithGoals)}</div>
               </div>
               <div className="flex justify-between items-center px-1">
-                <div className="text-xs text-slate-500">
-                  Monthly Goal Savings
-                </div>
-                <div className="text-sm font-semibold text-indigo-600">
-                  {fmt(totalMonthlyGoalSavings)}
-                </div>
+                <div className="text-xs text-slate-500">Monthly Goal Savings</div>
+                <div className="text-sm font-semibold text-indigo-600">{fmt(totalMonthlyGoalSavings)}</div>
               </div>
             </div>
           </div>
@@ -1466,9 +1449,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
         {/* Next 6 Weeks */}
         <Card className="p-5 md:p-6">
-          <h2 className="text-sm font-semibold text-slate-900 mb-3">
-            Next 6 Weeks
-          </h2>
+          <h2 className="text-sm font-semibold text-slate-900 mb-3">Next 6 Weeks</h2>
           <div className="space-y-2.5">
             {personFilteredWeeklyFlow.slice(0, 6).map((w, i) => {
               const status = getWeekStatus(w.totalEnd);
@@ -1482,15 +1463,11 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                       <div className="text-xs font-bold text-slate-800">
                         {w.month.split(" ")[0]} {w.week}
                       </div>
-                      <div className="text-[10px] text-slate-500">
-                        {w.range}
-                      </div>
+                      <div className="text-[10px] text-slate-500">{w.range}</div>
                     </div>
                     <div className="text-right">
                       <div
-                        className={`text-sm font-bold ${
-                          w.totalEnd < 0 ? "text-rose-600" : "text-slate-800"
-                        }`}
+                        className={`text-sm font-bold ${w.totalEnd < 0 ? "text-rose-600" : "text-slate-800"}`}
                       >
                         {fmt(w.totalEnd)}
                       </div>
@@ -1512,9 +1489,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
               );
             })}
             {!personFilteredWeeklyFlow.length && (
-              <div className="text-slate-500 text-xs text-center py-4">
-                No upcoming weeks found.
-              </div>
+              <div className="text-slate-500 text-xs text-center py-4">No upcoming weeks found.</div>
             )}
           </div>
         </Card>
