@@ -133,6 +133,37 @@ const Card = ({ children, className = "" }) => (
   </div>
 );
 
+/**
+ * Simple segmented toggle component. Displays a list of options and highlights
+ * the active one. When clicked, calls onChange with the option's value.
+ * Mirrors the implementation used on the Planner and Home pages to keep a
+ * consistent look and feel across the app.
+ */
+function Segmented({ value, onChange, options }) {
+  return (
+    <div className="inline-flex items-center rounded-full bg-slate-100 p-0.5">
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => {
+              if (typeof onChange === "function") onChange(opt.value);
+            }}
+            className={`px-2.5 py-1 text-[10px] rounded-full font-medium transition-colors ${
+              active
+                ? "bg-white shadow-sm text-slate-900"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MonthlyCashFlowInfographic(props = {}) {
   // ---------- Props from App (optional) ----------
   const {
@@ -158,6 +189,10 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     // PHASE 4 PROPS: Goals & Budgets (read-only here)
     liveGoals,
     liveCategoryBudgets,
+
+    // Mode control props (optional)
+    mode: modeProp,
+    setMode: setModeProp,
   } = props;
 
   // ---------- Planning state ----------
@@ -257,7 +292,10 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   }, [liveBills]);
 
   // ---------- Modes & UI ----------
-  const [cashFlowMode, setCashFlowMode] = useState("projected");
+  // Use controlled mode if provided via props, else fall back to local state
+  const [internalMode, setInternalMode] = useState("projected");
+  const mode = modeProp ?? internalMode;
+  const setMode = setModeProp ?? setInternalMode;
   const [showWeekly, setShowWeekly] = useState(true);
   const [personView, setPersonView] = useState("both");
   const [selectedWeekMonth, setSelectedWeekMonth] = useState("0");
@@ -321,7 +359,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       // if (saved.minDiscretionary) setMinDiscretionary(saved.minDiscretionary);
       if (Array.isArray(saved.goals)) setGoals(saved.goals);
       if (saved.categoryBudgets) setCategoryBudgets(saved.categoryBudgets);
-      if (saved.cashFlowMode) setCashFlowMode(saved.cashFlowMode);
+      if (saved.cashFlowMode) setInternalMode(saved.cashFlowMode);
     } catch (e) {
       console.warn("Load localStorage failed", e);
     }
@@ -383,7 +421,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       minDiscretionary,
       goals,
       categoryBudgets,
-      cashFlowMode,
+      cashFlowMode: mode,
     };
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toSave));
@@ -401,7 +439,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     minDiscretionary,
     goals,
     categoryBudgets,
-    cashFlowMode,
+    mode,
   ]);
 
   // ---------- Debounced FS mirror ----------
@@ -551,6 +589,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
         allocationRules: [],
         residualAccountId: "H",
         paidBills: enginePaidBills,
+        mode: mode,
       });
 
       return {
@@ -558,7 +597,10 @@ export default function MonthlyCashFlowInfographic(props = {}) {
         finalBalancesByAccount,
       };
     } catch (e) {
-      console.warn("MonthlyCashFlowInfographic: engine projection failed", e);
+      console.warn(
+        "MonthlyCashFlowInfographic: engine projection failed",
+        e
+      );
       return { monthlySummary: [], finalBalancesByAccount: {} };
     }
   }, [
@@ -571,6 +613,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     extraIncomes,
     enginePaidBills,
     livePaySchedule,
+    mode,
   ]);
 
   const engineFirstMonth = useMemo(() => {
@@ -833,7 +876,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
           const billDate = new Date(`${billDateStr}T00:00:00`);
           if (billDate < startDateObj) return;
           const includeByPayment =
-            cashFlowMode === "projected" ? true : isBillPaid(b.id, monthIndex);
+            mode === "projected" ? true : isBillPaid(b.id, monthIndex);
 
           if (
             includeByPayment &&
@@ -862,12 +905,12 @@ export default function MonthlyCashFlowInfographic(props = {}) {
         transfer = pre.transfer;
 
         const weeklyDiscretionaryH =
-          cashFlowMode === "actual"
+          mode === "actual"
             ? confirmedDiscretionary[`${monthIndex}-${wk}`]?.husband ?? 0
             : discretionaryBudget.weeklyHWithoutGoals;
 
         const weeklyDiscretionaryW =
-          cashFlowMode === "actual"
+          mode === "actual"
             ? confirmedDiscretionary[`${monthIndex}-${wk}`]?.wife ?? 0
             : discretionaryBudget.weeklyWWithoutGoals;
 
@@ -924,7 +967,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     wIncome,
     extraIncomes,
     discretionaryBudget,
-    cashFlowMode,
+    mode,
     confirmedDiscretionary,
     paidBills,
     startDate,
@@ -986,7 +1029,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
               Weekly Timeline
             </div>
             <div className="text-xs text-slate-500 mt-0.5">
-              {cashFlowMode === "projected"
+              {mode === "projected"
                 ? "Estimating discretionary spend"
                 : "Tracking actual discretionary spend"}
             </div>
@@ -994,7 +1037,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
           {/* Controls Group */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            {/* Pill Filter Group */}
+            {/* Filter and Mode Group */}
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
               <select
                 value={selectedWeekMonth}
@@ -1008,27 +1051,14 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                   </option>
                 ))}
               </select>
-              <div className="h-4 w-px bg-slate-300" />
-              <button
-                onClick={() => setCashFlowMode("projected")}
-                className={`px-3 py-1 rounded-full text-xs transition-all ${
-                  cashFlowMode === "projected"
-                    ? "bg-white text-indigo-600 shadow-sm font-semibold"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                Projected
-              </button>
-              <button
-                onClick={() => setCashFlowMode("actual")}
-                className={`px-3 py-1 rounded-full text-xs transition-all ${
-                  cashFlowMode === "actual"
-                    ? "bg-white text-indigo-600 shadow-sm font-semibold"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                Actual
-              </button>
+              <Segmented
+                value={mode}
+                onChange={(val) => setMode(val)}
+                options={[
+                  { value: "projected", label: "Projected" },
+                  { value: "actual", label: "Actual" },
+                ]}
+              />
             </div>
 
             <button
@@ -1124,7 +1154,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                     {/* Card Body */}
                     <div className="p-4 space-y-3">
                       {/* ACTUAL MODE INPUTS */}
-                      {cashFlowMode === "actual" && (
+                      {mode === "actual" && (
                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
@@ -1250,10 +1280,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                           </div>
                           {week.transfer && (
                             <div className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full font-medium border border-indigo-100">
-                              Swap {fmt(week.transfer.amount)} from{" "}
-                              {week.transfer.from === "H"
-                                ? "Partner H"
-                                : "Partner W"}
+                              Swap {fmt(week.transfer.amount)} from {week.transfer.from === "H" ? "Partner H" : "Partner W"}
                             </div>
                           )}
                         </div>
@@ -1310,8 +1337,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                   Min Discretionary (T / N)
                 </div>
                 <div className="font-bold text-slate-700 text-base">
-                  {fmt(minDiscretionary.husband)} /{" "}
-                  {fmt(minDiscretionary.wife)}
+                  {fmt(minDiscretionary.husband)} / {fmt(minDiscretionary.wife)}
                 </div>
               </div>
             </div>
@@ -1329,11 +1355,21 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                 Engine-based projection for {engineFirstMonth?.label}
               </div>
             </div>
-            {engineFirstMonth && (
-              <div className="px-3 py-1 bg-slate-100 rounded-full text-xs font-semibold text-slate-600">
-                {engineFirstMonth.label}
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {engineFirstMonth && (
+                <div className="px-3 py-1 bg-slate-100 rounded-full text-xs font-semibold text-slate-600">
+                  {engineFirstMonth.label}
+                </div>
+              )}
+              <Segmented
+                value={mode}
+                onChange={(val) => setMode(val)}
+                options={[
+                  { value: "projected", label: "Projected" },
+                  { value: "actual", label: "Actual" },
+                ]}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1469,8 +1505,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
                   {w.transfer && (
                     <div className="self-start inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-[10px] font-medium text-indigo-700">
-                      Swap {fmt(w.transfer.amount)} from{" "}
-                      {w.transfer.from === "H" ? "Partner H" : "Partner W"}
+                      Swap {fmt(w.transfer.amount)} from {w.transfer.from === "H" ? "Partner H" : "Partner W"}
                     </div>
                   )}
                 </div>
