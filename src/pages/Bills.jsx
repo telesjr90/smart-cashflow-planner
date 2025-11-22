@@ -159,8 +159,9 @@ function PastDueBanner({ items, memberNames }) {
             className="text-xs text-rose-700 flex items-center justify-between"
           >
             <div className="truncate">
-              <span className="font-semibold">{it.name}</span> • Due{" "}
-              {String(it.dueDay).padStart(2, "0")} • {ownerName(it.payer)}
+              <span className="font-semibold">{it.name}</span> • Due {String(
+                it.dueDay
+              ).padStart(2, "0")} • {ownerName(it.payer)}
             </div>
             <div>{fmt(it.amount)}</div>
           </div>
@@ -248,194 +249,10 @@ export default function Bills({
     });
   }, [onUpdateBills, residualAccountId, accounts, role]);
 
-  // Show an empty state when no bills have been added yet.  Provide a button
-  // that opens the add bill editor using the helper defined above.
-  if (billsArr.length === 0) {
-    return (
-      <div className="pb-24">
-        <header className="flex items-center gap-2 px-4 pt-4">
-          <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-            <ListChecks size={18} />
-          </div>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Bills
-            </div>
-            <div className="text-sm font-semibold text-slate-900">
-              Monthly commitments
-            </div>
-          </div>
-        </header>
-        <div className="mx-4 mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-center">
-          <div className="text-sm font-medium text-slate-700 mb-2">
-            You haven’t added any bills yet.
-          </div>
-          <p className="text-xs text-slate-500 mb-4">
-            Add your first bill to start planning your cash flow.
-          </p>
-          <button
-            type="button"
-            onClick={startAdd}
-            className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
-          >
-            Add your first bill
-          </button>
-        </div>
-        {/* When adding the first bill, show the editor below the prompt */}
-        {editingId === "new" && draft && (
-          <div className="mx-4 mt-4 rounded-2xl border border-slate-200 bg-white p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-semibold text-slate-700">
-                Add bill
-              </div>
-              {/* Add a cancel button */}
-              <button
-                className="text-xs px-2 py-1 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
-                onClick={() => {
-                  setEditingId(null);
-                  setDraft(null);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-            {/* Simplified new bill editor */}
-            <div className="space-y-2 text-xs">
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-slate-500">Name</span>
-                  <input
-                    className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                    value={draft.name}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, name: e.target.value }))
-                    }
-                    placeholder="Bill name"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-slate-500">Amount</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                    value={draft.amount}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, amount: e.target.value }))
-                    }
-                    placeholder="0.00"
-                  />
-                </label>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-1">
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-slate-500">Due day</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                    value={draft.dueDay}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, dueDay: e.target.value }))
-                    }
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-slate-500">Payer</span>
-                  <select
-                    className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
-                    value={draft.payer}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, payer: e.target.value }))
-                    }
-                  >
-                    <option value="H">{memberNames.H || "Partner H"}</option>
-                    <option value="W">{memberNames.W || "Partner W"}</option>
-                    <option value="AUTO">Auto</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-slate-500">Category</span>
-                  <input
-                    className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                    value={draft.category}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, category: e.target.value }))
-                    }
-                    placeholder="e.g. utilities"
-                  />
-                </label>
-              </div>
-              {/* account selector if accounts exist */}
-              {hasAccounts && (
-                <div className="mt-1">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[11px] text-slate-500">Account</span>
-                    <select
-                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
-                      value={draft.accountId}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, accountId: e.target.value }))
-                      }
-                    >
-                      {accounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              )}
-              <div className="mt-3 flex justify-end gap-2">
-                <button
-                  className="text-xs px-3 py-1 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
-                  onClick={() => {
-                    setEditingId(null);
-                    setDraft(null);
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="text-xs px-3 py-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
-                  onClick={() => {
-                    // Save the new bill
-                    const cleanAmount = Number.isFinite(+draft.amount) ? +draft.amount : 0;
-                    const cleanDueDay = Math.min(
-                      31,
-                      Math.max(1, parseInt(draft.dueDay || 1, 10))
-                    );
-                    const accountId = draft.accountId || "";
-                    const id =
-                      draft.id ||
-                      `${
-                        (draft.name || "bill").toLowerCase().replace(/[^a-z0-9]+/g, "-")
-                      }-${cleanDueDay}-${Date.now().toString(36)}`;
-                    const newBill = {
-                      id,
-                      name: draft.name.trim() || "New bill",
-                      amount: cleanAmount,
-                      dueDay: cleanDueDay,
-                      payer: draft.payer || role,
-                      category: draft.category || "",
-                      accountId,
-                    };
-                    onUpdateBills([...(bills || []), newBill]);
-                    setEditingId(null);
-                    setDraft(null);
-                  }}
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
+  // Determine if the list is empty.  We avoid early returns so that
+  // React hooks maintain a consistent call order across renders.
+  const isEmpty = billsArr.length === 0;
+
   // Wrap month helper calls in try/catch to avoid crashes when startDate is
   // unexpected or malformed. If an error occurs, fall back to sensible
   // defaults (empty months list and index 0).
@@ -465,8 +282,6 @@ export default function Bills({
       : "other"
   ); // both | mine | other
 
-  // hasAccounts is already computed above.  Do not redeclare here.
-
   const accountMap = useMemo(() => {
     const map = {};
     (accounts || []).forEach((a) => {
@@ -474,8 +289,6 @@ export default function Bills({
     });
     return map;
   }, [accounts]);
-
-  // startAdd is defined above to be available in the empty state
 
   // Flatten bills → one row per bill for the selected month
   const monthItems = useMemo(() => {
@@ -592,8 +405,6 @@ export default function Bills({
   };
 
   // -------- CRUD helpers --------
-  // startAdd is defined earlier and reused here
-
   const startEdit = (bill) => {
     if (!onUpdateBills) return;
     setEditingId(bill.id);
@@ -618,18 +429,12 @@ export default function Bills({
       cancelEdit();
       return;
     }
-
     const cleanAmount = Number.isFinite(+draft.amount) ? +draft.amount : 0;
     const cleanDueDay = Math.min(
       31,
       Math.max(1, parseInt(draft.dueDay || 1, 10))
     );
-
-    const accountId = resolveAccountId({
-      ...draft,
-      dueDay: cleanDueDay,
-    });
-
+    const accountId = resolveAccountId({ ...draft, dueDay: cleanDueDay });
     let nextBills;
     if (editingId === "new") {
       const id =
@@ -662,7 +467,6 @@ export default function Bills({
           : b
       );
     }
-
     onUpdateBills(nextBills);
     cancelEdit();
   };
@@ -681,6 +485,7 @@ export default function Bills({
   // -------- render --------
   return (
     <div className="pb-24">
+      {/* Header shared across empty and normal views */}
       <header className="flex items-center gap-2 px-4 pt-4">
         <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
           <ListChecks size={18} />
@@ -694,291 +499,453 @@ export default function Bills({
           </div>
         </div>
       </header>
-
-      {/* Month scroller */}
-      <MonthScroller
-        months={months}
-        selected={selectedMonth}
-        onChange={setSelectedMonth}
-      />
-
-      {/* Filters */}
-      <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-2">
-        <Segmented
-          value={status}
-          onChange={setStatus}
-          options={[
-            { value: "all", label: "All" },
-            { value: "unpaid", label: "Unpaid" },
-            { value: "overdue", label: "Overdue" },
-            { value: "paid", label: "Paid" },
-          ]}
-        />
-        <Segmented
-          value={owner}
-          onChange={setOwner}
-          options={[
-            { value: "both", label: "Both" },
-            { value: "mine", label: "Mine" },
-            { value: "other", label: "Other" },
-          ]}
-        />
-      </div>
-
-      {/* Summary tiles */}
-      <div className="mx-4 mt-3 grid grid-cols-3 gap-2">
-        <SummaryTile label="Total" value={fmt(totals.all)} />
-        <SummaryTile label="Unpaid" value={fmt(totals.unpaid)} danger />
-        <SummaryTile label="Overdue" value={fmt(totals.overdue)} danger />
-      </div>
-
-      {/* Past due banner */}
-      <PastDueBanner items={overdueItems} memberNames={memberNames} />
-
-      {/* Add / edit bill panel */}
-      <div className="mx-4 mt-4 rounded-2xl border border-slate-200 bg-white p-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs font-semibold text-slate-700">
-            Bills editor
-          </div>
-          <button
-            className="text-xs px-3 py-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
-            onClick={startAdd}
-          >
-            Add bill
-          </button>
-        </div>
-
-        {editingId && draft && (
-          <div className="space-y-2 text-xs">
-            <div className="grid grid-cols-2 gap-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-500">Name</span>
-                <input
-                  className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                  value={draft.name}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, name: e.target.value }))
-                  }
-                  placeholder="Bill name"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-500">Amount</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                  value={draft.amount}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, amount: e.target.value }))
-                  }
-                  placeholder="0.00"
-                />
-              </label>
+      {isEmpty ? (
+        <>
+          <div className="mx-4 mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-center">
+            <div className="text-sm font-medium text-slate-700 mb-2">
+              You haven’t added any bills yet.
             </div>
-
-            <div className="grid grid-cols-3 gap-2 mt-1">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-500">Due day</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                  value={draft.dueDay}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, dueDay: e.target.value }))
-                  }
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-500">Payer</span>
-                <select
-                  className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
-                  value={draft.payer}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, payer: e.target.value }))
-                  }
-                >
-                  <option value="H">{memberNames.H || "Partner H"}</option>
-                  <option value="W">{memberNames.W || "Partner W"}</option>
-                  <option value="AUTO">Auto</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-500">Category</span>
-                <input
-                  className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                  value={draft.category}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, category: e.target.value }))
-                  }
-                  placeholder="e.g. utilities"
-                />
-              </label>
-            </div>
-
-            <div className="mt-1">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-500">Account</span>
-                {hasAccounts ? (
-                  <select
-                    className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
-                    value={resolveAccountId(draft)}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, accountId: e.target.value }))
-                    }
-                  >
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="text-[11px] text-slate-500">
-                    No accounts defined yet.
-                  </div>
-                )}
-              </label>
-            </div>
-
-            <div className="mt-2 flex justify-end gap-2">
-              <button
-                className="text-xs px-3 py-1 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
-                onClick={cancelEdit}
-              >
-                Cancel
-              </button>
-              <button
-                className="text-xs px-3 py-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
-                onClick={saveDraft}
-              >
-                Save bill
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* List */}
-      <div className="mt-3 space-y-1">
-        {filtered.length === 0 && (
-          <div className="mx-4 mt-4 rounded-2xl bg-slate-50 px-3 py-3 text-xs text-slate-500">
-            No bills match this filter for the selected month.
-          </div>
-        )}
-
-        {filtered.map((item) => {
-          const acctId = resolveAccountId(item);
-          const acct = hasAccounts ? accountMap[acctId] : null;
-          const accountLabel = hasAccounts
-            ? acct
-              ? acct.name
-              : acctId || "Unassigned"
-            : item.accountId || "Unassigned";
-
-          return (
-            <div
-              key={`${item.id}-${item.monthIndex}`}
-              className="mx-4 rounded-2xl bg-white border border-slate-100 px-3 py-2 flex items-center gap-2"
+            <p className="text-xs text-slate-500 mb-4">
+              Add your first bill to start planning your cash flow.
+            </p>
+            <button
+              type="button"
+              onClick={startAdd}
+              className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
             >
-              <button
-                className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300"
-                onClick={() => handleToggle(item)}
-              >
-                {item.paid ? (
-                  <CheckCircle2 className="text-emerald-600" size={16} />
-                ) : (
-                  <Circle className="text-slate-300" size={16} />
-                )}
-              </button>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="truncate text-sm font-semibold text-slate-900">
-                    {item.name}
-                  </div>
-                  <div className="text-sm font-semibold text-slate-900">
-                    {fmt(item.amount)}
-                  </div>
+              Add your first bill
+            </button>
+          </div>
+          {/* When adding the first bill, show the editor below the prompt */}
+          {editingId === "new" && draft && (
+            <div className="mx-4 mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-semibold text-slate-700">
+                  Add bill
                 </div>
-                <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                  <div className="flex items-center gap-2">
-                    <span>
-                      Due {String(item.dueDay).padStart(2, "0")}
-                    </span>
-                    <span>
-                      •{" "}
-                      {item.payer === "H"
-                        ? memberNames.H || "Partner H"
-                        : item.payer === "W"
-                        ? memberNames.W || "Partner W"
-                        : "Auto"}
-                    </span>
+                {/* Add a cancel button */}
+                <button
+                  className="text-xs px-2 py-1 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  onClick={() => {
+                    setEditingId(null);
+                    setDraft(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {/* Simplified new bill editor */}
+              <div className="space-y-2 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Name</span>
+                    <input
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
+                      value={draft.name}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, name: e.target.value }))
+                      }
+                      placeholder="Bill name"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Amount</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
+                      value={draft.amount}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, amount: e.target.value }))
+                      }
+                      placeholder="0.00"
+                    />
+                  </label>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Due day</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
+                      value={draft.dueDay}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, dueDay: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Payer</span>
+                    <select
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
+                      value={draft.payer}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, payer: e.target.value }))
+                      }
+                    >
+                      <option value="H">{memberNames.H || "Partner H"}</option>
+                      <option value="W">{memberNames.W || "Partner W"}</option>
+                      <option value="AUTO">Auto</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Category</span>
+                    <input
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
+                      value={draft.category}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, category: e.target.value }))
+                      }
+                      placeholder="e.g. utilities"
+                    />
+                  </label>
+                </div>
+                {/* account selector if accounts exist */}
+                {hasAccounts && (
+                  <div className="mt-1">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] text-slate-500">Account</span>
+                      <select
+                        className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
+                        value={draft.accountId}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, accountId: e.target.value }))
+                        }
+                      >
+                        {accounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                        Account
-                      </span>
-                      {hasAccounts && onChangeBillAccount ? (
-                        <select
-                          className="text-[11px] border border-slate-200 rounded-full px-2 py-0.5 bg-slate-50 text-slate-700"
-                          value={acctId}
-                          onChange={(e) =>
-                            onChangeBillAccount(item.id, e.target.value)
-                          }
-                        >
-                          {accounts.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-[11px] text-slate-600">
-                          {accountLabel}
-                        </span>
-                      )}
-                    </div>
-                    {onUpdateBills && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
-                          onClick={() => startEdit(item)}
-                        >
-                          <Pencil size={12} />
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
-                          onClick={() => handleDelete(item.id)}
-                        >
-                          <Trash2 size={12} />
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                )}
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    className="text-xs px-3 py-1 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    onClick={() => {
+                      setEditingId(null);
+                      setDraft(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="text-xs px-3 py-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
+                    onClick={() => {
+                      // Save the new bill
+                      const cleanAmount = Number.isFinite(+draft.amount)
+                        ? +draft.amount
+                        : 0;
+                      const cleanDueDay = Math.min(
+                        31,
+                        Math.max(1, parseInt(draft.dueDay || 1, 10))
+                      );
+                      const accountId = draft.accountId || "";
+                      const id =
+                        draft.id ||
+                        `${
+                          (draft.name || "bill")
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, "-")
+                        }-${cleanDueDay}-${Date.now().toString(36)}`;
+                      const newBill = {
+                        id,
+                        name: draft.name.trim() || "New bill",
+                        amount: cleanAmount,
+                        dueDay: cleanDueDay,
+                        payer: draft.payer || role,
+                        category: draft.category || "",
+                        accountId,
+                      };
+                      onUpdateBills([...(bills || []), newBill]);
+                      setEditingId(null);
+                      setDraft(null);
+                    }}
+                  >
+                    Save
+                  </button>
                 </div>
               </div>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Bulk actions */}
-      <BulkActions
-        disabled={!filtered.length || !onBulkMark}
-        onMarkAllPaid={() => handleBulk(true)}
-        onMarkAllUnpaid={() => handleBulk(false)}
-      />
-
-      <div className="h-24" />
+          )}
+        </>
+      ) : (
+        <>
+          {/* Month scroller */}
+          <MonthScroller
+            months={months}
+            selected={selectedMonth}
+            onChange={setSelectedMonth}
+          />
+          {/* Filters */}
+          <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-2">
+            <Segmented
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: "all", label: "All" },
+                { value: "unpaid", label: "Unpaid" },
+                { value: "overdue", label: "Overdue" },
+                { value: "paid", label: "Paid" },
+              ]}
+            />
+            <Segmented
+              value={owner}
+              onChange={setOwner}
+              options={[
+                { value: "both", label: "Both" },
+                { value: "mine", label: "Mine" },
+                { value: "other", label: "Other" },
+              ]}
+            />
+          </div>
+          {/* Summary tiles */}
+          <div className="mx-4 mt-3 grid grid-cols-3 gap-2">
+            <SummaryTile label="Total" value={fmt(totals.all)} />
+            <SummaryTile label="Unpaid" value={fmt(totals.unpaid)} danger />
+            <SummaryTile label="Overdue" value={fmt(totals.overdue)} danger />
+          </div>
+          {/* Past due banner */}
+          <PastDueBanner items={overdueItems} memberNames={memberNames} />
+          {/* Add / edit bill panel */}
+          <div className="mx-4 mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-semibold text-slate-700">
+                Bills editor
+              </div>
+              <button
+                className="text-xs px-3 py-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
+                onClick={startAdd}
+              >
+                Add bill
+              </button>
+            </div>
+            {editingId && draft && (
+              <div className="space-y-2 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Name</span>
+                    <input
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
+                      value={draft.name}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, name: e.target.value }))
+                      }
+                      placeholder="Bill name"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Amount</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
+                      value={draft.amount}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, amount: e.target.value }))
+                      }
+                      placeholder="0.00"
+                    />
+                  </label>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Due day</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
+                      value={draft.dueDay}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, dueDay: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Payer</span>
+                    <select
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
+                      value={draft.payer}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, payer: e.target.value }))
+                      }
+                    >
+                      <option value="H">{memberNames.H || "Partner H"}</option>
+                      <option value="W">{memberNames.W || "Partner W"}</option>
+                      <option value="AUTO">Auto</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Category</span>
+                    <input
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
+                      value={draft.category}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, category: e.target.value }))
+                      }
+                      placeholder="e.g. utilities"
+                    />
+                  </label>
+                </div>
+                <div className="mt-1">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Account</span>
+                    {hasAccounts ? (
+                      <select
+                        className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
+                        value={resolveAccountId(draft)}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, accountId: e.target.value }))
+                        }
+                      >
+                        {accounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="text-[11px] text-slate-500">
+                        No accounts defined yet.
+                      </div>
+                    )}
+                  </label>
+                </div>
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    className="text-xs px-3 py-1 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    onClick={cancelEdit}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="text-xs px-3 py-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
+                    onClick={saveDraft}
+                  >
+                    Save bill
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          {/* List */}
+          <div className="mt-3 space-y-1">
+            {filtered.length === 0 && (
+              <div className="mx-4 mt-4 rounded-2xl bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                No bills match this filter for the selected month.
+              </div>
+            )}
+            {filtered.map((item) => {
+              const acctId = resolveAccountId(item);
+              const acct = hasAccounts ? accountMap[acctId] : null;
+              const accountLabel = hasAccounts
+                ? acct
+                  ? acct.name
+                  : acctId || "Unassigned"
+                : item.accountId || "Unassigned";
+              return (
+                <div
+                  key={`${item.id}-${item.monthIndex}`}
+                  className="mx-4 rounded-2xl bg-white border border-slate-100 px-3 py-2 flex items-center gap-2"
+                >
+                  <button
+                    className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300"
+                    onClick={() => handleToggle(item)}
+                  >
+                    {item.paid ? (
+                      <CheckCircle2 className="text-emerald-600" size={16} />
+                    ) : (
+                      <Circle className="text-slate-300" size={16} />
+                    )}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="truncate text-sm font-semibold text-slate-900">
+                        {item.name}
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        {fmt(item.amount)}
+                      </div>
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                      <div className="flex items-center gap-2">
+                        <span>
+                          Due {String(item.dueDay).padStart(2, "0")}
+                        </span>
+                        <span>
+                          • {item.payer === "H"
+                            ? memberNames.H || "Partner H"
+                            : item.payer === "W"
+                            ? memberNames.W || "Partner W"
+                            : "Auto"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                            Account
+                          </span>
+                          {hasAccounts && onChangeBillAccount ? (
+                            <select
+                              className="text-[11px] border border-slate-200 rounded-full px-2 py-0.5 bg-slate-50 text-slate-700"
+                              value={acctId}
+                              onChange={(e) =>
+                                onChangeBillAccount(item.id, e.target.value)
+                              }
+                            >
+                              {accounts.map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {a.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-[11px] text-slate-600">
+                              {accountLabel}
+                            </span>
+                          )}
+                        </div>
+                        {onUpdateBills && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
+                              onClick={() => startEdit(item)}
+                            >
+                              <Pencil size={12} />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
+                              onClick={() => handleDelete(item.id)}
+                            >
+                              <Trash2 size={12} />
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Bulk actions */}
+          <BulkActions
+            disabled={!filtered.length || !onBulkMark}
+            onMarkAllPaid={() => handleBulk(true)}
+            onMarkAllUnpaid={() => handleBulk(false)}
+          />
+          <div className="h-24" />
+        </>
+      )}
     </div>
   );
 }

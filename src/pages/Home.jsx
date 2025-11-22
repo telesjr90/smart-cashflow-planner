@@ -1,4 +1,13 @@
-// src/pages/Home.jsx
+// This file is based on the original Home.jsx from the Smart Cash Flow Planner
+// repository. It has been modified to relax the onboarding gating logic so that
+// the dashboard and KPIs show whenever any meaningful plan data exists. The
+// previous implementation required both a non‑zero income and at least one bill
+// to be present. As a result, users who configured their income or added
+// discretionary expenses but not bills were still shown the onboarding call‑to‑action.
+// The updated logic now considers three sources of data – income, bills and
+// expenses – and only shows the onboarding message if all three are absent. This
+// change aligns the behaviour with the QA audit recommendations.
+
 import React, { useMemo } from "react";
 import {
   Wallet,
@@ -264,7 +273,7 @@ function UpcomingBillsList({ items, onAddExpense }) {
                       {b.name}
                     </div>
                     <div className="text-[10px] text-slate-500">
-                    {b.payer === "H" ? "Partner H" : "Partner W"} •{" "}
+                      {b.payer === "H" ? "Partner H" : "Partner W"} •{" "}
                       {b.category || "Other"}
                     </div>
                   </div>
@@ -340,7 +349,9 @@ function CategoryBadges({ budgets }) {
             }`}
           >
             {b.name}:{" "}
-            <span className="font-semibold">{fmt(Math.max(0, remaining))}</span>
+            <span className="font-semibold">
+              {fmt(Math.max(0, remaining))}
+            </span>
           </div>
         );
       })}
@@ -418,13 +429,20 @@ export default function Home({
   // Navigate to budgets section in Settings
   onGoToSettingsBudgets = () => {},
 }) {
-  // Determine whether the plan needs setup.  If either partner's income is zero
-  // or no bills have been added yet, show a friendly onboarding card with CTA buttons.
+  // Determine whether the plan needs setup. Only show onboarding when no
+  // meaningful data exists across income, bills and expenses. Previously the
+  // condition short‑circuited if either income was zero/missing or no bills were
+  // present, which prevented the dashboard from showing when a user had
+  // configured income or added expenses but not yet entered bills. Here we
+  // compute flags for each data type separately and require all to be empty
+  // before triggering the onboarding UI.
   const hasIncome =
     income &&
     (Number(income.husband || 0) > 0 || Number(income.wife || 0) > 0);
   const hasBills = Array.isArray(bills) && bills.length > 0;
-  const needsSetup = !hasIncome || !hasBills;
+  const hasExpenses = Array.isArray(expenses) && expenses.length > 0;
+  // Show onboarding only when there is no income, no bills and no expenses
+  const needsSetup = !hasIncome && !hasBills && !hasExpenses;
 
   if (needsSetup) {
     return (
