@@ -206,6 +206,18 @@ export default function Bills({
   onChangeBillAccount,
   onUpdateBills,
 }) {
+  // Guard against undefined or falsy start dates. When no startDate is
+  // provided (e.g. immediately after creating a new household) the month
+  // helper functions will throw. Render a friendly message instructing the
+  // user to set a start date in Settings instead of crashing the app.
+  if (!startDate) {
+    return (
+      <div className="p-4 text-sm text-slate-700">
+        Start date is not defined. Please set a start date in Settings to
+        begin managing your bills.
+      </div>
+    );
+  }
   const billsArr = Array.isArray(bills) ? bills : [];
 
   // --- Editing state (shared across empty and normal views) ---
@@ -424,11 +436,25 @@ export default function Bills({
       </div>
     );
   }
-  const months = useMemo(() => monthNamesFrom(startDate, 14), [startDate]);
-  const defaultMonth = useMemo(
-    () => currentMonthIndex(startDate),
-    [startDate]
-  );
+  // Wrap month helper calls in try/catch to avoid crashes when startDate is
+  // unexpected or malformed. If an error occurs, fall back to sensible
+  // defaults (empty months list and index 0).
+  const months = useMemo(() => {
+    try {
+      return monthNamesFrom(startDate, 14);
+    } catch (e) {
+      console.warn("monthNamesFrom failed", e);
+      return [];
+    }
+  }, [startDate]);
+  const defaultMonth = useMemo(() => {
+    try {
+      return currentMonthIndex(startDate);
+    } catch (e) {
+      console.warn("currentMonthIndex failed", e);
+      return 0;
+    }
+  }, [startDate]);
   const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
   const [status, setStatus] = useState("all"); // all | unpaid | paid | overdue
   const [owner, setOwner] = useState(

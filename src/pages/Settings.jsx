@@ -1,5 +1,5 @@
 // src/pages/Settings.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Settings as SettingsIcon,
   Users,
@@ -62,6 +62,11 @@ export default function Settings({
   // Bill sharing configuration and update handler
   billSharing = { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] },
   onUpdateBillSharing,
+  // Optional scroll hint provided by App.jsx. When set to "goals" or
+  // "budgets" the appropriate section will scroll into view on mount.
+  scrollToSection = null,
+  // Callback to reset the scroll hint once handled.
+  onResetScrollHint = () => {},
 }) {
   const primaryName = displayName || email || "User";
   const startLabel = startDate || "Not set";
@@ -147,15 +152,24 @@ export default function Settings({
 
   const handleAddAccount = () => {
     const newId = `acct-${Date.now()}`;
-    setLocalAccounts((prev) => [
-      ...prev,
-      {
-        id: newId,
-        name: "New account",
-        type: "deposit",
-        openingBalance: 0,
-      },
-    ]);
+    setLocalAccounts((prev) => {
+      const isFirst = prev.length === 0;
+      const opening = isFirst
+        ? // Allocate the plan's starting balance to the first account
+          (localStartingBalance === "" || localStartingBalance == null
+            ? 0
+            : Number(localStartingBalance) || 0)
+        : 0;
+      return [
+        ...prev,
+        {
+          id: newId,
+          name: "New account",
+          type: "deposit",
+          openingBalance: opening,
+        },
+      ];
+    });
     setDirtyAccounts(true);
   };
 
@@ -418,6 +432,23 @@ export default function Settings({
       })),
     [localBudgets]
   );
+
+  // Refs for scrolling to specific sections (goals & budgets) when requested
+  const goalsRef = useRef(null);
+  const budgetsRef = useRef(null);
+
+  // When scrollToSection prop changes, scroll to the desired section
+  useEffect(() => {
+    if (!scrollToSection) return;
+    const lower = String(scrollToSection).toLowerCase();
+    if (lower === "goals" && goalsRef.current) {
+      goalsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      onResetScrollHint && onResetScrollHint();
+    } else if (lower === "budgets" && budgetsRef.current) {
+      budgetsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      onResetScrollHint && onResetScrollHint();
+    }
+  }, [scrollToSection, onResetScrollHint]);
 
   return (
     <div className="min-h-svh bg-slate-50">
@@ -820,11 +851,193 @@ export default function Settings({
           </Card>
         </section>
 
-        {/* Accounts (editable) */}
-        {/* ... rest of your existing Accounts, Goals, Budgets, Income & Schedule sections stay unchanged ... */}
+        {/* Goals section */}
+        <section ref={goalsRef} className="mt-4">
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Target className="text-indigo-500" size={18} />
+                <div className="text-sm font-semibold text-slate-900">
+                  Goals
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddGoal}
+                className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+              >
+                <Plus size={12} />
+                Add goal
+              </button>
+            </div>
+            {/* List of goals */}
+            {localGoals.length === 0 && (
+              <p className="text-xs text-slate-500">No goals defined yet.</p>
+            )}
+            <div className="space-y-3">
+              {localGoals.map((goal) => (
+                <div key={goal.id} className="p-2 border border-slate-200 rounded-lg bg-slate-50">
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Name</span>
+                      <input
+                        type="text"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={goal.name}
+                        onChange={(e) =>
+                          handleGoalChange(goal.id, { name: e.target.value })
+                        }
+                        placeholder="Goal name"
+                      />
+                    </label>
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Target</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={goal.targetAmount}
+                        onChange={(e) =>
+                          handleGoalChange(goal.id, {
+                            targetAmount:
+                              e.target.value === "" ? "" : parseFloat(e.target.value),
+                          })
+                        }
+                        placeholder="0.00"
+                      />
+                    </label>
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Per month</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={goal.perMonth}
+                        onChange={(e) =>
+                          handleGoalChange(goal.id, {
+                            perMonth:
+                              e.target.value === "" ? "" : parseFloat(e.target.value),
+                          })
+                        }
+                        placeholder="0.00"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="text-[10px] text-slate-500">
+                      Saved so far: {formatMoney(goal.savedSoFar || 0)}
+                    </div>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
+                      onClick={() => handleDeleteGoal(goal.id)}
+                    >
+                      <Trash2 size={12} />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {dirtyGoals && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveGoals}
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+                >
+                  <CheckCircle2 size={12} />
+                  Save goals
+                </button>
+              </div>
+            )}
+          </Card>
+        </section>
 
-        {/* The rest of the file (Accounts, Allocation Rules, Goals, Category Budgets,
-            and Income & Schedule sections) should remain exactly as they were. */}
+        {/* Budgets section */}
+        <section ref={budgetsRef} className="mt-4">
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <PieChart className="text-indigo-500" size={18} />
+                <div className="text-sm font-semibold text-slate-900">
+                  Budgets
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddBudgetCategory}
+                className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+              >
+                <Plus size={12} />
+                Add category
+              </button>
+            </div>
+            {budgetsArray.length === 0 && (
+              <p className="text-xs text-slate-500">No budget categories defined yet.</p>
+            )}
+            <div className="space-y-3">
+              {budgetsArray.map(({ key, label, amount }) => (
+                <div key={key} className="p-2 border border-slate-200 rounded-lg bg-slate-50">
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Category</span>
+                      <input
+                        type="text"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={label}
+                        onChange={(e) =>
+                          handleBudgetChange(key, { label: e.target.value })
+                        }
+                        placeholder="Category name"
+                      />
+                    </label>
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Amount</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={amount}
+                        onChange={(e) =>
+                          handleBudgetChange(key, {
+                            amount:
+                              e.target.value === "" ? "" : parseFloat(e.target.value),
+                          })
+                        }
+                        placeholder="0.00"
+                      />
+                    </label>
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
+                        onClick={() => handleDeleteBudget(key)}
+                      >
+                        <Trash2 size={12} />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {dirtyBudgets && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveBudgets}
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+                >
+                  <CheckCircle2 size={12} />
+                  Save budgets
+                </button>
+              </div>
+            )}
+          </Card>
+        </section>
+
+        {/* Note: Accounts, Allocation Rules, and Income & Schedule sections remain unchanged and appear above. */}
       </section>
     </div>
   );

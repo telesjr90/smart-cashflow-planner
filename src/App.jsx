@@ -6,6 +6,14 @@ import React, {
   useState,
   useCallback,
 } from "react";
+
+// Pull in dayjs for robust date handling. It gracefully falls back to the
+// current date when given undefined input. Without this import the app
+// would crash on the first bill entry when startDate is missing.
+
+// A simple error boundary ensures that unexpected runtime errors do not
+// surface as blank screens. See src/components/ErrorBoundary.jsx.
+import ErrorBoundary from "./components/ErrorBoundary";
 import {
   Home as HomeIcon,
   ListChecks,
@@ -242,11 +250,17 @@ export default function App() {
   const [networkError, setNetworkError] = useState(false);
 
   const [tab, setTab] = useState("home");
-  // Section hint for navigating to specific settings sections (not currently used for scrolling)
-  const handleGoToSettingsSection = useCallback((section) => {
-    // In a future enhancement we could set additional state to focus a specific section
-    setTab("settings");
-  }, []);
+  // Section hint for navigating to specific settings sections. When navigating
+  // from other pages (e.g. Accounts) we capture which section should be
+  // focused and then scroll to it in Settings.jsx via scrollIntoView.
+  const [settingsSection, setSettingsSection] = useState(null);
+  const handleGoToSettingsSection = useCallback(
+    (section) => {
+      setSettingsSection(section);
+      setTab("settings");
+    },
+    []
+  );
   const [personScope, setPersonScope] = useState("self");
   const [mode, setMode] = useState("projected");
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -626,7 +640,19 @@ export default function App() {
     return flags;
   }, [myData?.paidBills, myData?.startDate]);
 
-  const startDate = myData?.startDate || DEFAULT_START_DATE;
+  // Determine a safe starting date. If the user hasn't specified a
+  // startDate yet (e.g. when first adding a bill), fall back to
+  // today's date instead of the hard-coded DEFAULT_START_DATE to
+  // prevent crashes in downstream date computations. dayjs formats
+  // consistently as YYYY-MM-DD.
+  const safeStartDate = useMemo(() => {
+    const candidate = myData?.startDate;
+    if (candidate) return candidate;
+    // Fall back to today in YYYY-MM-DD format. Use native Date API to
+    // avoid bringing in external dependencies.
+    return new Date().toISOString().slice(0, 10);
+  }, [myData?.startDate]);
+  const startDate = safeStartDate;
   const accounts = useMemo(
     () =>
       myData?.accounts || [
@@ -723,59 +749,66 @@ export default function App() {
 
   if (loading && !hasCached) {
     return (
-      <Wrapper>
-        <div className="p-6 text-sm text-slate-600">Loading...</div>
-      </Wrapper>
+      <ErrorBoundary>
+        <Wrapper>
+          <div className="p-6 text-sm text-slate-600">Loading...</div>
+        </Wrapper>
+      </ErrorBoundary>
     );
   }
 
   // In demo mode, if some race leaves us without user yet, show a safe loader
   if (isAgentDemo && !canEnter) {
     return (
-      <Wrapper>
-        <div className="p-6 text-sm text-slate-600">
-          Loading demo mode...
-        </div>
-      </Wrapper>
+      <ErrorBoundary>
+        <Wrapper>
+          <div className="p-6 text-sm text-slate-600">
+            Loading demo mode...
+          </div>
+        </Wrapper>
+      </ErrorBoundary>
     );
   }
 
   if (!canEnter) {
     return (
-      <Wrapper>
-        <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 gap-4">
-          <div className="text-center space-y-2">
-            <div className="text-xs uppercase tracking-wide text-slate-400">
-              Smart Cash Flow Planner
+      <ErrorBoundary>
+        <Wrapper>
+          <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 gap-4">
+            <div className="text-center space-y-2">
+              <div className="text-xs uppercase tracking-wide text-slate-400">
+                Smart Cash Flow Planner
+              </div>
+              <div className="text-lg font-semibold text-slate-900">
+                Sign in to continue
+              </div>
+              <p className="text-xs text-slate-500">
+                Connect with your Google account to load your household plan and
+                sync changes across devices.
+              </p>
             </div>
-            <div className="text-lg font-semibold text-slate-900">
-              Sign in to continue
-            </div>
-            <p className="text-xs text-slate-500">
-              Connect with your Google account to load your household plan and
-              sync changes across devices.
+
+            <button
+              type="button"
+              onClick={loginWithGoogle}
+              className="inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:bg-indigo-800"
+            >
+              Sign in with Google
+            </button>
+
+            <p className="text-[10px] text-slate-400 text-center mt-2">
+              Your data is stored securely in Firebase and can be unlinked at any
+              time.
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={loginWithGoogle}
-            className="inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:bg-indigo-800"
-          >
-            Sign in with Google
-          </button>
-
-          <p className="text-[10px] text-slate-400 text-center mt-2">
-            Your data is stored securely in Firebase and can be unlinked at any
-            time.
-          </p>
-        </div>
-      </Wrapper>
+        </Wrapper>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <Wrapper>
+    <ErrorBoundary>
+      <Wrapper>
       <div className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Wallet className="text-indigo-600" size={18} />
@@ -904,6 +937,8 @@ export default function App() {
           onUpdateStartingBalance={handleUpdateStartingBalance}
           billSharing={myData?.billSharing}
           onUpdateBillSharing={handleUpdateBillSharing}
+          scrollToSection={settingsSection}
+          onResetScrollHint={() => setSettingsSection(null)}
         />
       )}
 
@@ -946,5 +981,6 @@ export default function App() {
         accounts={accounts}
       />
     </Wrapper>
+  </ErrorBoundary>
   );
 }
