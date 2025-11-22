@@ -63,21 +63,13 @@ export function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
     const dates = [];
 
     if (type === "semi-monthly") {
-      const day1 = clampDay(
-        year,
-        monthIndex0,
-        Number.isFinite(+rawDay1) ? +rawDay1 : 15
-      );
+      const day1 = clampDay(year, monthIndex0, Number.isFinite(+rawDay1) ? +rawDay1 : 15);
       dates.push(new Date(year, monthIndex0, day1));
 
       if (rawDay2 === "last" || rawDay2 === undefined || rawDay2 === null) {
         dates.push(new Date(year, monthIndex0, monthEndDay));
       } else {
-        const d2 = clampDay(
-          year,
-          monthIndex0,
-          Number.isFinite(+rawDay2) ? +rawDay2 : monthEndDay
-        );
+        const d2 = clampDay(year, monthIndex0, Number.isFinite(+rawDay2) ? +rawDay2 : monthEndDay);
         if (d2 !== day1) {
           dates.push(new Date(year, monthIndex0, d2));
         }
@@ -98,12 +90,18 @@ export function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
   return out;
 }
 
-export function allocateIncome({
-  amountCents,
-  accounts,
-  allocationRules,
-  residualAccountId,
-}) {
+/**
+ * Allocate income for a single pay event. Supports both amount and percent
+ * rules with frequency (each, first, second). Amount rules are applied first
+ * before percentage rules. Any leftover goes into the residual account.
+ * @param {Object} params
+ * @param {number} params.amountCents - total pay amount in cents
+ * @param {Array} params.accounts - list of user accounts
+ * @param {Array} params.allocationRules - allocation rules
+ * @param {string|null} params.residualAccountId - fallback account ID
+ * @param {number} params.payIndex - 1 for first pay of month, 2 for second
+ */
+export function allocateIncome({ amountCents, accounts, allocationRules, residualAccountId, payIndex }) {
   const deltasByAccount = {};
   const safeAccounts = Array.isArray(accounts) ? accounts : [];
   safeAccounts.forEach((a) => {
@@ -117,30 +115,65 @@ export function allocateIncome({
   let remaining = amountCents;
   const rules = Array.isArray(allocationRules) ? allocationRules : [];
 
-  for (const r of rules) {
+  // Filter rules by frequency
+  const applicable = rules.filter((r) => {
+    const freq = r.frequency || r.freq || "each";
+    if (freq === "each") return true;
+    if (freq === "first") return payIndex === 1;
+    if (freq === "second") return payIndex === 2;
+    // fallback: unknown frequency treat as each
+    return true;
+  });
+
+  // Partition amount and percent rules (legacy support: if r.amount defined, treat as amount)
+  const amountRules = [];
+  const percentRules = [];
+  for (const r of applicable) {
+    // Determine type
+    const type = r.type || (r.amount != null ? "amount" : "percent");
+    if (type === "amount") {
+      amountRules.push(r);
+    } else {
+      percentRules.push(r);
+    }
+  }
+
+  // Apply fixed amount rules first
+  for (const r of amountRules) {
     const accId = r?.accountId;
     if (!accId || !(accId in deltasByAccount)) continue;
-    const ruleAmountCents = toCents(r.amount);
-    if (!ruleAmountCents || ruleAmountCents <= 0) continue;
-    const applied = Math.min(ruleAmountCents, remaining);
+    // Determine value: support legacy r.amount and new r.value
+    const val = r.amount != null ? r.amount : r.value;
+    const ruleCents = toCents(val);
+    if (!ruleCents || ruleCents <= 0) continue;
+    const applied = Math.min(ruleCents, remaining);
     if (applied <= 0) continue;
     deltasByAccount[accId] += applied;
     remaining -= applied;
     if (remaining <= 0) break;
   }
 
+  // Apply percent rules on the remaining amount
+  for (const r of percentRules) {
+    const accId = r?.accountId;
+    if (!accId || !(accId in deltasByAccount)) continue;
+    const pct = r.value != null ? r.value : r.percentage;
+    const percent = Number(pct);
+    if (!Number.isFinite(percent) || percent <= 0) continue;
+    const fraction = percent / 100;
+    const alloc = Math.floor(remaining * fraction);
+    if (alloc <= 0) continue;
+    deltasByAccount[accId] += alloc;
+    remaining -= alloc;
+  }
+
+  // Deposit leftover to residual account
   if (remaining > 0) {
-    const fallbackAccId =
-      residualAccountId && deltasByAccount.hasOwnProperty(residualAccountId)
-        ? residualAccountId
-        : safeAccounts[0].id;
+    const fallbackAccId = residualAccountId && deltasByAccount.hasOwnProperty(residualAccountId) ? residualAccountId : safeAccounts[0].id;
     if (fallbackAccId) deltasByAccount[fallbackAccId] += remaining;
   }
 
-  const appliedCents = Object.values(deltasByAccount).reduce(
-    (sum, v) => sum + (Number.isFinite(v) ? v : 0),
-    0
-  );
+  const appliedCents = Object.values(deltasByAccount).reduce((sum, v) => sum + (Number.isFinite(v) ? v : 0), 0);
   return { deltasByAccount, appliedCents };
 }
 
@@ -153,11 +186,11 @@ export function applyOutflow(balancesByAccount, accountId, amountCents) {
 }
 
 // ---------- Core projection engine ----------
-
 /**
- * Updated for Phase 4:
- * - Accepts `expenses`
- * - Accepts `mode` ('projected' | 'actual')
+ * Updated for Phase 4 and Phase 5:
+ * - Accepts expenses and mode
+ * - Incorporates allocation rules with frequency and percent/amount
+ * - Passes payIndex to allocateIncome
  */
 export function projectCashflow({
   startDate,
@@ -170,62 +203,45 @@ export function projectCashflow({
   paySchedule,
   allocationRules,
   residualAccountId,
-  paidBills,
-  mode = "projected", // PHASE 4: Mode toggle
+  paidBills = {},
+  mode = "projected",
 }) {
   const startDateStr = startDate || "2025-01-01";
   const projectionMonths = Math.max(1, months || 1);
-  const safeAccounts = Array.isArray(accounts) ? [...accounts] : [];
-  const safeBills = Array.isArray(bills) ? bills : [];
-  const safePaidBills = paidBills || {};
-  const incomeSafe = income || {};
-  const payScheduleSafe = paySchedule || {};
-  const safeExtraIncomes = Array.isArray(extraIncomes) ? extraIncomes : [];
-  const safeExpenses = Array.isArray(expenses) ? expenses : []; // PHASE 4
-
-  const todayStr = new Date().toISOString().split("T")[0]; // For actual mode filtering
-
-  // ---------- 1) Seed balances ----------
+  const safeAccounts = Array.isArray(accounts) && accounts.length ? accounts.map((a) => ({ ...a })) : [];
   const balances = {};
   safeAccounts.forEach((a) => {
-    if (!a?.id) return;
-    const opening = Number(a.openingBalance || 0);
-    balances[a.id] = toCents(opening);
+    if (a?.id) balances[a.id] = toCents(a.openingBalance || 0);
   });
-
   if (Object.keys(balances).length === 0) {
     balances["default"] = 0;
     if (!safeAccounts.length) {
       safeAccounts.push({ id: "default", type: "checking", openingBalance: 0 });
     }
   }
-
-  const residualId =
-    residualAccountId && balances.hasOwnProperty(residualAccountId)
-      ? residualAccountId
-      : safeAccounts[0].id;
+  const residualId = residualAccountId && balances.hasOwnProperty(residualAccountId) ? residualAccountId : safeAccounts[0].id;
 
   // ---------- 2) Build income events ----------
-  const paydays = enumerateSemiMonthlyPaydays(
-    startDateStr,
-    projectionMonths,
-    payScheduleSafe
-  );
-
-  const perPayH = toCents(incomeSafe.husband || 0);
-  const perPayW = toCents(incomeSafe.wife || 0);
+  const paydays = enumerateSemiMonthlyPaydays(startDateStr, projectionMonths, paySchedule);
+  const perPayH = toCents(income?.husband || 0);
+  const perPayW = toCents(income?.wife || 0);
   const perPayTotal = perPayH + perPayW;
+  // Determine pay index (first or second) for each payday
+  const payCountsByMonth = {};
+  const salaryEvents = paydays.map((p, idx) => {
+    const count = (payCountsByMonth[p.monthIndex] = (payCountsByMonth[p.monthIndex] || 0) + 1);
+    return {
+      date: p.date,
+      kind: "income",
+      monthIndex: p.monthIndex,
+      _sequence: idx,
+      amountCents: perPayTotal,
+      description: "Salary Paycheque",
+      payIndex: count,
+    };
+  });
 
-  const salaryEvents = paydays.map((p, idx) => ({
-    date: p.date,
-    kind: "income",
-    monthIndex: p.monthIndex,
-    _sequence: idx,
-    amountCents: perPayTotal,
-    description: "Salary Paycheque",
-  }));
-
-  // Extra Incomes (Recurring 1st of month for simplicity in this view)
+  const safeExtraIncomes = Array.isArray(extraIncomes) ? extraIncomes : [];
   const extraEvents = [];
   for (let m = 0; m < projectionMonths; m++) {
     const dateStr = getDateForMonthIndex(startDateStr, m, 1);
@@ -240,15 +256,18 @@ export function projectCashflow({
           amountCents: amt,
           description: ex.description || "Extra Income",
           isExtra: true,
+          payIndex: 1,
         });
       }
     });
   }
-
   const incomeEvents = [...salaryEvents, ...extraEvents];
 
   // ---------- 3) Build bill events ----------
+  const safeBills = Array.isArray(bills) ? bills : [];
+  const safePaidBills = paidBills || {};
   const billEvents = [];
+  const todayStr = new Date().toISOString().slice(0, 10);
   for (let m = 0; m < projectionMonths; m++) {
     for (const b of safeBills) {
       if (!b?.id) continue;
@@ -256,15 +275,9 @@ export function projectCashflow({
       const billDate = getDateForMonthIndex(startDateStr, m, dueDay);
       const key = `${billDate}:${b.id}`;
       const isPaid = !!safePaidBills[key];
-
-      // PHASE 4: ACTUAL MODE LOGIC
-      // If we are in actual mode, and the bill is in the past, 
-      // and it is NOT marked paid, we treat it as if it didn't happen 
-      // (or wasn't paid from this account).
       if (mode === "actual" && billDate < todayStr && !isPaid) {
         continue;
       }
-
       billEvents.push({
         date: billDate,
         kind: "bill",
@@ -278,8 +291,8 @@ export function projectCashflow({
       });
     }
   }
-
   // ---------- 3b) Build Expense events (PHASE 4) ----------
+  const safeExpenses = Array.isArray(expenses) ? expenses : [];
   const expenseEvents = safeExpenses.map((ex, idx) => {
     const date = ex.date || startDateStr;
     const mIndex = getMonthIndexFromStart(startDateStr, date);
@@ -287,11 +300,10 @@ export function projectCashflow({
       date,
       kind: "expense",
       monthIndex: mIndex,
-      _sequence: 5000 + idx, // arbitrarily processed after income
+      _sequence: 5000 + idx,
       amountCents: toCents(ex.amount || 0),
       accountId: ex.accountId || residualId,
       description: ex.description || "Expense",
-      // Expenses are inherently 'actual' so we include them
     };
   });
 
@@ -311,28 +323,12 @@ export function projectCashflow({
   for (let i = 0; i < projectionMonths; i++) {
     const dateForLabel = getDateForMonthIndex(startDateStr, i, 1);
     const d = new Date(`${dateForLabel}T00:00:00`);
-    const monthLabel = d.toLocaleString("default", {
-      month: "long",
-      year: "numeric",
-    });
-
-    monthlyTotals.push({
-      monthIndex: i,
-      monthLabel,
-      totalIncome: 0,
-      totalBills: 0,
-      net: 0,
-    });
+    const monthLabel = d.toLocaleString("default", { month: "long", year: "numeric" });
+    monthlyTotals.push({ monthIndex: i, monthLabel, totalIncome: 0, totalBills: 0, net: 0 });
   }
-
   for (const ev of allEvents) {
-    const monthIndex =
-      typeof ev.monthIndex === "number"
-        ? ev.monthIndex
-        : getMonthIndexFromStart(startDateStr, ev.date);
-
+    const monthIndex = typeof ev.monthIndex === "number" ? ev.monthIndex : getMonthIndexFromStart(startDateStr, ev.date);
     if (monthIndex < 0 || monthIndex >= projectionMonths) continue;
-
     if (ev.kind === "income") {
       if (ev.amountCents > 0) {
         const { deltasByAccount, appliedCents } = allocateIncome({
@@ -340,77 +336,28 @@ export function projectCashflow({
           accounts: safeAccounts,
           allocationRules,
           residualAccountId: residualId,
+          payIndex: ev.payIndex || 1,
         });
-
         Object.entries(deltasByAccount).forEach(([accId, delta]) => {
           if (!balances.hasOwnProperty(accId)) balances[accId] = 0;
           balances[accId] += delta;
         });
-
         monthlyTotals[monthIndex].totalIncome += appliedCents;
         monthlyTotals[monthIndex].net += appliedCents;
-
-        ledger.push({
-          date: ev.date,
-          kind: "income",
-          delta: appliedCents,
-          balances: { ...balances },
-          monthIndex,
-          description: ev.description,
-        });
+        ledger.push({ date: ev.date, kind: "income", delta: appliedCents, balances: { ...balances }, monthIndex, description: ev.description });
       }
     } else if (ev.kind === "bill" || ev.kind === "expense") {
       const amt = ev.amountCents || 0;
       let delta = 0;
-
       // Deduct if it's an expense OR an unpaid bill
-      // (Paid bills are assumed to have been deducted already in reality, 
-      // but for projection we often want to see the impact. 
-      // However, typically "Paid" means "Paid from account", so we SHOULD deduct it 
-      // to show the running balance dropping. 
-      // The original logic filtered PAID bills as delta=0. 
-      // We'll keep that logic: IsPaid -> already processed in real life -> delta=0 in projection?
-      // actually, for "Projected Balance", you want to deduct EVERYTHING. 
-      // But if the user is updating Opening Balance daily, they mark things paid.
-      // Let's stick to the established pattern: 
-      // If isPaid is true, delta is 0 (assuming Opening Balance reflects the payment).
-      // If isPaid is false, delta is -amt (projected outflow).
-      
-      // Exception: "Expense" (One-off)
-      // If it's in the past, it likely happened. If we entered it, we want to see it.
-      // We treat entered expenses as "to be applied" to the running balance 
-      // UNLESS they are implicit in the Opening Balance. 
-      // For simplicity, we apply them to the running balance calculation here.
-
-      if (ev.kind === "expense" || (!ev.isPaid && amt > 0)) {
-        applyOutflow(balances, ev.accountId || residualId, amt);
-        monthlyTotals[monthIndex].totalBills += amt;
-        monthlyTotals[monthIndex].net -= amt;
-        delta = -amt;
-      } else {
-        // Bill is paid. Assuming Opening Balance accounts for it, so 0 impact on running projection.
-        delta = 0;
+      if (ev.kind === "expense" || !ev.isPaid) {
+        delta = amt;
+        applyOutflow(balances, ev.accountId || residualId, delta);
+        monthlyTotals[monthIndex].totalBills += delta;
+        monthlyTotals[monthIndex].net -= delta;
       }
-
-      ledger.push({
-        date: ev.date,
-        kind: ev.kind,
-        delta,
-        balances: { ...balances },
-        monthIndex,
-        accountId: ev.accountId || residualId,
-        billId: ev.billId,
-        billName: ev.billName || ev.description,
-        isPaid: !!ev.isPaid,
-      });
+      ledger.push({ date: ev.date, kind: ev.kind, delta: -delta, balances: { ...balances }, monthIndex, description: ev.kind === "bill" ? ev.billName : ev.description });
     }
   }
-
-  const finalBalancesByAccount = { ...balances };
-
-  return {
-    ledger,
-    monthlySummary: monthlyTotals,
-    finalBalancesByAccount,
-  };
+  return { ledger, monthlySummary: monthlyTotals };
 }

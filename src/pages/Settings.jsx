@@ -14,8 +14,11 @@ import {
   PieChart,
   Copy,
   Link as LinkIcon,
+  // Added ArrowRightLeft for allocation rules section
+  ArrowRightLeft,
 } from "lucide-react";
 
+// Small card wrapper for consistent styling
 function Card({ children, className = "" }) {
   return (
     <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 ${className}`}>
@@ -24,6 +27,7 @@ function Card({ children, className = "" }) {
   );
 }
 
+// Row helper for balances summary
 function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between py-1.5 text-[11px]">
@@ -33,6 +37,22 @@ function Row({ label, value }) {
   );
 }
 
+// Preset categories for budgets. These defaults are loaded when a new household
+// has no budgets defined yet. Users can rename, add, or delete categories.
+const DEFAULT_BUDGET_CATEGORIES = {
+  housing: { label: "Housing", amount: 0 },
+  groceries: { label: "Groceries", amount: 0 },
+  transport: { label: "Transport", amount: 0 },
+  diningOut: { label: "Dining / Takeout", amount: 0 },
+  utilities: { label: "Utilities", amount: 0 },
+  personal: { label: "Personal / Misc", amount: 0 },
+};
+
+/**
+ * The Settings page allows the user to configure their household, accounts,
+ * allocation rules, income, goals and budgets. It persists changes via
+ * callbacks provided by the parent component (App.jsx).
+ */
 export default function Settings({
   uid = "",
   email = "",
@@ -41,7 +61,6 @@ export default function Settings({
   householdId = "",
   householdCount = 1,
   onUpdateProfile, // PHASE 5
-
   balances = { total: 0, husband: 0, wife: 0 },
   startDate,
   startingBalance = 0,
@@ -81,9 +100,7 @@ export default function Settings({
   const roleLabel = role === "H" ? "Partner H" : role === "W" ? "Partner W" : role;
 
   // Local state for plan starting balance
-  const [localStartingBalance, setLocalStartingBalance] = useState(
-    startingBalance ?? 0
-  );
+  const [localStartingBalance, setLocalStartingBalance] = useState(startingBalance ?? 0);
   const [dirtyStartingBalance, setDirtyStartingBalance] = useState(false);
 
   useEffect(() => {
@@ -103,9 +120,7 @@ export default function Settings({
 
   const handleSaveStartingBalance = () => {
     if (!onUpdateStartingBalance) return;
-    onUpdateStartingBalance(
-      localStartingBalance === "" ? 0 : Number(localStartingBalance) || 0
-    );
+    onUpdateStartingBalance(localStartingBalance === "" ? 0 : Number(localStartingBalance) || 0);
     setDirtyStartingBalance(false);
   };
 
@@ -117,10 +132,7 @@ export default function Settings({
 
   const handleSaveProfile = () => {
     if (onUpdateProfile) {
-      onUpdateProfile({
-        householdId: localHouseholdId,
-        role: localRole
-      });
+      onUpdateProfile({ householdId: localHouseholdId, role: localRole });
     }
     setDirtyProfile(false);
   };
@@ -144,9 +156,7 @@ export default function Settings({
   }, [residualAccountId]);
 
   const handleAccountChange = (id, updates) => {
-    setLocalAccounts((prev) =>
-      prev.map((acct) => (acct.id === id ? { ...acct, ...updates } : acct))
-    );
+    setLocalAccounts((prev) => prev.map((acct) => (acct.id === id ? { ...acct, ...updates } : acct)));
     setDirtyAccounts(true);
   };
 
@@ -156,9 +166,7 @@ export default function Settings({
       const isFirst = prev.length === 0;
       const opening = isFirst
         ? // Allocate the plan's starting balance to the first account
-          (localStartingBalance === "" || localStartingBalance == null
-            ? 0
-            : Number(localStartingBalance) || 0)
+          (localStartingBalance === "" || localStartingBalance == null ? 0 : Number(localStartingBalance) || 0)
         : 0;
       return [
         ...prev,
@@ -190,6 +198,8 @@ export default function Settings({
   };
 
   // ---------- local editable state for allocation rules ----------
+  // When a new household has no rules defined, this array will be empty. Rules
+  // define how income is routed to accounts on each paycheque.
   const [localRules, setLocalRules] = useState(allocationRules || []);
   const [dirtyRules, setDirtyRules] = useState(false);
 
@@ -198,10 +208,14 @@ export default function Settings({
   }, [allocationRules]);
 
   const handleAddRule = () => {
+    // Default to the first account or residual account if available
+    const defaultAccount = (localAccounts && localAccounts[0] && localAccounts[0].id) || localResidualId || "";
     const newRule = {
       id: `rule-${Date.now()}`,
-      accountId: localResidualId || "",
-      percentage: 0,
+      accountId: defaultAccount,
+      type: "percent",
+      value: 0,
+      frequency: "each",
       label: "New rule",
     };
     setLocalRules((prev) => [...prev, newRule]);
@@ -209,9 +223,7 @@ export default function Settings({
   };
 
   const handleRuleChange = (id, updates) => {
-    setLocalRules((prev) =>
-      prev.map((rule) => (rule.id === id ? { ...rule, ...updates } : rule))
-    );
+    setLocalRules((prev) => prev.map((rule) => (rule.id === id ? { ...rule, ...updates } : rule)));
     setDirtyRules(true);
   };
 
@@ -227,66 +239,39 @@ export default function Settings({
   };
 
   // ---------- Income & Schedule local state ----------
-  const [localIncome, setLocalIncome] = useState({
-    husband: income?.husband ?? 0,
-    wife: income?.wife ?? 0,
-  });
-
-  const [localSchedule, setLocalSchedule] = useState({
-    type: paySchedule?.type || "semi-monthly",
-    day1: paySchedule?.day1 ?? 15,
-    day2: paySchedule?.day2 ?? "last",
-  });
+  const [localIncome, setLocalIncome] = useState({ husband: income?.husband ?? 0, wife: income?.wife ?? 0 });
+  const [localSchedule, setLocalSchedule] = useState({ type: paySchedule?.type || "semi-monthly", day1: paySchedule?.day1 ?? 15, day2: paySchedule?.day2 ?? "last" });
 
   useEffect(() => {
-    setLocalIncome({
-      husband: income?.husband ?? 0,
-      wife: income?.wife ?? 0,
-    });
+    setLocalIncome({ husband: income?.husband ?? 0, wife: income?.wife ?? 0 });
   }, [income]);
 
   useEffect(() => {
-    setLocalSchedule({
-      type: paySchedule?.type || "semi-monthly",
-      day1: paySchedule?.day1 ?? 15,
-      day2: paySchedule?.day2 ?? "last",
-    });
+    setLocalSchedule({ type: paySchedule?.type || "semi-monthly", day1: paySchedule?.day1 ?? 15, day2: paySchedule?.day2 ?? "last" });
   }, [paySchedule]);
 
   const [dirtyIncomeSchedule, setDirtyIncomeSchedule] = useState(false);
 
   const handleIncomeChange = (field, value) => {
-    setLocalIncome((prev) => ({
-      ...prev,
-      [field]: value === "" ? "" : parseFloat(value),
-    }));
+    setLocalIncome((prev) => ({ ...prev, [field]: value === "" ? "" : parseFloat(value) }));
     setDirtyIncomeSchedule(true);
   };
 
   const handleScheduleChange = (field, value) => {
-    setLocalSchedule((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setLocalSchedule((prev) => ({ ...prev, [field]: value }));
     setDirtyIncomeSchedule(true);
   };
 
   const handleSaveIncomeSchedule = () => {
     if (!onUpdateIncomeAndPaySchedule) return;
     const cleanedIncome = {
-      husband:
-        localIncome.husband === "" ? 0 : Number(localIncome.husband) || 0,
-      wife:
-        localIncome.wife === "" ? 0 : Number(localIncome.wife) || 0,
+      husband: localIncome.husband === "" ? 0 : Number(localIncome.husband) || 0,
+      wife: localIncome.wife === "" ? 0 : Number(localIncome.wife) || 0,
     };
     const cleanedSchedule = {
       ...localSchedule,
-      day1:
-        localSchedule.day1 === "" ? 15 : Number(localSchedule.day1) || 15,
-      day2:
-        localSchedule.day2 === "" || localSchedule.day2 === "last"
-          ? "last"
-          : Number(localSchedule.day2) || "last",
+      day1: localSchedule.day1 === "" ? 15 : Number(localSchedule.day1) || 15,
+      day2: localSchedule.day2 === "" || localSchedule.day2 === "last" ? "last" : Number(localSchedule.day2) || "last",
     };
     onUpdateIncomeAndPaySchedule(cleanedIncome, cleanedSchedule);
     setDirtyIncomeSchedule(false);
@@ -313,9 +298,7 @@ export default function Settings({
   };
 
   const handleGoalChange = (id, updates) => {
-    setLocalGoals((prev) =>
-      prev.map((goal) => (goal.id === id ? { ...goal, ...updates } : goal))
-    );
+    setLocalGoals((prev) => prev.map((goal) => (goal.id === id ? { ...goal, ...updates } : goal)));
     setDirtyGoals(true);
   };
 
@@ -331,27 +314,27 @@ export default function Settings({
   };
 
   // ---------- Category budgets local state ----------
-  const [localBudgets, setLocalBudgets] = useState(categoryBudgets || {});
+  // Use defaults when incoming budgets are empty. Convert to array via useMemo below.
+  const initialBudgets = useMemo(() => {
+    const cats = categoryBudgets || {};
+    return Object.keys(cats).length === 0 ? DEFAULT_BUDGET_CATEGORIES : cats;
+  }, [categoryBudgets]);
+  const [localBudgets, setLocalBudgets] = useState(initialBudgets);
   const [dirtyBudgets, setDirtyBudgets] = useState(false);
 
   useEffect(() => {
-    setLocalBudgets(categoryBudgets || {});
+    const cats = categoryBudgets || {};
+    setLocalBudgets(Object.keys(cats).length === 0 ? DEFAULT_BUDGET_CATEGORIES : cats);
   }, [categoryBudgets]);
 
   const handleAddBudgetCategory = () => {
     const newKey = `category-${Date.now()}`;
-    setLocalBudgets((prev) => ({
-      ...prev,
-      [newKey]: { label: "New category", amount: 0 },
-    }));
+    setLocalBudgets((prev) => ({ ...prev, [newKey]: { label: "New category", amount: 0 } }));
     setDirtyBudgets(true);
   };
 
   const handleBudgetChange = (key, updates) => {
-    setLocalBudgets((prev) => ({
-      ...prev,
-      [key]: { ...prev[key], ...updates },
-    }));
+    setLocalBudgets((prev) => ({ ...prev, [key]: { ...prev[key], ...updates } }));
     setDirtyBudgets(true);
   };
 
@@ -371,15 +354,11 @@ export default function Settings({
   };
 
   // ---------- Bill sharing local state ----------
-  const [localBillSharing, setLocalBillSharing] = useState(
-    billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 } }
-  );
+  const [localBillSharing, setLocalBillSharing] = useState(billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 } });
   const [dirtyBillSharing, setDirtyBillSharing] = useState(false);
 
   useEffect(() => {
-    setLocalBillSharing(
-      billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 } }
-    );
+    setLocalBillSharing(billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 } });
     setDirtyBillSharing(false);
   }, [billSharing]);
 
@@ -393,24 +372,17 @@ export default function Settings({
     if (who === "H") {
       const hShare = val;
       const wShare = Math.max(0, 100 - hShare);
-      setLocalBillSharing((prev) => ({
-        ...prev,
-        percentageSplit: { H: hShare / 100, W: wShare / 100 },
-      }));
+      setLocalBillSharing((prev) => ({ ...prev, percentageSplit: { H: hShare / 100, W: wShare / 100 } }));
     } else if (who === "W") {
       const wShare = val;
       const hShare = Math.max(0, 100 - wShare);
-      setLocalBillSharing((prev) => ({
-        ...prev,
-        percentageSplit: { H: hShare / 100, W: wShare / 100 },
-      }));
+      setLocalBillSharing((prev) => ({ ...prev, percentageSplit: { H: hShare / 100, W: wShare / 100 } }));
     }
     setDirtyBillSharing(true);
   };
 
   const handleSaveBillSharing = () => {
     if (!onUpdateBillSharing) return;
-    // Convert shares from decimals back to decimals (they are already decimals) but ensure keys exist
     const next = {
       mode: localBillSharing.mode,
       percentageSplit: {
@@ -423,15 +395,7 @@ export default function Settings({
   };
 
   // Derived arrays for display
-  const budgetsArray = useMemo(
-    () =>
-      Object.entries(localBudgets).map(([key, cfg]) => ({
-        key,
-        label: cfg.label || key,
-        amount: cfg.amount ?? 0,
-      })),
-    [localBudgets]
-  );
+  const budgetsArray = useMemo(() => Object.entries(localBudgets).map(([key, cfg]) => ({ key, label: cfg.label || key, amount: cfg.amount ?? 0 })), [localBudgets]);
 
   // Refs for scrolling to specific sections (goals & budgets) when requested
   const goalsRef = useRef(null);
@@ -456,12 +420,8 @@ export default function Settings({
         <div className="flex items-center gap-2">
           <SettingsIcon className="text-slate-700" size={18} />
           <div>
-            <div className="text-xs font-semibold text-slate-900">
-              Settings
-            </div>
-            <div className="text-[11px] text-slate-500">
-              Manage your household, accounts, and goals
-            </div>
+            <div className="text-xs font-semibold text-slate-900">Settings</div>
+            <div className="text-[11px] text-slate-500">Manage your household, accounts, and goals</div>
           </div>
         </div>
       </header>
@@ -473,9 +433,7 @@ export default function Settings({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Users className="text-indigo-500" size={18} />
-                <div className="text-sm font-semibold text-slate-900">
-                  Household & Profile
-                </div>
+                <div className="text-sm font-semibold text-slate-900">Household & Profile</div>
               </div>
               {householdCount > 1 && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
@@ -484,139 +442,74 @@ export default function Settings({
                 </span>
               )}
             </div>
-
             {/* User ID Copy */}
             <div className="mb-3">
-              <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                Your User ID
-              </label>
+              <label className="block text-[11px] font-medium text-slate-500 mb-1">Your User ID</label>
               <div className="flex items-center gap-2">
-                <div className="flex-1 truncate rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
-                  {uid || "(not signed in)"}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(uid)}
-                  className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-900"
-                >
-                  <Copy size={12} />
-                  Copy
+                <div className="flex-1 truncate rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">{uid || "(not signed in)"}</div>
+                <button type="button" onClick={() => copyToClipboard(uid)} className="text-slate-500 hover:text-slate-700">
+                  <Copy size={14} />
                 </button>
               </div>
-              <p className="mt-1 text-[10px] text-slate-400">
-                Share this ID with your partner to link your households.
-              </p>
             </div>
-
-            {/* Household ID */}
-            <div className="mb-3">
-              <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                Household ID (link to partner)
-              </label>
-              <div className="flex items-center gap-2">
+            {/* Profile form */}
+            <div className="space-y-2 text-[11px]">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-slate-500" htmlFor="household-id">Household ID</label>
                 <input
+                  id="household-id"
                   type="text"
-                  className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-800"
+                  className="w-32 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-800"
                   value={localHouseholdId}
-                  onChange={(e) =>
-                    handleProfileChange("householdId", e.target.value)
-                  }
-                  placeholder="Enter partner's User ID"
+                  onChange={(e) => handleProfileChange("householdId", e.target.value)}
                 />
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
-                  onClick={() => {
-                    if (!uid) return;
-                    handleProfileChange("householdId", uid);
-                  }}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-slate-500" htmlFor="role">Role</label>
+                <select
+                  id="role"
+                  className="w-32 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-800"
+                  value={localRole}
+                  onChange={(e) => handleProfileChange("role", e.target.value)}
                 >
-                  <LinkIcon size={11} />
-                  Use my ID
-                </button>
+                  <option value="H">Partner H</option>
+                  <option value="W">Partner W</option>
+                  <option value="other">Other</option>
+                </select>
               </div>
             </div>
-
-            {/* Role Toggle */}
-            <div className="mb-3">
-              <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                Who are you in this plan?
-              </label>
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <button
-                  onClick={() => handleProfileChange("role", "H")}
-                  className={`flex-1 py-2 rounded-xl border text-xs font-medium ${
-                    localRole === "H"
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-white text-slate-600 border-slate-200"
-                  }`}
-                >
-                  Husband (H)
-                </button>
-                <button
-                  onClick={() => handleProfileChange("role", "W")}
-                  className={`flex-1 py-2 rounded-xl text-xs font-medium border ${
-                    localRole === "W"
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-white text-slate-600 border-slate-200"
-                  }`}
-                >
-                  Wife (W)
-                </button>
-              </div>
-            </div>
-
             {dirtyProfile && (
-              <div className="mt-4 flex justify-end">
+              <div className="mt-3 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={handleSaveProfile}
                   className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
                 >
-                  <CheckCircle2 size={12} />
-                  Save profile
+                  <CheckCircle2 size={12} /> Save profile
                 </button>
               </div>
             )}
-
-            <div className="mt-4 pt-3 border-t border-slate-100">
-              <Row label="Name" value={primaryName} />
-              <Row label="Email" value={email} />
-              <Row label="Members" value={`${householdCount} connected`} />
-            </div>
           </Card>
         </section>
-
-        
 
         {/* Plan starting balance */}
         <section className="mt-4">
           <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Wallet className="text-indigo-500" size={18} />
-              <div>
-                <div className="text-sm font-semibold text-slate-900">
-                  Plan starting balance
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  This is the starting balance your plan begins with. You can change it anytime; we save it to your household profile.
-                </div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Wallet className="text-indigo-500" size={18} />
+                <div className="text-sm font-semibold text-slate-900">Plan starting balance</div>
               </div>
             </div>
+            <p className="text-[11px] text-slate-500 mb-1">Set the starting cash balance of your plan. You can change it anytime; we save it to your household profile.</p>
             <div className="flex items-center justify-between gap-2 mt-2 text-[11px]">
-              <label htmlFor="starting-balance" className="text-slate-500">
-                Starting balance
-              </label>
+              <label htmlFor="starting-balance" className="text-slate-500">Starting balance</label>
               <input
                 id="starting-balance"
                 type="number"
                 step="0.01"
                 className="w-32 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-800"
-                value={
-                  localStartingBalance === "" || localStartingBalance == null
-                    ? ""
-                    : localStartingBalance
-                }
+                value={localStartingBalance === "" || localStartingBalance == null ? "" : localStartingBalance}
                 onChange={(e) => {
                   const val = e.target.value;
                   setLocalStartingBalance(val === "" ? "" : parseFloat(val));
@@ -631,8 +524,7 @@ export default function Settings({
                   onClick={handleSaveStartingBalance}
                   className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
                 >
-                  <CheckCircle2 size={12} />
-                  Save
+                  <CheckCircle2 size={12} /> Save
                 </button>
               </div>
             )}
@@ -644,13 +536,219 @@ export default function Settings({
           <Card className="p-4">
             <div className="flex items-center gap-2 mb-3">
               <Wallet className="text-indigo-500" size={18} />
-              <div className="text-sm font-semibold text-slate-900">
-                Current Balances (manual)
-              </div>
+              <div className="text-sm font-semibold text-slate-900">Current Balances (manual)</div>
             </div>
             <Row label="Household total" value={formatMoney(balances.total)} />
             <Row label="Partner H share" value={formatMoney(balances.husband)} />
             <Row label="Partner W share" value={formatMoney(balances.wife)} />
+          </Card>
+        </section>
+
+        {/* Accounts section */}
+        <section className="mt-4">
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Wallet className="text-indigo-500" size={18} />
+                <div className="text-sm font-semibold text-slate-900">Accounts</div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddAccount}
+                className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+              >
+                <Plus size={12} /> Add account
+              </button>
+            </div>
+            {localAccounts.length === 0 && <p className="text-xs text-slate-500">No accounts defined yet.</p>}
+            <div className="space-y-3">
+              {localAccounts.map((acct) => (
+                <div key={acct.id} className="p-2 border border-slate-200 rounded-lg bg-slate-50">
+                  <div className="grid grid-cols-4 gap-2 items-center">
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Name</span>
+                      <input
+                        type="text"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={acct.name}
+                        onChange={(e) => handleAccountChange(acct.id, { name: e.target.value })}
+                        placeholder="Account name"
+                      />
+                    </label>
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Type</span>
+                      <select
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={acct.type}
+                        onChange={(e) => handleAccountChange(acct.id, { type: e.target.value })}
+                      >
+                        <option value="deposit">Deposit</option>
+                        <option value="savings">Savings</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Opening balance</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={acct.openingBalance}
+                        onChange={(e) => handleAccountChange(acct.id, { openingBalance: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
+                        placeholder="0.00"
+                      />
+                    </label>
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
+                        onClick={() => handleDeleteAccount(acct.id)}
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2 text-[11px]">
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">Residual account</span>
+                <select
+                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                  value={localResidualId || ""}
+                  onChange={(e) => handleResidualChange(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {localAccounts.map((acct) => (
+                    <option key={acct.id} value={acct.id}>
+                      {acct.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {dirtyAccounts && (
+                <button
+                  type="button"
+                  onClick={handleSaveAccounts}
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+                >
+                  <CheckCircle2 size={12} /> Save accounts
+                </button>
+              )}
+            </div>
+          </Card>
+        </section>
+
+        {/* Allocation rules section */}
+        <section className="mt-4">
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <ArrowRightLeft className="text-indigo-500" size={18} />
+                <div className="text-sm font-semibold text-slate-900">Income allocation rules</div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddRule}
+                className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+              >
+                <Plus size={12} /> Add rule
+              </button>
+            </div>
+            {localRules.length === 0 && <p className="text-xs text-slate-500">No rules defined yet.</p>}
+            <div className="space-y-3">
+              {localRules.map((rule) => (
+                <div key={rule.id} className="p-2 border border-slate-200 rounded-lg bg-slate-50">
+                  <div className="grid grid-cols-6 gap-2 items-center">
+                    {/* Account selection */}
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Account</span>
+                      <select
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={rule.accountId || ""}
+                        onChange={(e) => handleRuleChange(rule.id, { accountId: e.target.value })}
+                      >
+                        <option value="">Select</option>
+                        {localAccounts.map((acct) => (
+                          <option key={acct.id} value={acct.id}>
+                            {acct.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {/* Type selection */}
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Type</span>
+                      <select
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={rule.type}
+                        onChange={(e) => handleRuleChange(rule.id, { type: e.target.value })}
+                      >
+                        <option value="percent">Percent</option>
+                        <option value="amount">Amount</option>
+                      </select>
+                    </label>
+                    {/* Value input */}
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>{rule.type === "percent" ? "Percent" : "Amount"}</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={rule.value}
+                        onChange={(e) => handleRuleChange(rule.id, { value: e.target.value === "" ? "" : parseFloat(e.target.value) })}
+                        placeholder={rule.type === "percent" ? "0" : "0.00"}
+                      />
+                    </label>
+                    {/* Frequency selection */}
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Frequency</span>
+                      <select
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={rule.frequency}
+                        onChange={(e) => handleRuleChange(rule.id, { frequency: e.target.value })}
+                      >
+                        <option value="each">Each</option>
+                        <option value="first">First</option>
+                        <option value="second">Second</option>
+                      </select>
+                    </label>
+                    {/* Label */}
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Label</span>
+                      <input
+                        type="text"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={rule.label || ""}
+                        onChange={(e) => handleRuleChange(rule.id, { label: e.target.value })}
+                        placeholder="Description"
+                      />
+                    </label>
+                    {/* Delete button */}
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
+                        onClick={() => handleDeleteRule(rule.id)}
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {dirtyRules && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveRules}
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+                >
+                  <CheckCircle2 size={12} /> Save rules
+                </button>
+              </div>
+            )}
           </Card>
         </section>
 
@@ -660,62 +758,44 @@ export default function Settings({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Wallet className="text-indigo-500" size={18} />
-                <div className="text-sm font-semibold text-slate-900">
-                  Household income &amp; pay schedule
-                </div>
+                <div className="text-sm font-semibold text-slate-900">Household income &amp; pay schedule</div>
               </div>
-
               {dirtyIncomeSchedule && (
                 <button
                   type="button"
                   onClick={handleSaveIncomeSchedule}
                   className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
                 >
-                  <CheckCircle2 size={12} />
-                  Save
+                  <CheckCircle2 size={12} /> Save
                 </button>
               )}
             </div>
-
             <div className="space-y-3 text-[11px]">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-slate-500">
-                  Partner H income (per paycheque)
-                </div>
+                <div className="text-slate-500">Partner H income (per paycheque)</div>
                 <input
                   type="number"
                   step="0.01"
                   className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-right text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
-                  value={localIncome.husband === '' ? '' : localIncome.husband}
-                  onChange={(e) =>
-                    handleIncomeChange('husband', e.target.value)
-                  }
+                  value={localIncome.husband === "" ? "" : localIncome.husband}
+                  onChange={(e) => handleIncomeChange("husband", e.target.value)}
                 />
               </div>
-
               <div className="flex items-center justify-between gap-2">
-                <div className="text-slate-500">
-                  Partner W income (per paycheque)
-                </div>
+                <div className="text-slate-500">Partner W income (per paycheque)</div>
                 <input
                   type="number"
                   step="0.01"
                   className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-right text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
-                  value={localIncome.wife === '' ? '' : localIncome.wife}
-                  onChange={(e) =>
-                    handleIncomeChange('wife', e.target.value)
-                  }
+                  value={localIncome.wife === "" ? "" : localIncome.wife}
+                  onChange={(e) => handleIncomeChange("wife", e.target.value)}
                 />
               </div>
-
               <div className="pt-3 border-t border-slate-100 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="text-slate-500">Pay schedule</div>
-                  <div className="text-xs font-medium text-slate-700">
-                    Semi-monthly
-                  </div>
+                  <div className="text-xs font-medium text-slate-700">Semi-monthly</div>
                 </div>
-
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-slate-500">First pay date (day)</div>
                   <input
@@ -724,18 +804,15 @@ export default function Settings({
                     max={28}
                     className="w-20 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-right text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
                     value={localSchedule.day1}
-                    onChange={(e) =>
-                      handleScheduleChange('day1', Number(e.target.value))
-                    }
+                    onChange={(e) => handleScheduleChange("day1", Number(e.target.value))}
                   />
                 </div>
-
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-slate-500">Second pay date</div>
                   <select
                     className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-right text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
                     value={localSchedule.day2}
-                    onChange={(e) => handleScheduleChange('day2', e.target.value)}
+                    onChange={(e) => handleScheduleChange("day2", e.target.value)}
                   >
                     <option value="last">Last day of month</option>
                     <option value="15">15</option>
@@ -753,9 +830,7 @@ export default function Settings({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Users2 className="text-indigo-500" size={18} />
-                <div className="text-sm font-semibold text-slate-900">
-                  Household bill sharing
-                </div>
+                <div className="text-sm font-semibold text-slate-900">Household bill sharing</div>
               </div>
             </div>
             <div className="space-y-2 text-[11px]">
@@ -783,68 +858,42 @@ export default function Settings({
                   />
                   <span>Percentage split</span>
                 </label>
-                <label className="inline-flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="bill-sharing-mode"
-                    value="equalize"
-                    className="h-3 w-3"
-                    checked={localBillSharing.mode === "equalize"}
-                    onChange={() => handleBillSharingModeChange("equalize")}
-                  />
-                  <span>Equal leftover</span>
-                </label>
               </div>
-              {/* Percentage inputs */}
               {localBillSharing.mode === "percentage" && (
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-slate-500">H share (%)</span>
+                <div className="flex items-center gap-2 mt-2">
+                  <label className="flex flex-col text-[10px] text-slate-500">
+                    <span>Partner H share (%)</span>
                     <input
                       type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      className="border border-slate-200 rounded-lg px-2 py-1 text-[11px]"
-                      value={Math.round((localBillSharing.percentageSplit?.H ?? 0.5) * 100)}
-                      onChange={(e) =>
-                        handleBillSharingPercentageChange("H", e.target.value)
-                      }
+                      min={0}
+                      max={100}
+                      className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-800"
+                      value={Math.round((localBillSharing.percentageSplit.H ?? 0.5) * 100)}
+                      onChange={(e) => handleBillSharingPercentageChange("H", e.target.value)}
                     />
                   </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-slate-500">W share (%)</span>
+                  <label className="flex flex-col text-[10px] text-slate-500">
+                    <span>Partner W share (%)</span>
                     <input
                       type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      className="border border-slate-200 rounded-lg px-2 py-1 text-[11px]"
-                      value={Math.round((localBillSharing.percentageSplit?.W ?? 0.5) * 100)}
-                      onChange={(e) =>
-                        handleBillSharingPercentageChange("W", e.target.value)
-                      }
+                      min={0}
+                      max={100}
+                      className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-800"
+                      value={Math.round((localBillSharing.percentageSplit.W ?? 0.5) * 100)}
+                      onChange={(e) => handleBillSharingPercentageChange("W", e.target.value)}
                     />
                   </label>
                 </div>
               )}
-              {/* Equalize explanation */}
-              {localBillSharing.mode === "equalize" && (
-                <p className="mt-2 text-[10px] text-slate-500">
-                  We’ll assign shared bills so that after all shared bills are paid,
-                  both partners have similar leftover money for the month.
-                </p>
-              )}
             </div>
             {dirtyBillSharing && (
-              <div className="mt-3 flex justify-end">
+              <div className="mt-3 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={handleSaveBillSharing}
                   className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
                 >
-                  <CheckCircle2 size={12} />
-                  Save sharing
+                  <CheckCircle2 size={12} /> Save bill sharing
                 </button>
               </div>
             )}
@@ -857,84 +906,62 @@ export default function Settings({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Target className="text-indigo-500" size={18} />
-                <div className="text-sm font-semibold text-slate-900">
-                  Goals
-                </div>
+                <div className="text-sm font-semibold text-slate-900">Goals</div>
               </div>
               <button
                 type="button"
                 onClick={handleAddGoal}
                 className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
               >
-                <Plus size={12} />
-                Add goal
+                <Plus size={12} /> Add goal
               </button>
             </div>
-            {/* List of goals */}
-            {localGoals.length === 0 && (
-              <p className="text-xs text-slate-500">No goals defined yet.</p>
-            )}
+            {localGoals.length === 0 && <p className="text-xs text-slate-500">No goals defined yet.</p>}
             <div className="space-y-3">
               {localGoals.map((goal) => (
                 <div key={goal.id} className="p-2 border border-slate-200 rounded-lg bg-slate-50">
-                  <div className="grid grid-cols-3 gap-2 items-center">
+                  <div className="grid grid-cols-4 gap-2 items-center">
                     <label className="flex flex-col text-[10px] text-slate-500">
                       <span>Name</span>
                       <input
                         type="text"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={goal.name}
-                        onChange={(e) =>
-                          handleGoalChange(goal.id, { name: e.target.value })
-                        }
+                        onChange={(e) => handleGoalChange(goal.id, { name: e.target.value })}
                         placeholder="Goal name"
                       />
                     </label>
                     <label className="flex flex-col text-[10px] text-slate-500">
-                      <span>Target</span>
+                      <span>Target amount</span>
                       <input
                         type="number"
                         step="0.01"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={goal.targetAmount}
-                        onChange={(e) =>
-                          handleGoalChange(goal.id, {
-                            targetAmount:
-                              e.target.value === "" ? "" : parseFloat(e.target.value),
-                          })
-                        }
+                        onChange={(e) => handleGoalChange(goal.id, { targetAmount: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
                         placeholder="0.00"
                       />
                     </label>
                     <label className="flex flex-col text-[10px] text-slate-500">
-                      <span>Per month</span>
+                      <span>Monthly contribution</span>
                       <input
                         type="number"
                         step="0.01"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={goal.perMonth}
-                        onChange={(e) =>
-                          handleGoalChange(goal.id, {
-                            perMonth:
-                              e.target.value === "" ? "" : parseFloat(e.target.value),
-                          })
-                        }
+                        onChange={(e) => handleGoalChange(goal.id, { perMonth: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
                         placeholder="0.00"
                       />
                     </label>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between">
-                    <div className="text-[10px] text-slate-500">
-                      Saved so far: {formatMoney(goal.savedSoFar || 0)}
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
+                        onClick={() => handleDeleteGoal(goal.id)}
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
-                      onClick={() => handleDeleteGoal(goal.id)}
-                    >
-                      <Trash2 size={12} />
-                      Delete
-                    </button>
                   </div>
                 </div>
               ))}
@@ -946,8 +973,7 @@ export default function Settings({
                   onClick={handleSaveGoals}
                   className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
                 >
-                  <CheckCircle2 size={12} />
-                  Save goals
+                  <CheckCircle2 size={12} /> Save goals
                 </button>
               </div>
             )}
@@ -960,22 +986,17 @@ export default function Settings({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <PieChart className="text-indigo-500" size={18} />
-                <div className="text-sm font-semibold text-slate-900">
-                  Budgets
-                </div>
+                <div className="text-sm font-semibold text-slate-900">Budgets</div>
               </div>
               <button
                 type="button"
                 onClick={handleAddBudgetCategory}
                 className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
               >
-                <Plus size={12} />
-                Add category
+                <Plus size={12} /> Add category
               </button>
             </div>
-            {budgetsArray.length === 0 && (
-              <p className="text-xs text-slate-500">No budget categories defined yet.</p>
-            )}
+            {budgetsArray.length === 0 && <p className="text-xs text-slate-500">No budget categories defined yet.</p>}
             <div className="space-y-3">
               {budgetsArray.map(({ key, label, amount }) => (
                 <div key={key} className="p-2 border border-slate-200 rounded-lg bg-slate-50">
@@ -986,9 +1007,7 @@ export default function Settings({
                         type="text"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={label}
-                        onChange={(e) =>
-                          handleBudgetChange(key, { label: e.target.value })
-                        }
+                        onChange={(e) => handleBudgetChange(key, { label: e.target.value })}
                         placeholder="Category name"
                       />
                     </label>
@@ -999,12 +1018,7 @@ export default function Settings({
                         step="0.01"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={amount}
-                        onChange={(e) =>
-                          handleBudgetChange(key, {
-                            amount:
-                              e.target.value === "" ? "" : parseFloat(e.target.value),
-                          })
-                        }
+                        onChange={(e) => handleBudgetChange(key, { amount: e.target.value === "" ? "" : parseFloat(e.target.value) })}
                         placeholder="0.00"
                       />
                     </label>
@@ -1014,8 +1028,7 @@ export default function Settings({
                         className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
                         onClick={() => handleDeleteBudget(key)}
                       >
-                        <Trash2 size={12} />
-                        Delete
+                        <Trash2 size={12} /> Delete
                       </button>
                     </div>
                   </div>
@@ -1029,8 +1042,7 @@ export default function Settings({
                   onClick={handleSaveBudgets}
                   className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
                 >
-                  <CheckCircle2 size={12} />
-                  Save budgets
+                  <CheckCircle2 size={12} /> Save budgets
                 </button>
               </div>
             )}
