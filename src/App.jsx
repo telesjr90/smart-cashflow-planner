@@ -660,8 +660,7 @@ export default function App() {
           id: "chequing",
           name: "Chequing",
           type: "deposit",
-          openingBalance:
-            myData?.startingBalance ?? DEFAULT_STARTING_BALANCE,
+          openingBalance: myData?.startingBalance ?? DEFAULT_STARTING_BALANCE,
         },
       ],
     [myData]
@@ -740,10 +739,7 @@ export default function App() {
 
   const savingsToDate = useMemo(
     () =>
-      (myData?.goals || []).reduce(
-        (acc, g) => acc + (g.savedSoFar || 0),
-        0
-      ),
+      (myData?.goals || []).reduce((acc, g) => acc + (g.savedSoFar || 0), 0),
     [myData?.goals]
   );
 
@@ -809,178 +805,172 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Wrapper>
-      <div className="p-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Wallet className="text-indigo-600" size={18} />
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">
-              Smart Cash Flow Planner
-            </div>
-            <div className="text-xs font-semibold text-slate-900">
-              Hi{" "}
-              {me?.profile?.displayName?.split(" ")[0] ||
-                user?.displayName?.split(" ")[0] ||
-                "there"}
+        <div className="p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Wallet className="text-indigo-600" size={18} />
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                Smart Cash Flow Planner
+              </div>
+              <div className="text-xs font-semibold text-slate-900">
+                Hi {me?.profile?.displayName?.split(" ")[0] || user?.displayName?.split(" ")[0] || "there"}
+              </div>
             </div>
           </div>
+          <button
+            onClick={logout}
+            className="text-xs text-slate-600 hover:text-slate-900"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
-        <button
-          onClick={logout}
-          className="text-xs text-slate-600 hover:text-slate-900"
-        >
-          <LogOut size={16} />
-        </button>
-      </div>
 
-      {tab === "home" && (
-        <Home
-          role={role}
-          personScope={personScope}
-          setPersonScope={setPersonScope}
-          startDate={startDate}
-          bills={displayedBills}
-          paidFlags={paidFlags}
-          mode={mode}
-          setMode={setMode}
-          income={income}
-          paySchedule={paySchedule}
-          budgets={budgetListForHome}
-          savingsToDate={savingsToDate}
-          onAddExpense={() => setIsExpenseModalOpen(true)}
-          expenses={myData?.expenses || []}
-          onGoToSettings={() => setTab("settings")}
-          onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
-          onGoToBills={() => setTab("bills")}
-        />
-      )}
+        {tab === "home" && (
+          <Home
+            role={role}
+            personScope={personScope}
+            setPersonScope={setPersonScope}
+            startDate={startDate}
+            bills={displayedBills}
+            paidFlags={paidFlags}
+            mode={mode}
+            setMode={setMode}
+            income={income}
+            paySchedule={paySchedule}
+            budgets={budgetListForHome}
+            savingsToDate={savingsToDate}
+            onAddExpense={() => setIsExpenseModalOpen(true)}
+            expenses={myData?.expenses || []}
+            onGoToSettings={() => setTab("settings")}
+            onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
+            onGoToBills={() => setTab("bills")}
+          />
+        )}
 
-      {tab === "planner" && (
-        <Planner
-          role={role}
-          personScope={personScope}
-          startDate={startDate}
-          bills={displayedBills}
-          paidBills={myData?.paidBills || {}}
-          mode={mode}
+        {tab === "planner" && (
+          <Planner
+            role={role}
+            personScope={personScope}
+            startDate={startDate}
+            bills={displayedBills}
+            paidBills={myData?.paidBills || {}}
+            mode={mode}
+            setMode={setMode}
+            accounts={accounts}
+            allocationRules={allocationRules}
+            residualAccountId={residualAccountId}
+            income={income}
+            paySchedule={paySchedule}
+            extraIncomes={extraIncomes}
+            expenses={myData?.expenses || []}
+          />
+        )}
+
+        {tab === "dashboard" && (
+          <MonthlyCashFlowInfographic
+            uid={user?.uid}
+            role={role}
+            personScope={personScope}
+            liveStartDate={startDate}
+            liveIncome={income}
+            livePaySchedule={paySchedule}
+            liveBills={displayedBills}
+            liveGoals={myData?.goals || []}
+            liveCategoryBudgets={myData?.categoryBudgets || {}}
+            paidBills={paidFlags}
+            mergeWrite={handleInfographicMergeWrite}
+            liveExtraIncomes={extraIncomes}
+            onUpdateExtraIncomes={handleUpdateExtraIncome}
+          />
+        )}
+
+        {tab === "bills" && (
+          <Bills
+            role={role}
+            startDate={startDate}
+            bills={displayedBills}
+            paidFlags={paidFlags}
+            personScope={personScope}
+            accounts={accounts}
+            residualAccountId={residualAccountId}
+            onTogglePaid={handleTogglePaid}
+            onBulkMark={handleBulkMark}
+            onChangeBillAccount={handleChangeBillAccount}
+            onUpdateBills={handleUpdateBills}
+          />
+        )}
+
+        {tab === "settings" && (
+          <Settings
+            uid={user?.uid}
+            email={me?.profile?.email || user.email || ""}
+            displayName={me?.profile?.displayName || user.displayName || ""}
+            role={role}
+            householdId={householdId}
+            householdCount={householdCount}
+            onUpdateProfile={handleUpdateProfile}
+            balances={balances}
+            startDate={startDate}
+            startingBalance={myData?.startingBalance ?? DEFAULT_STARTING_BALANCE}
+            accounts={accounts}
+            residualAccountId={residualAccountId}
+            allocationRules={allocationRules}
+            income={income}
+            paySchedule={paySchedule}
+            onUpdateAccounts={handleUpdateAccounts}
+            onUpdateAllocationRules={handleUpdateAllocationRules}
+            onUpdateIncomeAndPaySchedule={handleUpdateIncomeAndPaySchedule}
+            goals={myData?.goals || []}
+            categoryBudgets={myData?.categoryBudgets || {}}
+            onUpdateGoals={handleUpdateGoals}
+            onUpdateBudgets={handleUpdateBudgets}
+            onUpdateStartingBalance={handleUpdateStartingBalance}
+            billSharing={myData?.billSharing}
+            onUpdateBillSharing={handleUpdateBillSharing}
+            scrollToSection={settingsSection}
+            onResetScrollHint={() => setSettingsSection(null)}
+          />
+        )}
+
+        {tab === "accounts" && (
+          <Accounts
+            accounts={accounts}
+            residualAccountId={residualAccountId}
+            balances={{}}
+            allocationRules={allocationRules}
+            income={income}
+            paySchedule={paySchedule}
+            bills={displayedBills}
+            expenses={myData?.expenses || []}
+            goals={myData?.goals || []}
+            categoryBudgets={myData?.categoryBudgets || {}}
+            startDate={startDate}
+            paidBills={myData?.paidBills || {}}
+            onUpdateAccounts={handleUpdateAccounts}
+            onUpdateAllocationRules={handleUpdateAllocationRules}
+            onUpdateIncomeAndPaySchedule={handleUpdateIncomeAndPaySchedule}
+            onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
+            onGoToSettingsGoals={() => handleGoToSettingsSection("goals")}
+          />
+        )}
+
+        {tab === "expenses" && (
+          <Expenses
+            expenses={myData?.expenses || []}
+            accounts={accounts}
+            onUpdateExpenses={handleUpdateExpenses}
+          />
+        )}
+
+        <Tabs current={tab} onChange={setTab} />
+
+        <AddExpenseModal
+          isOpen={isExpenseModalOpen}
+          onClose={() => setIsExpenseModalOpen(false)}
+          onSave={handleAddExpense}
           accounts={accounts}
-          allocationRules={allocationRules}
-          residualAccountId={residualAccountId}
-          income={income}
-          paySchedule={paySchedule}
-          extraIncomes={extraIncomes}
-          expenses={myData?.expenses || []}
         />
-      )}
-
-      {tab === "dashboard" && (
-        <MonthlyCashFlowInfographic
-          uid={user?.uid}
-          role={role}
-          personScope={personScope}
-          liveStartDate={startDate}
-          liveIncome={income}
-          livePaySchedule={paySchedule}
-          liveBills={displayedBills}
-          liveGoals={myData?.goals || []}
-          liveCategoryBudgets={myData?.categoryBudgets || {}}
-          paidBills={paidFlags}
-          mergeWrite={handleInfographicMergeWrite}
-          liveExtraIncomes={extraIncomes}
-          onUpdateExtraIncomes={handleUpdateExtraIncome}
-        />
-      )}
-
-      {tab === "bills" && (
-        <Bills
-          role={role}
-          startDate={startDate}
-          bills={displayedBills}
-          paidFlags={paidFlags}
-          personScope={personScope}
-          accounts={accounts}
-          residualAccountId={residualAccountId}
-          onTogglePaid={handleTogglePaid}
-          onBulkMark={handleBulkMark}
-          onChangeBillAccount={handleChangeBillAccount}
-          onUpdateBills={handleUpdateBills}
-        />
-      )}
-
-      {tab === "settings" && (
-        <Settings
-          uid={user?.uid}
-          email={me?.profile?.email || user.email || ""}
-          displayName={
-            me?.profile?.displayName || user.displayName || ""
-          }
-          role={role}
-          householdId={householdId}
-          householdCount={householdCount}
-          onUpdateProfile={handleUpdateProfile}
-          balances={balances}
-          startDate={startDate}
-          startingBalance={
-            myData?.startingBalance ?? DEFAULT_STARTING_BALANCE
-          }
-          accounts={accounts}
-          residualAccountId={residualAccountId}
-          allocationRules={allocationRules}
-          income={income}
-          paySchedule={paySchedule}
-          onUpdateAccounts={handleUpdateAccounts}
-          onUpdateAllocationRules={handleUpdateAllocationRules}
-          onUpdateIncomeAndPaySchedule={handleUpdateIncomeAndPaySchedule}
-          goals={myData?.goals || []}
-          categoryBudgets={myData?.categoryBudgets || {}}
-          onUpdateGoals={handleUpdateGoals}
-          onUpdateBudgets={handleUpdateBudgets}
-          onUpdateStartingBalance={handleUpdateStartingBalance}
-          billSharing={myData?.billSharing}
-          onUpdateBillSharing={handleUpdateBillSharing}
-          scrollToSection={settingsSection}
-          onResetScrollHint={() => setSettingsSection(null)}
-        />
-      )}
-
-      {tab === "accounts" && (
-        <Accounts
-          accounts={accounts}
-          residualAccountId={residualAccountId}
-          balances={{}}
-          allocationRules={allocationRules}
-          income={income}
-          paySchedule={paySchedule}
-          bills={displayedBills}
-          expenses={myData?.expenses || []}
-          goals={myData?.goals || []}
-          categoryBudgets={myData?.categoryBudgets || {}}
-          startDate={startDate}
-          paidBills={myData?.paidBills || {}}
-          onUpdateAccounts={handleUpdateAccounts}
-          onUpdateAllocationRules={handleUpdateAllocationRules}
-          onUpdateIncomeAndPaySchedule={handleUpdateIncomeAndPaySchedule}
-          onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
-          onGoToSettingsGoals={() => handleGoToSettingsSection("goals")}
-        />
-      )}
-
-      {tab === "expenses" && (
-        <Expenses
-          expenses={myData?.expenses || []}
-          accounts={accounts}
-          onUpdateExpenses={handleUpdateExpenses}
-        />
-      )}
-
-      <Tabs current={tab} onChange={setTab} />
-
-      <AddExpenseModal
-        isOpen={isExpenseModalOpen}
-        onClose={() => setIsExpenseModalOpen(false)}
-        onSave={handleAddExpense}
-        accounts={accounts}
-      />
-    </Wrapper>
-  </ErrorBoundary>
+      </Wrapper>
+    </ErrorBoundary>
   );
 }

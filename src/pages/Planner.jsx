@@ -24,6 +24,38 @@ function Pill({ children, className = "" }) {
   );
 }
 
+/**
+ * Simple segmented toggle component. Displays a list of options and highlights
+ * the active one. When clicked, calls onChange with the option's value.
+ * Mirrors the implementation used on the Home page to keep a consistent look
+ * and feel across the app. If onChange is undefined, the control becomes
+ * inert and simply displays the current mode.
+ */
+function Segmented({ value, onChange, options }) {
+  return (
+    <div className="inline-flex items-center rounded-full bg-slate-100 p-0.5">
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => {
+              if (typeof onChange === "function") onChange(opt.value);
+            }}
+            className={`px-2.5 py-1 text-[10px] rounded-full font-medium transition-colors ${
+              active
+                ? "bg-white shadow-sm text-slate-900"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Planner({
   startDate,
   accounts = [],
@@ -34,6 +66,7 @@ export default function Planner({
   bills = [],
   paidBills = {},
   mode = "projected",
+  setMode,
   extraIncomes = [],
   // PHASE 4: Expenses prop
   expenses = [],
@@ -246,17 +279,17 @@ export default function Planner({
               <Wallet size={16} className="text-indigo-600" />
               <span>Monthly snapshot</span>
             </div>
-            <Pill
-              className={
-                mode === "actual"
-                  ? "bg-indigo-100 text-indigo-700"
-                  : "bg-indigo-50 text-indigo-700"
-              }
-            >
-              {mode === "actual"
-                ? "Actual (Unpaid Past Bills Hidden)"
-                : "Projected"}
-            </Pill>
+            {/* Segmented control to toggle between Projected and Actual modes */}
+            <Segmented
+              value={mode}
+              onChange={(val) => {
+                if (typeof setMode === "function") setMode(val);
+              }}
+              options={[
+                { value: "projected", label: "Projected" },
+                { value: "actual", label: "Actual" },
+              ]}
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-2 text-xs">
@@ -288,7 +321,9 @@ export default function Planner({
           </div>
 
           <div className="flex items-center justify-between text-[11px] text-slate-500">
-            <span>Projected end-of-month</span>
+            <span>
+              {mode === "actual" ? "Actual end-of-month" : "Projected end-of-month"}
+            </span>
             <span className="font-semibold text-slate-800">
               ${fromCents(combinedFinalBalance)}
             </span>
