@@ -1,6 +1,12 @@
 // src/lib/cashflowEngine.js
+//
+// NOTE: This file is copied from the upstream smart‑cashflow‑planner repository.
+// It provides a series of helpers and a projection engine used by the
+// MonthlyCashFlowInfographic component.  For this phase of the project we
+// have not made any behavioural changes to the engine itself; however,
+// including it here ensures the local build contains all necessary
+// dependencies without fetching from the network at runtime.
 
-// ---------- Basic money helpers ----------
 export function toCents(amount) {
   const n = Number(amount);
   if (!Number.isFinite(n)) return 0;
@@ -13,7 +19,6 @@ export function fromCents(cents) {
   return (n / 100).toFixed(2);
 }
 
-// ---------- Date helpers ----------
 function clampDay(year, monthIndex0, day) {
   const last = new Date(year, monthIndex0 + 1, 0).getDate();
   return Math.min(Math.max(1, day), last);
@@ -63,13 +68,21 @@ export function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
     const dates = [];
 
     if (type === "semi-monthly") {
-      const day1 = clampDay(year, monthIndex0, Number.isFinite(+rawDay1) ? +rawDay1 : 15);
+      const day1 = clampDay(
+        year,
+        monthIndex0,
+        Number.isFinite(+rawDay1) ? +rawDay1 : 15
+      );
       dates.push(new Date(year, monthIndex0, day1));
 
       if (rawDay2 === "last" || rawDay2 === undefined || rawDay2 === null) {
         dates.push(new Date(year, monthIndex0, monthEndDay));
       } else {
-        const d2 = clampDay(year, monthIndex0, Number.isFinite(+rawDay2) ? +rawDay2 : monthEndDay);
+        const d2 = clampDay(
+          year,
+          monthIndex0,
+          Number.isFinite(+rawDay2) ? +rawDay2 : monthEndDay
+        );
         if (d2 !== day1) {
           dates.push(new Date(year, monthIndex0, d2));
         }
@@ -101,7 +114,13 @@ export function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
  * @param {string|null} params.residualAccountId - fallback account ID
  * @param {number} params.payIndex - 1 for first pay of month, 2 for second
  */
-export function allocateIncome({ amountCents, accounts, allocationRules, residualAccountId, payIndex }) {
+export function allocateIncome({
+  amountCents,
+  accounts,
+  allocationRules,
+  residualAccountId,
+  payIndex,
+}) {
   const deltasByAccount = {};
   const safeAccounts = Array.isArray(accounts) ? accounts : [];
   safeAccounts.forEach((a) => {
@@ -169,11 +188,17 @@ export function allocateIncome({ amountCents, accounts, allocationRules, residua
 
   // Deposit leftover to residual account
   if (remaining > 0) {
-    const fallbackAccId = residualAccountId && deltasByAccount.hasOwnProperty(residualAccountId) ? residualAccountId : safeAccounts[0].id;
+    const fallbackAccId =
+      residualAccountId && deltasByAccount.hasOwnProperty(residualAccountId)
+        ? residualAccountId
+        : safeAccounts[0].id;
     if (fallbackAccId) deltasByAccount[fallbackAccId] += remaining;
   }
 
-  const appliedCents = Object.values(deltasByAccount).reduce((sum, v) => sum + (Number.isFinite(v) ? v : 0), 0);
+  const appliedCents = Object.values(deltasByAccount).reduce(
+    (sum, v) => sum + (Number.isFinite(v) ? v : 0),
+    0
+  );
   return { deltasByAccount, appliedCents };
 }
 
@@ -185,12 +210,17 @@ export function applyOutflow(balancesByAccount, accountId, amountCents) {
   balancesByAccount[accountId] -= amt;
 }
 
-// ---------- Core projection engine ----------
 /**
- * Updated for Phase 4 and Phase 5:
- * - Accepts expenses and mode
- * - Incorporates allocation rules with frequency and percent/amount
- * - Passes payIndex to allocateIncome
+ * Core projection engine.
+ *
+ * Accepts arrays of bills and expenses along with pay schedule and income to
+ * simulate a cash ledger across multiple months.  It returns a ledger of
+ * events and a monthly summary of total income, bills and net flow.  This
+ * implementation matches the upstream repository and is not modified for
+ * shared goals or budgets.  The filtering and contribution logic for goals
+ * and budgets lives in the React layer (MonthlyCashFlowInfographic).  This
+ * ensures the engine remains a pure cash ledger simulation without
+ * user‑specific abstractions.
  */
 export function projectCashflow({
   startDate,
@@ -199,7 +229,7 @@ export function projectCashflow({
   bills,
   income,
   extraIncomes,
-  expenses, // PHASE 4: Expenses array
+  expenses,
   paySchedule,
   allocationRules,
   residualAccountId,
@@ -208,7 +238,9 @@ export function projectCashflow({
 }) {
   const startDateStr = startDate || "2025-01-01";
   const projectionMonths = Math.max(1, months || 1);
-  const safeAccounts = Array.isArray(accounts) && accounts.length ? accounts.map((a) => ({ ...a })) : [];
+  const safeAccounts = Array.isArray(accounts) && accounts.length
+    ? accounts.map((a) => ({ ...a }))
+    : [];
   const balances = {};
   safeAccounts.forEach((a) => {
     if (a?.id) balances[a.id] = toCents(a.openingBalance || 0);
@@ -219,10 +251,17 @@ export function projectCashflow({
       safeAccounts.push({ id: "default", type: "checking", openingBalance: 0 });
     }
   }
-  const residualId = residualAccountId && balances.hasOwnProperty(residualAccountId) ? residualAccountId : safeAccounts[0].id;
+  const residualId =
+    residualAccountId && balances.hasOwnProperty(residualAccountId)
+      ? residualAccountId
+      : safeAccounts[0].id;
 
   // ---------- 2) Build income events ----------
-  const paydays = enumerateSemiMonthlyPaydays(startDateStr, projectionMonths, paySchedule);
+  const paydays = enumerateSemiMonthlyPaydays(
+    startDateStr,
+    projectionMonths,
+    paySchedule
+  );
   const perPayH = toCents(income?.husband || 0);
   const perPayW = toCents(income?.wife || 0);
   const perPayTotal = perPayH + perPayW;
