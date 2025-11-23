@@ -354,43 +354,116 @@ export default function Settings({
   };
 
   // ---------- Bill sharing local state ----------
-  const [localBillSharing, setLocalBillSharing] = useState(billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 } });
+  // Keep track of the last committed bill sharing configuration.  This
+  // ref is updated whenever the parent prop changes or after a save.  It
+  // is used to determine whether local edits are "dirty" relative to
+  // the most recently saved state rather than depending on the parent
+  // prop update timing.
+  const committedBillSharingRef = useRef(billSharing);
+
+  // Ensure the local editable state always contains the same shape as
+  // the billSharing prop, including sharedBillIds so that missing keys
+  // don't inadvertently mark the config as dirty.  Default to a
+  // manual mode with an equal percentage split and no shared bills.
+  const [localBillSharing, setLocalBillSharing] = useState(
+    billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] }
+  );
   const [dirtyBillSharing, setDirtyBillSharing] = useState(false);
 
+  // When the upstream billSharing prop updates (e.g. after a
+  // successful save or when the user navigates to another household),
+  // synchronise our committed ref and reset the local editing state.
   useEffect(() => {
-    setLocalBillSharing(billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 } });
+    committedBillSharingRef.current = billSharing || {
+      mode: "manual",
+      percentageSplit: { H: 0.5, W: 0.5 },
+      sharedBillIds: [],
+    };
+    setLocalBillSharing(committedBillSharingRef.current);
+    // The new values are the source of truth so we're no longer dirty.
     setDirtyBillSharing(false);
   }, [billSharing]);
 
+  // Compute whether the local bill sharing edits differ from the last
+  // committed configuration.  Whenever localBillSharing changes, we
+  // compare it against the committed ref and update the dirty flag.
+  useEffect(() => {
+    const base = committedBillSharingRef.current || {
+      mode: "manual",
+      percentageSplit: { H: 0.5, W: 0.5 },
+      sharedBillIds: [],
+    };
+    const curr = localBillSharing || {
+      mode: "manual",
+      percentageSplit: { H: 0.5, W: 0.5 },
+      sharedBillIds: [],
+    };
+    const baseH = base.percentageSplit?.H ?? 0.5;
+    const baseW = base.percentageSplit?.W ?? 0.5;
+    const currH = curr.percentageSplit?.H ?? 0.5;
+    const currW = curr.percentageSplit?.W ?? 0.5;
+    const isDirty = curr.mode !== base.mode || currH !== baseH || currW !== baseW;
+    setDirtyBillSharing(isDirty);
+  }, [localBillSharing]);
+
+  // Handle mode changes by updating the local state only.  The dirty flag
+  // will be derived automatically by the effect above.
   const handleBillSharingModeChange = (mode) => {
     setLocalBillSharing((prev) => ({ ...prev, mode }));
-    setDirtyBillSharing(true);
   };
 
+  // Handle percentage changes for either partner.  Values are clamped
+  // between 0 and 100 and stored as decimals (0–1).  The partner
+  // counterpart automatically receives the remainder to ensure the
+  // percentages always sum to 100%.  The dirty flag is computed
+  // automatically.
   const handleBillSharingPercentageChange = (who, value) => {
     const val = Math.max(0, Math.min(100, Number(value) || 0));
     if (who === "H") {
       const hShare = val;
       const wShare = Math.max(0, 100 - hShare);
-      setLocalBillSharing((prev) => ({ ...prev, percentageSplit: { H: hShare / 100, W: wShare / 100 } }));
+      setLocalBillSharing((prev) => ({
+        ...prev,
+        percentageSplit: { H: hShare / 100, W: wShare / 100 },
+      }));
     } else if (who === "W") {
       const wShare = val;
       const hShare = Math.max(0, 100 - wShare);
-      setLocalBillSharing((prev) => ({ ...prev, percentageSplit: { H: hShare / 100, W: wShare / 100 } }));
+      setLocalBillSharing((prev) => ({
+        ...prev,
+        percentageSplit: { H: hShare / 100, W: wShare / 100 },
+      }));
     }
-    setDirtyBillSharing(true);
   };
 
+  // Save the current bill sharing configuration.  We update the
+  // committed ref and local state to reflect the saved values so
+  // subsequent edits are compared against this baseline.  We also
+  // include sharedBillIds if present in either the local or base
+  // configuration to avoid discarding that property.
   const handleSaveBillSharing = () => {
     if (!onUpdateBillSharing) return;
+    const base = committedBillSharingRef.current || {
+      mode: "manual",
+      percentageSplit: { H: 0.5, W: 0.5 },
+      sharedBillIds: [],
+    };
     const next = {
+      // Preserve the current editing mode
       mode: localBillSharing.mode,
+      // Ensure percentage values are valid decimals
       percentageSplit: {
         H: localBillSharing.percentageSplit?.H ?? 0.5,
         W: localBillSharing.percentageSplit?.W ?? 0.5,
       },
+      // Carry over any shared bill IDs from either local or base
+      sharedBillIds: localBillSharing.sharedBillIds ?? base.sharedBillIds ?? [],
     };
     onUpdateBillSharing(next);
+    // Update our committed baseline and local state to reflect the
+    // saved configuration so further edits are compared correctly.
+    committedBillSharingRef.current = next;
+    setLocalBillSharing(next);
     setDirtyBillSharing(false);
   };
 
