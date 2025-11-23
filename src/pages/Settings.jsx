@@ -1,3 +1,4 @@
+
 // src/pages/Settings.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
@@ -339,27 +340,120 @@ export default function Settings({
   };
 
   // ---------- Goals local state ----------
-  const [localGoals, setLocalGoals] = useState(goals || []);
+  // Helper to normalize goals to include new shared fields with defaults.
+  const normalizeGoal = (goal) => {
+    return {
+      scope: "personal",
+      status: "active",
+      pendingFor: null,
+      createdBy: role || "H",
+      contributions: {},
+      ...goal,
+    };
+  };
+
+  // Initialize localGoals by normalizing any incoming goals to ensure
+  // required fields like scope, status, pendingFor, createdBy and
+  // contributions exist. Defaults are applied for missing fields.
+  const [localGoals, setLocalGoals] = useState(() =>
+    (goals || []).map((g) => normalizeGoal(g))
+  );
   const [dirtyGoals, setDirtyGoals] = useState(false);
 
   useEffect(() => {
-    setLocalGoals(goals || []);
+    // When the upstream goals change (e.g. after a save or navigation),
+    // normalize them into the expected shape for editing.
+    setLocalGoals((goals || []).map((g) => normalizeGoal(g)));
   }, [goals]);
 
   const handleAddGoal = () => {
-    const newGoal = {
+    // When adding a new goal we include the shared goal fields with sensible defaults.
+    const newGoal = normalizeGoal({
       id: `goal-${Date.now()}`,
       name: "New goal",
       targetAmount: 0,
       perMonth: 0,
       savedSoFar: 0,
-    };
+      // New goals are personal by default. createdBy is current role.
+      scope: "personal",
+      status: "active",
+      pendingFor: null,
+      createdBy: role || "H",
+      contributions: {},
+    });
     setLocalGoals((prev) => [...prev, newGoal]);
     setDirtyGoals(true);
   };
 
   const handleGoalChange = (id, updates) => {
-    setLocalGoals((prev) => prev.map((goal) => (goal.id === id ? { ...goal, ...updates } : goal)));
+    // Generic field updater for goals. Does not manage scope or contributions.
+    setLocalGoals((prev) =>
+      prev.map((goal) => (goal.id === id ? { ...goal, ...updates } : goal))
+    );
+    setDirtyGoals(true);
+  };
+
+  // Update the goal's scope (personal/shared). When switching to shared,
+  // initialize contributions if missing and derive perMonth from the sum.
+  const handleGoalScopeChange = (id, scope) => {
+    setLocalGoals((prev) =>
+      prev.map((goal) => {
+        if (goal.id !== id) return goal;
+        const updated = { ...goal, scope };
+        if (scope === "personal") {
+          // Reset contributions when switching back to personal.
+          updated.contributions = {};
+          // perMonth remains user editable for personal goals.
+        } else if (scope === "shared") {
+          // Ensure contributions object exists and derive perMonth
+          const H = updated.contributions?.H ?? 0;
+          const W = updated.contributions?.W ?? 0;
+          updated.contributions = { H, W };
+          updated.perMonth = parseFloat(H || 0) + parseFloat(W || 0);
+        }
+        return updated;
+      })
+    );
+    setDirtyGoals(true);
+  };
+
+  // Update one partner's contribution for a shared goal. Also update perMonth automatically.
+  const handleGoalContributionChange = (id, who, value) => {
+    setLocalGoals((prev) =>
+      prev.map((goal) => {
+        if (goal.id !== id) return goal;
+        const amt = value === "" ? 0 : parseFloat(value) || 0;
+        const contributions = { ...(goal.contributions || {}) };
+        contributions[who] = amt;
+        const perMonth = (contributions.H || 0) + (contributions.W || 0);
+        return { ...goal, contributions, perMonth };
+      })
+    );
+    setDirtyGoals(true);
+  };
+
+  // Update perMonth for personal goals. Shared goals auto-calculate perMonth instead.
+  const handleGoalPerMonthChange = (id, value) => {
+    setLocalGoals((prev) =>
+      prev.map((goal) => {
+        if (goal.id !== id) return goal;
+        const perMonth = value === "" ? 0 : parseFloat(value) || 0;
+        return { ...goal, perMonth };
+      })
+    );
+    setDirtyGoals(true);
+  };
+
+  // Approve or reject a pending goal. Only applicable when status is pending and pendingFor matches the current role.
+  const handleGoalApproval = (id, action) => {
+    setLocalGoals((prev) =>
+      prev.map((goal) => {
+        if (goal.id !== id) return goal;
+        // Accept => active, Reject => rejected
+        const status = action === "accept" ? "active" : "rejected";
+        return { ...goal, status, pendingFor: null };
+      })
+    );
     setDirtyGoals(true);
   };
 
@@ -1080,7 +1174,11 @@ export default function Settings({
             {localGoals.length === 0 && <p className="text-xs text-slate-500">No goals defined yet.</p>}
             <div className="space-y-3">
               {localGoals.map((goal) => (
-                <div key={goal.id} className="p-2 border border-slate-200 rounded-lg bg-slate-50">
+                <div
+                  key={goal.id}
+                  className="p-2 border border-slate-200 rounded-lg bg-slate-50 space-y-2"
+                >
+                  {/* First row: name, target amount, contribution/perMonth display and delete */}
                   <div className="grid grid-cols-4 gap-2 items-center">
                     <label className="flex flex-col text-[10px] text-slate-500">
                       <span>Name</span>
@@ -1101,28 +1199,53 @@ export default function Settings({
                         value={goal.targetAmount}
                         onChange={(e) =>
                           handleGoalChange(goal.id, {
-                            targetAmount: e.target.value === "" ? 0 : parseFloat(e.target.value),
+                            targetAmount:
+                              e.target.value === '' ? 0 : parseFloat(e.target.value),
                           })
                         }
                         placeholder="0.00"
                       />
                     </label>
-                    <label className="flex flex-col text-[10px] text-slate-500">
-                      <span>Monthly contribution</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                        value={goal.perMonth}
-                        onChange={(e) =>
-                          handleGoalChange(goal.id, {
-                            perMonth: e.target.value === "" ? 0 : parseFloat(e.target.value),
-                          })
-                        }
-                        placeholder="0.00"
-                      />
-                    </label>
-                    <div className="flex items-center justify-end">
+                    {goal.scope === 'personal' ? (
+                      <label className="flex flex-col text-[10px] text-slate-500">
+                        <span>Monthly contribution</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                          value={goal.perMonth}
+                          onChange={(e) => handleGoalPerMonthChange(goal.id, e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </label>
+                    ) : (
+                      <div className="flex flex-col text-[10px] text-slate-500">
+                        <span>Monthly total</span>
+                        <span className="text-[11px] text-slate-800">
+                          {goal.perMonth ?? 0}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-end space-x-1">
+                      {/* Show accept/reject for pending goals when applicable */}
+                      {goal.status === 'pending' && goal.pendingFor === localRole ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleGoalApproval(goal.id, 'accept')}
+                            className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-emerald-700"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGoalApproval(goal.id, 'reject')}
+                            className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-rose-700"
+                          >
+                            Reject
+                          </button>
+                        </>
+                      ) : null}
                       <button
                         type="button"
                         className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
@@ -1131,6 +1254,50 @@ export default function Settings({
                         <Trash2 size={12} /> Delete
                       </button>
                     </div>
+                  </div>
+                  {/* Second row: scope selector and partner contributions if shared */}
+                  <div className="grid grid-cols-6 gap-2 items-center">
+                    <label className="flex flex-col text-[10px] text-slate-500 col-span-2">
+                      <span>Scope</span>
+                      <select
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={goal.scope}
+                        onChange={(e) => handleGoalScopeChange(goal.id, e.target.value)}
+                      >
+                        <option value="personal">Personal</option>
+                        <option value="shared">Shared</option>
+                      </select>
+                    </label>
+                    {goal.scope === 'shared' && (
+                      <>
+                        <label className="flex flex-col text-[10px] text-slate-500">
+                          <span>Partner H share</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                            value={goal.contributions?.H ?? 0}
+                            onChange={(e) =>
+                              handleGoalContributionChange(goal.id, 'H', e.target.value)
+                            }
+                            placeholder="0.00"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[10px] text-slate-500">
+                          <span>Partner W share</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                            value={goal.contributions?.W ?? 0}
+                            onChange={(e) =>
+                              handleGoalContributionChange(goal.id, 'W', e.target.value)
+                            }
+                            placeholder="0.00"
+                          />
+                        </label>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
