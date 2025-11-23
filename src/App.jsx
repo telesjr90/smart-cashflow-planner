@@ -753,14 +753,32 @@ export default function App() {
     }));
   }, [householdBills, myData, user, role]);
 
+  // Derive a list of active budgets for the Home dashboard.  Legacy
+  // budgets without a status field are considered active.  When a
+  // shared budget has contributions defined we sum the H + W
+  // contributions to compute its monthly amount; otherwise fall back to
+  // the legacy `amount` field.  Pending or rejected budgets are
+  // excluded from the dashboard entirely.
   const budgetListForHome = useMemo(() => {
     const raw = myData?.categoryBudgets || {};
-    return Object.entries(raw).map(([cat, cfg]) => ({
-      id: cat,
-      name: cfg?.label || cat,
-      remaining: cfg?.amount || 0,
-      total: cfg?.amount || 0,
-    }));
+    const list = [];
+    Object.entries(raw).forEach(([cat, cfg]) => {
+      const status = cfg?.status || "active";
+      if (status !== "active") return;
+      let amount = 0;
+      if (cfg?.contributions && typeof cfg.contributions === "object") {
+        amount = (cfg.contributions.H || 0) + (cfg.contributions.W || 0);
+      } else {
+        amount = cfg?.amount || 0;
+      }
+      list.push({
+        id: cat,
+        name: cfg?.label || cat,
+        remaining: amount,
+        total: amount,
+      });
+    });
+    return list;
   }, [myData?.categoryBudgets]);
 
   const savingsToDate = useMemo(
@@ -768,6 +786,20 @@ export default function App() {
       (myData?.goals || []).reduce((acc, g) => acc + (g.savedSoFar || 0), 0),
     [myData?.goals]
   );
+
+  // Count pending shared goals/budgets requiring my approval
+  const pendingSharedGoalsForMe = useMemo(() => {
+    return (myData?.goals || []).filter(
+      (g) => g?.status === "pending" && g?.pendingFor === role
+    ).length;
+  }, [myData?.goals, role]);
+
+  const pendingSharedBudgetsForMe = useMemo(() => {
+    const raw = myData?.categoryBudgets || {};
+    return Object.values(raw).filter(
+      (b) => b?.status === "pending" && b?.pendingFor === role
+    ).length;
+  }, [myData?.categoryBudgets, role]);
 
   if (loading && !hasCached) {
     return (
@@ -869,6 +901,16 @@ export default function App() {
             onGoToSettings={() => setTab("settings")}
             onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
             onGoToBills={() => setTab("bills")}
+            pendingGoalsCount={pendingSharedGoalsForMe}
+            pendingBudgetsCount={pendingSharedBudgetsForMe}
+            onGoToReviewPending={() => {
+              // Navigate to Settings, scroll to appropriate section (goals by default)
+              if (pendingSharedGoalsForMe > 0) {
+                handleGoToSettingsSection("goals");
+              } else {
+                handleGoToSettingsSection("budgets");
+              }
+            }}
           />
         )}
 

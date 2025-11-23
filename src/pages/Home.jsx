@@ -1,12 +1,9 @@
 // This file is based on the original Home.jsx from the Smart Cash Flow Planner
-// repository. It has been modified to relax the onboarding gating logic so that
-// the dashboard and KPIs show whenever any meaningful plan data exists. The
-// previous implementation required both a non‑zero income and at least one bill
-// to be present. As a result, users who configured their income or added
-// discretionary expenses but not bills were still shown the onboarding call‑to‑action.
-// The updated logic now considers three sources of data – income, bills and
-// expenses – and only shows the onboarding message if all three are absent. This
-// change aligns the behaviour with the QA audit recommendations.
+// repository. It has been modified to add a notification card for pending
+// shared goals and budgets requiring partner approval. The component now accepts
+// `pendingGoalsCount` and `pendingBudgetsCount` props and a callback
+// `onGoToReviewPending` which navigates to the appropriate section in
+// Settings when the user has items to review.
 
 import React, { useMemo } from "react";
 import {
@@ -37,6 +34,9 @@ import { projectCashflow, fromCents } from "../lib/cashflowEngine.js";
  * - setMode: (v) => void
  * - income?: { husband: number, wife: number }
  * - paySchedule?: { type: "semi-monthly", day1: number, day2: number|"last" }
+ * - pendingGoalsCount?: number               // NEW: number of pending shared goals
+ * - pendingBudgetsCount?: number            // NEW: number of pending shared budgets
+ * - onGoToReviewPending?: () => void        // NEW: navigate to review pending items
  */
 
 const DEFAULT_START_DATE = "2025-11-15";
@@ -194,7 +194,7 @@ function SummaryBar({
 
         <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
           <div>
-            Overspent categories:{" "}
+            Overspent categories: {" "}
             <span
               className={
                 kpis.overspentCats > 0
@@ -206,7 +206,7 @@ function SummaryBar({
             </span>
           </div>
           <div>
-            Savings to date:{" "}
+            Savings to date: {" "}
             <span className="font-semibold text-slate-800">
               {fmt(kpis.savingsToDate)}
             </span>
@@ -273,7 +273,7 @@ function UpcomingBillsList({ items, onAddExpense }) {
                       {b.name}
                     </div>
                     <div className="text-[10px] text-slate-500">
-                      {b.payer === "H" ? "Partner H" : "Partner W"} •{" "}
+                      {b.payer === "H" ? "Partner H" : "Partner W"} • {" "}
                       {b.category || "Other"}
                     </div>
                   </div>
@@ -299,19 +299,19 @@ function BillsByStatus({ upcoming, paidThisMonth, unpaidThisMonth }) {
         </div>
         <div className="flex items-center justify-between text-[11px] text-slate-500 mb-2">
           <div>
-            Upcoming:{" "}
+            Upcoming: {" "}
             <span className="font-semibold text-slate-800">
               {upcoming.length}
             </span>
           </div>
           <div>
-            Paid:{" "}
+            Paid: {" "}
             <span className="font-semibold text-emerald-700">
               {paidThisMonth.length}
             </span>
           </div>
           <div>
-            Unpaid:{" "}
+            Unpaid: {" "}
             <span className="font-semibold text-rose-700">
               {unpaidThisMonth.length}
             </span>
@@ -348,7 +348,7 @@ function CategoryBadges({ budgets }) {
                 : "border-emerald-200 bg-emerald-50 text-emerald-800"
             }`}
           >
-            {b.name}:{" "}
+            {b.name}: {" "}
             <span className="font-semibold">
               {fmt(Math.max(0, remaining))}
             </span>
@@ -428,6 +428,10 @@ export default function Home({
   onGoToBills = () => {},
   // Navigate to budgets section in Settings
   onGoToSettingsBudgets = () => {},
+  // NEW: counts and callback for pending shared items
+  pendingGoalsCount = 0,
+  pendingBudgetsCount = 0,
+  onGoToReviewPending = () => {},
 }) {
   // Determine whether the plan needs setup. Only show onboarding when no
   // meaningful data exists across income, bills and expenses. Previously the
@@ -634,6 +638,26 @@ export default function Home({
         discretionaryLeft={discretionaryLeftValue}
         kpis={kpis}
       />
+
+      {/* Notification for pending shared goals/budgets */}
+      {typeof pendingGoalsCount === "number" &&
+      typeof pendingBudgetsCount === "number" &&
+      (pendingGoalsCount > 0 || pendingBudgetsCount > 0) ? (
+        <section className="max-w-md mx-auto px-4 pt-3">
+          <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-800 flex items-center justify-between">
+            <div>
+              You have {pendingGoalsCount} shared goal{pendingGoalsCount !== 1 ? "s" : ""} and {pendingBudgetsCount} shared budget{pendingBudgetsCount !== 1 ? "s" : ""} to review.
+            </div>
+            <button
+              type="button"
+              onClick={() => onGoToReviewPending()}
+              className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:underline"
+            >
+              Review now
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="max-w-md mx-auto px-4 pt-3 pb-1">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
