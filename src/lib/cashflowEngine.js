@@ -1,6 +1,6 @@
-// src/lib/cashflowEngine.js
+// Updated in Step 1 – Actual mode cashflow logic
 //
-// NOTE: This file is copied from the upstream smart‑cashflow‑planner repository.
+// NOTE: This file is copied from the upstream smart-cashflow-planner repository.
 // It provides a series of helpers and a projection engine used by the
 // MonthlyCashFlowInfographic component.  For this phase of the project we
 // have not made any behavioural changes to the engine itself; however,
@@ -220,7 +220,7 @@ export function applyOutflow(balancesByAccount, accountId, amountCents) {
  * shared goals or budgets.  The filtering and contribution logic for goals
  * and budgets lives in the React layer (MonthlyCashFlowInfographic).  This
  * ensures the engine remains a pure cash ledger simulation without
- * user‑specific abstractions.
+ * user-specific abstractions.
  */
 export function projectCashflow({
   startDate,
@@ -310,6 +310,12 @@ export function projectCashflow({
   for (let m = 0; m < projectionMonths; m++) {
     for (const b of safeBills) {
       if (!b?.id) continue;
+      
+      // SAFETY CHECK: Treat undefined status as 'active' for legacy compatibility.
+      // Skip bills that are explicitly not active (e.g. pending/archived).
+      const status = b.status || "active";
+      if (status !== "active") continue;
+
       const dueDay = Number.isFinite(+b.dueDay) ? +b.dueDay : 1;
       const billDate = getDateForMonthIndex(startDateStr, m, dueDay);
       const key = `${billDate}:${b.id}`;
@@ -346,8 +352,26 @@ export function projectCashflow({
     };
   });
 
+  // ---------- 3c) Actual-mode filtering for income & expenses ----------
+  // In "actual" mode we only keep:
+  // - income events whose date is <= today
+  // - extra income events whose date is <= today
+  // - expense events whose date is <= today
+  // Bills already have their own actual-mode behavior:
+  //   - past unpaid bills are skipped
+  //   - future bills are kept
+  let filteredIncomeEvents = incomeEvents;
+  let filteredExtraEvents = extraEvents;
+  let filteredExpenseEvents = expenseEvents;
+
+  if (mode === "actual") {
+    filteredIncomeEvents = incomeEvents.filter((ev) => ev.date <= todayStr);
+    filteredExtraEvents = extraEvents.filter((ev) => ev.date <= todayStr);
+    filteredExpenseEvents = expenseEvents.filter((ev) => ev.date <= todayStr);
+  }
+
   // ---------- 4) Merge events & sort ----------
-  const allEvents = [...incomeEvents, ...billEvents, ...expenseEvents].sort((a, b) => {
+  const allEvents = [...filteredIncomeEvents, ...billEvents, ...filteredExpenseEvents].sort((a, b) => {
     if (a.date < b.date) return -1;
     if (a.date > b.date) return 1;
     // Income first

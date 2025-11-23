@@ -1,6 +1,7 @@
+// Updated in Step 2 – Home wired to core financial context
 // This file has been modified as part of the Agent Mode tasks to address
-// several user‑reported issues. Please see the repository history for a
-// complete diff. The modifications below increase the z‑index on the
+// several user-reported issues. Please see the repository history for a
+// complete diff. The modifications below increase the z-index on the
 // bottom navigation, ensure the buttons are always clickable, and wrap the
 // tab change handler in a stable callback to avoid stale closures.
 
@@ -853,6 +854,7 @@ export default function App() {
               time.
             </p>
           </div>
+
         </Wrapper>
       </ErrorBoundary>
     );
@@ -883,6 +885,7 @@ export default function App() {
         </div>
 
         {tab === "home" && (
+          // Step 2 – Home wired to accounts, allocationRules, residualAccountId, startingBalance
           <Home
             role={role}
             personScope={personScope}
@@ -894,6 +897,10 @@ export default function App() {
             setMode={setMode}
             income={income}
             paySchedule={paySchedule}
+            accounts={accounts}
+            allocationRules={allocationRules}
+            residualAccountId={residualAccountId}
+            startingBalance={myData?.startingBalance ?? DEFAULT_STARTING_BALANCE}
             budgets={budgetListForHome}
             savingsToDate={savingsToDate}
             onAddExpense={() => setIsExpenseModalOpen(true)}
@@ -904,11 +911,14 @@ export default function App() {
             pendingGoalsCount={pendingSharedGoalsForMe}
             pendingBudgetsCount={pendingSharedBudgetsForMe}
             onGoToReviewPending={() => {
-              // Navigate to Settings, scroll to appropriate section (goals by default)
+              // Priority: Goals then Budgets
               if (pendingSharedGoalsForMe > 0) {
                 handleGoToSettingsSection("goals");
-              } else {
+              } else if (pendingSharedBudgetsForMe > 0) {
                 handleGoToSettingsSection("budgets");
+              } else {
+                // Default fallback if counts are stale
+                handleGoToSettingsSection("goals");
               }
             }}
           />

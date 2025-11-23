@@ -14,7 +14,7 @@ import {
 
 const DEFAULT_START_DATE = "2025-11-15";
 
-function Pill({ children, className = "" }) {
+function TagPill({ children, className = "" }) {
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${className}`}
@@ -99,7 +99,6 @@ export default function Planner({
     return map;
   }, [bills]);
 
-  // ---------- Run the projection engine ----------
   const projection = useMemo(() => {
     if (!effectiveStartDate)
       return { ledger: [], monthlySummary: [], finalBalancesByAccount: {} };
@@ -180,8 +179,8 @@ export default function Planner({
     const weekMap = new Map();
     for (const ev of eventsForMonth) {
       const d = new Date(`${ev.date}T00:00:00`);
-      const day = d.getDate();
-      const weekIndex = Math.floor((day - 1) / 7);
+      // Week index: 0-based; each week is a block of 7 days starting at 1.
+      const weekIndex = Math.floor((d.getDate() - 1) / 7);
       if (!weekMap.has(weekIndex)) weekMap.set(weekIndex, []);
       weekMap.get(weekIndex).push(ev);
     }
@@ -220,11 +219,49 @@ export default function Planner({
     return result.sort((a, b) => a.weekIndex - b.weekIndex);
   }, [ledger, activeYear, activeMonthIndex0, daysInActiveMonth]);
 
-  const combinedFinalBalance = useMemo(() => {
-    const vals = Object.values(finalBalancesByAccount || {});
-    if (!vals.length) return 0;
-    return vals.reduce((acc, v) => acc + v, 0);
-  }, [finalBalancesByAccount]);
+  // Step 3 – derive start-of-month and end-of-month balances from the ledger
+  const { startBalanceCents, endBalanceCents } = useMemo(() => {
+    if (!ledger || ledger.length === 0) {
+      return { startBalanceCents: 0, endBalanceCents: 0 };
+    }
+
+    const monthStart = new Date(`${activeMonthDateStr}T00:00:00`);
+    const nextMonthStart = new Date(
+      monthStart.getFullYear(),
+      monthStart.getMonth() + 1,
+      1
+    );
+
+    let lastBefore = null;
+    let lastInMonth = null;
+
+    for (const ev of ledger) {
+      const d = new Date(`${ev.date}T00:00:00`);
+      if (d < monthStart) {
+        if (!lastBefore || d >= new Date(`${lastBefore.date}T00:00:00`)) {
+          lastBefore = ev;
+        }
+      } else if (d >= monthStart && d < nextMonthStart) {
+        if (!lastInMonth || d >= new Date(`${lastInMonth.date}T00:00:00`)) {
+          lastInMonth = ev;
+        }
+      }
+    }
+
+    const sumBalances = (balances) =>
+      Object.values(balances || {}).reduce(
+        (acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0),
+        0
+      );
+
+    const startSource = lastBefore || ledger[0];
+    const start = startSource ? sumBalances(startSource.balances) : 0;
+
+    const endSource = lastInMonth || startSource;
+    const end = endSource ? sumBalances(endSource.balances) : start;
+
+    return { startBalanceCents: start, endBalanceCents: end };
+  }, [ledger, activeMonthDateStr]);
 
   function handlePrevMonth() {
     setMonthOffset((prev) => Math.max(prev - 1, 0));
@@ -263,35 +300,24 @@ export default function Planner({
         </div>
       </div>
 
-      {!hasProjectionData && (
-        <section className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 text-xs text-slate-600">
-          <div className="font-semibold text-slate-900 mb-1">
-            Planner not ready yet
-          </div>
-          <p>Add income, accounts, and bills in Settings and Bills to see your cash flow.</p>
-        </section>
-      )}
+      <div className="flex items-center justify-between">
+        <TagPill className="bg-slate-100 text-slate-700">
+          <Wallet className="w-3 h-3 mr-1" />
+          Cash flow plan
+        </TagPill>
+
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "projected", label: "Projected" },
+            { value: "actual", label: "Actual" },
+          ]}
+        />
+      </div>
 
       {hasProjectionData && activeMonthSummary && (
-        <section className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <Wallet size={16} className="text-indigo-600" />
-              <span>Monthly snapshot</span>
-            </div>
-            {/* Segmented control to toggle between Projected and Actual modes */}
-            <Segmented
-              value={mode}
-              onChange={(val) => {
-                if (typeof setMode === "function") setMode(val);
-              }}
-              options={[
-                { value: "projected", label: "Projected" },
-                { value: "actual", label: "Actual" },
-              ]}
-            />
-          </div>
-
+        <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 space-y-3">
           <div className="grid grid-cols-3 gap-2 text-xs">
             <div>
               <div className="text-slate-500 mb-0.5">Income</div>
@@ -321,11 +347,18 @@ export default function Planner({
           </div>
 
           <div className="flex items-center justify-between text-[11px] text-slate-500">
+            <span>Start-of-month balance</span>
+            <span className="font-semibold text-slate-800">
+              ${fromCents(startBalanceCents)}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-slate-500">
             <span>
               {mode === "actual" ? "Actual end-of-month" : "Projected end-of-month"}
             </span>
             <span className="font-semibold text-slate-800">
-              ${fromCents(combinedFinalBalance)}
+              ${fromCents(endBalanceCents)}
             </span>
           </div>
         </section>
@@ -333,100 +366,146 @@ export default function Planner({
 
       {hasProjectionData && (
         <section className="space-y-3">
-          {weeks.map((w) => (
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold text-slate-900">
+              Weekly breakdown
+            </div>
+            <div className="text-[11px] text-slate-500">
+              Based on{" "}
+              {mode === "actual"
+                ? "real income and expenses so far"
+                : "your planned income, bills, and allocations"}
+            </div>
+          </div>
+
+          {weeks.map((week) => (
             <div
-              key={w.weekIndex}
-              className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 space-y-2"
+              key={week.weekIndex}
+              className="bg-white rounded-3xl border border-slate-200 shadow-sm p-3 space-y-2"
             >
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold text-slate-800">
-                  Week {w.weekIndex + 1}{" "}
-                  <span className="text-slate-500">({w.rangeLabel})</span>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                    Week {week.weekIndex + 1}
+                  </span>
+                  <span className="text-slate-600 text-[11px]">
+                    Days {week.rangeLabel}
+                  </span>
                 </div>
-                <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                  {w.unpaidCount > 0 && (
-                    <Pill className="bg-amber-50 text-amber-700">
-                      {w.unpaidCount} upcoming
-                    </Pill>
-                  )}
-                  {w.paidCount > 0 && (
-                    <Pill className="bg-emerald-50 text-emerald-700">
-                      {w.paidCount} paid
-                    </Pill>
-                  )}
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-500">
+                    {week.paidCount} paid
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    {week.unpaidCount} unpaid
+                  </span>
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-[11px]">
-                <div>
-                  <div className="text-slate-500 mb-0.5">Income</div>
-                  <div className="text-slate-900 font-semibold">
-                    ${fromCents(w.incomeCents)}
-                  </div>
+                <div className="bg-slate-900 text-white rounded-2xl p-2 flex flex-col">
+                  <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                    Income
+                  </span>
+                  <span className="mt-1 text-sm font-semibold">
+                    ${fromCents(week.incomeCents)}
+                  </span>
                 </div>
-                <div>
-                  <div className="text-slate-500 mb-0.5">Outflow</div>
-                  <div className="text-slate-900 font-semibold">
-                    ${fromCents(w.billsCents)}
-                  </div>
+                <div className="bg-rose-50 text-rose-900 rounded-2xl p-2 flex flex-col border border-rose-100">
+                  <span className="text-[10px] uppercase tracking-wide text-rose-500">
+                    Bills &amp; expenses
+                  </span>
+                  <span className="mt-1 text-sm font-semibold">
+                    ${fromCents(week.billsCents)}
+                  </span>
                 </div>
-                <div>
-                  <div className="text-slate-500 mb-0.5">Net</div>
-                  <div
-                    className={
-                      "font-semibold " +
-                      (w.netCents >= 0 ? "text-emerald-600" : "text-rose-600")
-                    }
-                  >
-                    ${fromCents(w.netCents)}
-                  </div>
+                <div className="bg-emerald-50 text-emerald-900 rounded-2xl p-2 flex flex-col border border-emerald-100">
+                  <span className="text-[10px] uppercase tracking-wide text-emerald-500">
+                    Net
+                  </span>
+                  <span className="mt-1 text-sm font-semibold">
+                    ${fromCents(week.netCents)}
+                  </span>
                 </div>
               </div>
 
-              <div className="border-t border-slate-100 pt-2 mt-1 space-y-1">
-                {w.items
-                  .filter((ev) => ev.kind === "bill" || ev.kind === "expense")
-                  .map((ev, idx) => {
-                    const d = new Date(`${ev.date}T00:00:00`);
-                    const day = d.getDate();
-                    const billMeta = ev.billId ? billById[ev.billId] : null;
-                    const label =
-                      ev.description ||
-                      ev.billName ||
-                      billMeta?.name ||
-                      "Item";
-                    const isExpense = ev.kind === "expense";
+              <div className="border-t border-slate-100 mt-2 pt-2">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                  <span>Events this week</span>
+                  {week.endBalances && (
+                    <span className="flex items-center gap-1">
+                      <span>End of week balance</span>
+                      <span className="font-semibold text-slate-800">
+                        $
+                        {fromCents(
+                          Object.values(week.endBalances || {}).reduce(
+                            (acc, v) => acc + (v || 0),
+                            0
+                          )
+                        )}
+                      </span>
+                    </span>
+                  )}
+                </div>
 
-                    return (
-                      <div
-                        key={`${ev.date}-${ev.billId || idx}`}
-                        className="flex items-center justify-between text-[11px]"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-500 w-6 text-right">
-                            {day}
-                          </span>
-                          <span
-                            className={
-                              "font-medium " +
-                              (ev.isPaid
-                                ? "line-through text-slate-400"
-                                : isExpense
-                                ? "text-indigo-600"
-                                : "text-slate-800")
-                            }
-                          >
-                            {label}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
+                <div className="space-y-1.5">
+                  {week.items
+                    .slice()
+                    .sort((a, b) => {
+                      if (a.date < b.date) return -1;
+                      if (a.date > b.date) return 1;
+                      if (a.kind === "income" && b.kind !== "income")
+                        return -1;
+                      if (a.kind !== "income" && b.kind === "income")
+                        return 1;
+                      return 0;
+                    })
+                    .map((ev, idx) => {
+                      const isExpense = ev.kind === "expense";
+                      const billMeta =
+                        ev.kind === "bill" && ev.billId
+                          ? billById[ev.billId]
+                          : null;
+                      const label =
+                        ev.kind === "income"
+                          ? ev.description || "Income"
+                          : ev.kind === "bill"
+                          ? billMeta?.name || ev.billName || "Bill"
+                          : ev.description || "Expense";
+
+                      const day = new Date(
+                        `${ev.date}T00:00:00`
+                      ).getDate();
+
+                      return (
+                        <div
+                          key={`${ev.date}-${ev.billId || idx}`}
+                          className="flex items-center justify-between text-[11px]"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-500 w-6 text-right">
+                              {day}
+                            </span>
+                            <span
+                              className={
+                                "font-medium " +
+                                (ev.isPaid
+                                  ? "line-through text-slate-400"
+                                  : isExpense
+                                  ? "text-indigo-600"
+                                  : "text-slate-800")
+                              }
+                            >
+                              {label}
+                            </span>
+                          </div>
                           <span className="text-slate-800 font-semibold">
                             ${fromCents(Math.abs(ev.delta))}
                           </span>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                </div>
               </div>
             </div>
           ))}
