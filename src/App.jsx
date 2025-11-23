@@ -1,4 +1,9 @@
-// src/App.jsx
+// This file has been modified as part of the Agent Mode tasks to address
+// several user‑reported issues. Please see the repository history for a
+// complete diff. The modifications below increase the z‑index on the
+// bottom navigation, ensure the buttons are always clickable, and wrap the
+// tab change handler in a stable callback to avoid stale closures.
+
 import React, {
   useEffect,
   useMemo,
@@ -213,16 +218,30 @@ function Tabs({ current, onChange }) {
     { key: "expenses", label: "Expenses", icon: ArrowRightLeft },
   ];
 
+  // Use a stable callback so that the onClick handler always refers to the
+  // latest onChange passed from the parent. Without this wrapper a stale
+  // closure could capture an outdated onChange and ignore subsequent
+  // reassignments when switching modes/pages. See Agent task description.
+  const handleTabClick = useCallback(
+    (key) => {
+      if (typeof onChange === "function") {
+        onChange(key);
+      }
+    },
+    [onChange]
+  );
+
   return (
-    <nav className="sticky bottom-0 z-40 bg-white border-t border-slate-200">
+    <nav className="sticky bottom-0 z-50 bg-white border-t border-slate-200 pointer-events-auto">
       <div className="max-w-md mx-auto flex items-stretch justify-between px-1 py-1">
         {items.map((item) => {
           const Icon = item.icon;
           const active = current === item.key;
           return (
             <button
+              type="button"
               key={item.key}
-              onClick={() => onChange(item.key)}
+              onClick={() => handleTabClick(item.key)}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl transition-colors ${
                 active ? "bg-indigo-50 text-indigo-600" : "text-slate-500"
               }`}
@@ -818,6 +837,7 @@ export default function App() {
             </div>
           </div>
           <button
+            type="button"
             onClick={logout}
             className="text-xs text-slate-600 hover:text-slate-900"
           >
