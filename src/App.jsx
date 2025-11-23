@@ -232,7 +232,14 @@ function Tabs({ current, onChange }) {
   );
 
   return (
-    <nav className="sticky bottom-0 z-50 bg-white border-t border-slate-200 pointer-events-auto">
+    // Use a fixed position for the bottom navigation so it is always
+    // rendered at the very bottom of the viewport, outside of any scrolling
+    // content. Using fixed positioning prevents content overlays (such as
+    // scroll containers or modals) from accidentally intercepting click
+    // events and makes the nav consistently responsive after visiting
+    // different pages. See QA regression notes about an unresponsive
+    // navigation bar after visiting the Planner page.
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 pointer-events-auto">
       <div className="max-w-md mx-auto flex items-stretch justify-between px-1 py-1">
         {items.map((item) => {
           const Icon = item.icon;
@@ -777,9 +784,7 @@ export default function App() {
     return (
       <ErrorBoundary>
         <Wrapper>
-          <div className="p-6 text-sm text-slate-600">
-            Loading demo mode...
-          </div>
+          <div className="p-6 text-sm text-slate-600">Loading demo mode...</div>
         </Wrapper>
       </ErrorBoundary>
     );
