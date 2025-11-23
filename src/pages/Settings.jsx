@@ -17,6 +17,7 @@ import {
   // Added ArrowRightLeft for allocation rules section
   ArrowRightLeft,
 } from "lucide-react";
+import BulkImportSpreadsheet from "../components/BulkImportSpreadsheet";
 
 // Small card wrapper for consistent styling
 function Card({ children, className = "" }) {
@@ -65,12 +66,14 @@ export default function Settings({
   startDate,
   startingBalance = 0,
   accounts = [],
+  bills = [],
   residualAccountId,
   allocationRules = [],
   // Neutral defaults for income & pay schedule to avoid showing sample data
   income = { husband: 0, wife: 0 },
   paySchedule = { type: "semi-monthly", day1: 15, day2: "last" },
   onUpdateAccounts,
+  onUpdateBills,
   onUpdateAllocationRules,
   onUpdateIncomeAndPaySchedule,
   goals = [],
@@ -195,6 +198,64 @@ export default function Settings({
   const handleResidualChange = (value) => {
     setLocalResidualId(value || null);
     setDirtyAccounts(true);
+  };
+
+  // Bulk import handler for CSV template (accounts + bills)
+  const handleBulkImport = ({ accounts: importedAccounts, bills: importedBills }) => {
+    const existingAccounts = accounts || [];
+    const existingBills = bills || [];
+
+    // 1. Assign IDs to imported accounts and merge with existing
+    const newAccounts = (importedAccounts || []).map((acc, idx) => ({
+      ...acc,
+      id:
+        acc.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") +
+        "-" +
+        (existingAccounts.length + idx + 1),
+    }));
+
+    const allAccounts = [...existingAccounts, ...newAccounts];
+
+    // 2. Build lookup map from accountName -> accountId
+    const accountIdByName = new Map(
+      allAccounts.map((a) => [a.name.toLowerCase(), a.id])
+    );
+
+    // 3. Map imported bills to the app's bill shape, attaching accountId
+    const newBills = (importedBills || []).map((b) => {
+      const accountId =
+        (b.accountName && accountIdByName.get(b.accountName.toLowerCase())) ||
+        residualAccountId ||
+        allAccounts[0]?.id ||
+        null;
+
+      return {
+        id:
+          b.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") +
+          "-" +
+          (b.dueDay || 1),
+        name: b.name,
+        amount: b.amount,
+        dueDay: b.dueDay,
+        payer: b.payer,
+        category: b.category,
+        accountId,
+      };
+    });
+
+    const allBills = [...existingBills, ...newBills];
+
+    // 4. Persist via parent handlers if provided
+    if (onUpdateAccounts) {
+      onUpdateAccounts(allAccounts, localResidualId);
+    }
+    if (onUpdateBills) {
+      onUpdateBills(allBills);
+    }
+
+    // 5. Sync local editable state with new accounts
+    setLocalAccounts(allAccounts);
+    setDirtyAccounts(false);
   };
 
   // ---------- local editable state for allocation rules ----------
@@ -468,7 +529,15 @@ export default function Settings({
   };
 
   // Derived arrays for display
-  const budgetsArray = useMemo(() => Object.entries(localBudgets).map(([key, cfg]) => ({ key, label: cfg.label || key, amount: cfg.amount ?? 0 })), [localBudgets]);
+  const budgetsArray = useMemo(
+    () =>
+      Object.entries(localBudgets).map(([key, cfg]) => ({
+        key,
+        label: cfg.label || key,
+        amount: cfg.amount ?? 0,
+      })),
+    [localBudgets]
+  );
 
   // Refs for scrolling to specific sections (goals & budgets) when requested
   const goalsRef = useRef(null);
@@ -528,7 +597,9 @@ export default function Settings({
             {/* Profile form */}
             <div className="space-y-2 text-[11px]">
               <div className="flex items-center justify-between gap-2">
-                <label className="text-slate-500" htmlFor="household-id">Household ID</label>
+                <label className="text-slate-500" htmlFor="household-id">
+                  Household ID
+                </label>
                 <input
                   id="household-id"
                   type="text"
@@ -538,7 +609,9 @@ export default function Settings({
                 />
               </div>
               <div className="flex items-center justify-between gap-2">
-                <label className="text-slate-500" htmlFor="role">Role</label>
+                <label className="text-slate-500" htmlFor="role">
+                  Role
+                </label>
                 <select
                   id="role"
                   className="w-32 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-800"
@@ -574,9 +647,13 @@ export default function Settings({
                 <div className="text-sm font-semibold text-slate-900">Plan starting balance</div>
               </div>
             </div>
-            <p className="text-[11px] text-slate-500 mb-1">Set the starting cash balance of your plan. You can change it anytime; we save it to your household profile.</p>
+            <p className="text-[11px] text-slate-500 mb-1">
+              Set the starting cash balance of your plan. You can change it anytime; we save it to your household profile.
+            </p>
             <div className="flex items-center justify-between gap-2 mt-2 text-[11px]">
-              <label htmlFor="starting-balance" className="text-slate-500">Starting balance</label>
+              <label htmlFor="starting-balance" className="text-slate-500">
+                Starting balance
+              </label>
               <input
                 id="starting-balance"
                 type="number"
@@ -666,7 +743,11 @@ export default function Settings({
                         step="0.01"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={acct.openingBalance}
-                        onChange={(e) => handleAccountChange(acct.id, { openingBalance: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
+                        onChange={(e) =>
+                          handleAccountChange(acct.id, {
+                            openingBalance: e.target.value === "" ? 0 : parseFloat(e.target.value),
+                          })
+                        }
                         placeholder="0.00"
                       />
                     </label>
@@ -709,6 +790,9 @@ export default function Settings({
                 </button>
               )}
             </div>
+
+            {/* Bulk import: accounts + bills from CSV template */}
+            <BulkImportSpreadsheet onImport={handleBulkImport} />
           </Card>
         </section>
 
@@ -769,7 +853,11 @@ export default function Settings({
                         step="0.01"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={rule.value}
-                        onChange={(e) => handleRuleChange(rule.id, { value: e.target.value === "" ? "" : parseFloat(e.target.value) })}
+                        onChange={(e) =>
+                          handleRuleChange(rule.id, {
+                            value: e.target.value === "" ? "" : parseFloat(e.target.value),
+                          })
+                        }
                         placeholder={rule.type === "percent" ? "0" : "0.00"}
                       />
                     </label>
@@ -1011,7 +1099,11 @@ export default function Settings({
                         step="0.01"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={goal.targetAmount}
-                        onChange={(e) => handleGoalChange(goal.id, { targetAmount: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
+                        onChange={(e) =>
+                          handleGoalChange(goal.id, {
+                            targetAmount: e.target.value === "" ? 0 : parseFloat(e.target.value),
+                          })
+                        }
                         placeholder="0.00"
                       />
                     </label>
@@ -1022,7 +1114,11 @@ export default function Settings({
                         step="0.01"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={goal.perMonth}
-                        onChange={(e) => handleGoalChange(goal.id, { perMonth: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
+                        onChange={(e) =>
+                          handleGoalChange(goal.id, {
+                            perMonth: e.target.value === "" ? 0 : parseFloat(e.target.value),
+                          })
+                        }
                         placeholder="0.00"
                       />
                     </label>
@@ -1091,7 +1187,11 @@ export default function Settings({
                         step="0.01"
                         className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                         value={amount}
-                        onChange={(e) => handleBudgetChange(key, { amount: e.target.value === "" ? "" : parseFloat(e.target.value) })}
+                        onChange={(e) =>
+                          handleBudgetChange(key, {
+                            amount: e.target.value === "" ? "" : parseFloat(e.target.value),
+                          })
+                        }
                         placeholder="0.00"
                       />
                     </label>

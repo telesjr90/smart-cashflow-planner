@@ -1,0 +1,5 @@
+type,name,account_type,opening_balance,bill_amount,bill_due_day,bill_payer,bill_category,bill_account_name
+account,Checking,deposit,1000,,,,,
+account,Savings,deposit,5000,,,,,
+bill,Rent,,,1200,1,H,Housing,Checking
+bill,Internet,,,80,15,W,Utilities,Checking
