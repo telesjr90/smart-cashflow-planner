@@ -1,5 +1,5 @@
 // src/pages/Bills.jsx
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   ListChecks,
   AlertTriangle,
@@ -27,11 +27,11 @@ import {
  *       scope?: 'personal'|'shared',
  *       owner?: 'H'|'W'|null
  *     }
- *   }                     // NEW: drives the category dropdown
+ *   }
  * - onTogglePaid?: ({ billId, monthIndex, next }) => void
  * - onBulkMark?: ({ billIds, monthIndex, value }) => void
  * - onChangeBillAccount?: (billId: string, accountId: string) => void
- * - onUpdateBills?: (nextBills: Array<Bill>) => void   // add/edit/delete
+ * - onUpdateBills?: (nextBills: Array<Bill>) => void
  */
 
 const fmt = (v) =>
@@ -209,7 +209,7 @@ export default function Bills({
   memberNames = { H: "Partner H", W: "Partner W" },
   accounts = [],
   residualAccountId,
-  categoryBudgets = {}, // NEW: drives the category dropdown
+  categoryBudgets = {}, // drives the category dropdown
   onTogglePaid,
   onBulkMark,
   onChangeBillAccount,
@@ -338,7 +338,23 @@ export default function Bills({
       return 0;
     }
   }, [startDate]);
-  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
+  // Persist selected month in local storage so the user doesn't lose context on nav changes.
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const saved = window?.localStorage?.getItem("billsSelectedMonth");
+    const parsed = Number.isFinite(parseInt(saved)) ? parseInt(saved) : null;
+    return parsed != null ? parsed : defaultMonth;
+  });
+  useEffect(() => {
+    try {
+      window?.localStorage?.setItem(
+        "billsSelectedMonth",
+        String(selectedMonth)
+      );
+    } catch (e) {
+      // ignore storage failures
+    }
+  }, [selectedMonth]);
+
   const [status, setStatus] = useState("all"); // all | unpaid | paid | overdue
   const [owner, setOwner] = useState(
     personScope === "combined"
@@ -654,8 +670,12 @@ export default function Bills({
                         setDraft((d) => ({ ...d, payer: e.target.value }))
                       }
                     >
-                      <option value="H">{memberNames.H || "Partner H"}</option>
-                      <option value="W">{memberNames.W || "Partner W"}</option>
+                      <option value="H">
+                        {memberNames.H || "Partner H"}
+                      </option>
+                      <option value="W">
+                        {memberNames.W || "Partner W"}
+                      </option>
                       <option value="AUTO">Auto</option>
                     </select>
                   </label>
@@ -687,7 +707,9 @@ export default function Bills({
                 {hasAccounts && (
                   <div className="mt-1">
                     <label className="flex flex-col gap-1">
-                      <span className="text-[11px] text-slate-500">Account</span>
+                      <span className="text-[11px] text-slate-500">
+                        Account
+                      </span>
                       <select
                         className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
                         value={draft.accountId}
@@ -857,8 +879,12 @@ export default function Bills({
                         setDraft((d) => ({ ...d, payer: e.target.value }))
                       }
                     >
-                      <option value="H">{memberNames.H || "Partner H"}</option>
-                      <option value="W">{memberNames.W || "Partner W"}</option>
+                      <option value="H">
+                        {memberNames.H || "Partner H"}
+                      </option>
+                      <option value="W">
+                        {memberNames.W || "Partner W"}
+                      </option>
                       <option value="AUTO">Auto</option>
                     </select>
                   </label>

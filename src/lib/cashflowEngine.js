@@ -265,8 +265,11 @@ export function projectCashflow({
     projectionMonths,
     paySchedule
   );
-  const perPayH = toCents(income?.husband || 0);
-  const perPayW = toCents(income?.wife || 0);
+  // Guard against undefined or negative incomes.  Negative amounts are treated as zero.
+  const safeH = Number.isFinite(+income?.husband) ? Math.max(0, +income.husband) : 0;
+  const safeW = Number.isFinite(+income?.wife) ? Math.max(0, +income.wife) : 0;
+  const perPayH = toCents(safeH);
+  const perPayW = toCents(safeW);
   const perPayTotal = perPayH + perPayW;
   // Determine pay index (first or second) for each payday
   const payCountsByMonth = {};
@@ -366,12 +369,10 @@ export function projectCashflow({
   //   - past unpaid bills are skipped
   //   - future bills are kept
   let filteredIncomeEvents = incomeEvents;
-  let filteredExtraEvents = extraEvents;
   let filteredExpenseEvents = expenseEvents;
 
   if (mode === "actual") {
     filteredIncomeEvents = incomeEvents.filter((ev) => ev.date <= todayStr);
-    filteredExtraEvents = extraEvents.filter((ev) => ev.date <= todayStr);
     filteredExpenseEvents = expenseEvents.filter((ev) => ev.date <= todayStr);
   }
 

@@ -188,7 +188,17 @@ export default function Home({
     (Number(income.husband || 0) > 0 || Number(income.wife || 0) > 0);
   const hasBills = Array.isArray(bills) && bills.length > 0;
   const hasExpenses = Array.isArray(expenses) && expenses.length > 0;
-  const needsSetup = !hasIncome && !hasBills && !hasExpenses;
+  // Improvements: do not show onboarding if user has set a starting balance, budgets, or accounts.
+  const hasStartingBalance = Number(startingBalance || 0) > 0;
+  const hasBudgets = Array.isArray(budgets) && budgets.length > 0;
+  const hasAccounts = Array.isArray(accounts) && accounts.length > 0;
+  const needsSetup =
+    !hasIncome &&
+    !hasBills &&
+    !hasExpenses &&
+    !hasStartingBalance &&
+    !hasBudgets &&
+    !hasAccounts;
 
   if (needsSetup) {
     return (
