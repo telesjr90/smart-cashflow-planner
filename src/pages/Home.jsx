@@ -474,37 +474,80 @@ export default function Home({
   // For "actual" mode we trust the real balances the user entered as "cash right now",
   // and subtract only this month's savings/goal contributions.
   // For "projected" mode we add this month's projected net change to starting balances.
-  const startingBalanceForHousehold =
-    (accounts && accounts.length
-      ? accounts.reduce(
-          (sum, a) => sum + (Number(a.openingBalance || 0) || 0),
-          0
-        )
-      : Number(startingBalance || 0) || 0);
 
+  // Compute starting balances scoped to self and partner based on account ownership.
+  const hasAccountBalances = accounts && accounts.length > 0;
+
+  let startingBalanceSelf = 0;
+  let startingBalancePartner = 0;
+
+  if (hasAccountBalances) {
+    // Sum account opening balances by ownerRole. If ownerRole is missing, treat as owned by the current user.
+    accounts.forEach((a) => {
+      if (!a) return;
+      const ob = Number(a.openingBalance || 0) || 0;
+      if (role === "W") {
+        if (a.ownerRole === "W" || a.ownerRole == null) {
+          startingBalanceSelf += ob;
+        } else {
+          startingBalancePartner += ob;
+        }
+      } else {
+        // role === "H" (default)
+        if (a.ownerRole === "H" || a.ownerRole == null) {
+          startingBalanceSelf += ob;
+        } else {
+          startingBalancePartner += ob;
+        }
+      }
+    });
+  } else {
+    // No accounts defined: assign the legacy startingBalance entirely to the current user.
+    startingBalanceSelf = Number(startingBalance || 0) || 0;
+    startingBalancePartner = 0;
+  }
+
+  const startingBalanceForHousehold =
+    startingBalanceSelf + startingBalancePartner;
   const monthlyNetForCurrentMonth = monthlyNet || 0;
 
-  const baseDiscretionary =
+  // Determine each role's share of net flows based on income fractions
+  const shareForSelf = role === "W" ? wFraction : hFraction;
+  const shareForPartner = role === "W" ? hFraction : wFraction;
+
+  // Compute discretionary balances for each scope. We allocate monthly net and savings/goal contributions
+  // by income fraction but do not split account opening balances across partners.
+  const baseHouseholdDiscretionary =
     mode === "actual"
       ? startingBalanceForHousehold - (contributionsThisMonth || 0)
       : startingBalanceForHousehold +
         monthlyNetForCurrentMonth -
         (contributionsThisMonth || 0);
 
-  // Now apply a share based on personScope + role.
-  // If incomes are not set yet (both zero), we keep the household total.
-  let share = 1;
-  if (hFraction != null && wFraction != null) {
-    if (personScope === "self") {
-      share = role === "W" ? wFraction : hFraction;
-    } else if (personScope === "partner") {
-      share = role === "W" ? hFraction : wFraction;
-    } else {
-      share = 1; // household
-    }
-  }
+  const baseSelfDiscretionary =
+    mode === "actual"
+      ? startingBalanceSelf -
+        (contributionsThisMonth || 0) * shareForSelf
+      : startingBalanceSelf +
+        monthlyNetForCurrentMonth * shareForSelf -
+        (contributionsThisMonth || 0) * shareForSelf;
 
-  const discretionaryLeftValue = baseDiscretionary * share;
+  const basePartnerDiscretionary =
+    mode === "actual"
+      ? startingBalancePartner -
+        (contributionsThisMonth || 0) * shareForPartner
+      : startingBalancePartner +
+        monthlyNetForCurrentMonth * shareForPartner -
+        (contributionsThisMonth || 0) * shareForPartner;
+
+  let discretionaryLeftValue;
+  if (personScope === "self") {
+    discretionaryLeftValue = baseSelfDiscretionary;
+  } else if (personScope === "partner") {
+    discretionaryLeftValue = basePartnerDiscretionary;
+  } else {
+    discretionaryLeftValue = baseHouseholdDiscretionary;
+  }
 
   const canToggleBill = (bill) => {
     if (!bill) return false;
