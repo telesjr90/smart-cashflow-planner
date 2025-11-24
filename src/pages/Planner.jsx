@@ -1,3 +1,4 @@
+// Updated to fix starting balance + actual mode wiring
 // src/pages/Planner.jsx
 import React, { useMemo, useState } from "react";
 import {
@@ -219,9 +220,34 @@ export default function Planner({
     return result.sort((a, b) => a.weekIndex - b.weekIndex);
   }, [ledger, activeYear, activeMonthIndex0, daysInActiveMonth]);
 
-  // Step 3 – derive start-of-month and end-of-month balances from the ledger
+  // Sum of real account balances (as entered by the user)
+  const startingBalanceForHousehold = useMemo(
+    () =>
+      (accounts || []).reduce(
+        (sum, a) => sum + (Number(a.openingBalance || 0) || 0),
+        0
+      ),
+    [accounts]
+  );
+
+  // Derive start-of-month and end-of-month balances from the ledger.
+  // In "projected" mode we use the engine's ledger for both.
+  // In "actual" mode we:
+  //   - use the ledger (which includes the opening event) for start-of-month,
+  //   - show the real account balances for the end-of-month display.
   const { startBalanceCents, endBalanceCents } = useMemo(() => {
+    const centsFromAccounts = Math.round(
+      (startingBalanceForHousehold || 0) * 100
+    );
+
+    // If there is no ledger data at all, fall back entirely to accounts in actual mode.
     if (!ledger || ledger.length === 0) {
+      if (mode === "actual") {
+        return {
+          startBalanceCents: centsFromAccounts,
+          endBalanceCents: centsFromAccounts,
+        };
+      }
       return { startBalanceCents: 0, endBalanceCents: 0 };
     }
 
@@ -255,13 +281,25 @@ export default function Planner({
       );
 
     const startSource = lastBefore || ledger[0];
-    const start = startSource ? sumBalances(startSource.balances) : 0;
+    const startFromLedger = startSource ? sumBalances(startSource.balances) : 0;
 
     const endSource = lastInMonth || startSource;
-    const end = endSource ? sumBalances(endSource.balances) : start;
+    const endFromLedger = endSource
+      ? sumBalances(endSource.balances)
+      : startFromLedger;
 
-    return { startBalanceCents: start, endBalanceCents: end };
-  }, [ledger, activeMonthDateStr]);
+    if (mode === "actual") {
+      return {
+        // Use engine + opening event for the "start-of-month" snapshot
+        startBalanceCents: startFromLedger,
+        // But show the user's real account balances as the "actual" balance
+        endBalanceCents: centsFromAccounts,
+      };
+    }
+
+    // Projected mode: use the engine's ledger balances.
+    return { startBalanceCents: startFromLedger, endBalanceCents: endFromLedger };
+  }, [ledger, activeMonthDateStr, mode, startingBalanceForHousehold]);
 
   function handlePrevMonth() {
     setMonthOffset((prev) => Math.max(prev - 1, 0));
@@ -355,7 +393,9 @@ export default function Planner({
 
           <div className="flex items-center justify-between text-[11px] text-slate-500">
             <span>
-              {mode === "actual" ? "Actual end-of-month" : "Projected end-of-month"}
+              {mode === "actual"
+                ? "Actual balance (from accounts)"
+                : "Projected end-of-month"}
             </span>
             <span className="font-semibold text-slate-800">
               ${fromCents(endBalanceCents)}

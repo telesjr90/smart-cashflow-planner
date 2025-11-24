@@ -1,3 +1,5 @@
+// Updated to fix starting balance + actual mode wiring
+
 // Updated in Step 1 – Actual mode cashflow logic
 //
 // NOTE: This file is copied from the upstream smart-cashflow-planner repository.
@@ -238,9 +240,10 @@ export function projectCashflow({
 }) {
   const startDateStr = startDate || "2025-01-01";
   const projectionMonths = Math.max(1, months || 1);
-  const safeAccounts = Array.isArray(accounts) && accounts.length
-    ? accounts.map((a) => ({ ...a }))
-    : [];
+  const safeAccounts =
+    Array.isArray(accounts) && accounts.length
+      ? accounts.map((a) => ({ ...a }))
+      : [];
   const balances = {};
   safeAccounts.forEach((a) => {
     if (a?.id) balances[a.id] = toCents(a.openingBalance || 0);
@@ -268,7 +271,8 @@ export function projectCashflow({
   // Determine pay index (first or second) for each payday
   const payCountsByMonth = {};
   const salaryEvents = paydays.map((p, idx) => {
-    const count = (payCountsByMonth[p.monthIndex] = (payCountsByMonth[p.monthIndex] || 0) + 1);
+    const count = (payCountsByMonth[p.monthIndex] =
+      (payCountsByMonth[p.monthIndex] || 0) + 1);
     return {
       date: p.date,
       kind: "income",
@@ -310,7 +314,7 @@ export function projectCashflow({
   for (let m = 0; m < projectionMonths; m++) {
     for (const b of safeBills) {
       if (!b?.id) continue;
-      
+
       // SAFETY CHECK: Treat undefined status as 'active' for legacy compatibility.
       // Skip bills that are explicitly not active (e.g. pending/archived).
       const status = b.status || "active";
@@ -336,6 +340,7 @@ export function projectCashflow({
       });
     }
   }
+
   // ---------- 3b) Build Expense events (PHASE 4) ----------
   const safeExpenses = Array.isArray(expenses) ? expenses : [];
   const expenseEvents = safeExpenses.map((ex, idx) => {
@@ -371,7 +376,11 @@ export function projectCashflow({
   }
 
   // ---------- 4) Merge events & sort ----------
-  const allEvents = [...filteredIncomeEvents, ...billEvents, ...filteredExpenseEvents].sort((a, b) => {
+  const allEvents = [
+    ...filteredIncomeEvents,
+    ...billEvents,
+    ...filteredExpenseEvents,
+  ].sort((a, b) => {
     if (a.date < b.date) return -1;
     if (a.date > b.date) return 1;
     // Income first
@@ -386,12 +395,38 @@ export function projectCashflow({
   for (let i = 0; i < projectionMonths; i++) {
     const dateForLabel = getDateForMonthIndex(startDateStr, i, 1);
     const d = new Date(`${dateForLabel}T00:00:00`);
-    const monthLabel = d.toLocaleString("default", { month: "long", year: "numeric" });
-    monthlyTotals.push({ monthIndex: i, monthLabel, totalIncome: 0, totalBills: 0, net: 0 });
+    const monthLabel = d.toLocaleString("default", {
+      month: "long",
+      year: "numeric",
+    });
+    monthlyTotals.push({
+      monthIndex: i,
+      monthLabel,
+      totalIncome: 0,
+      totalBills: 0,
+      net: 0,
+    });
   }
+
+  // Opening-balance event: anchor the ledger to the seeded balances.
+  // This does not affect monthlyTotals (no income/bills/net), but gives
+  // consumers (Planner/Dashboard) a reliable "start-of-month" snapshot.
+  ledger.push({
+    date: startDateStr,
+    kind: "opening",
+    delta: 0,
+    balances: { ...balances },
+    monthIndex: 0,
+    description: "Opening Balance",
+  });
+
   for (const ev of allEvents) {
-    const monthIndex = typeof ev.monthIndex === "number" ? ev.monthIndex : getMonthIndexFromStart(startDateStr, ev.date);
+    const monthIndex =
+      typeof ev.monthIndex === "number"
+        ? ev.monthIndex
+        : getMonthIndexFromStart(startDateStr, ev.date);
     if (monthIndex < 0 || monthIndex >= projectionMonths) continue;
+
     if (ev.kind === "income") {
       if (ev.amountCents > 0) {
         const { deltasByAccount, appliedCents } = allocateIncome({
@@ -407,7 +442,14 @@ export function projectCashflow({
         });
         monthlyTotals[monthIndex].totalIncome += appliedCents;
         monthlyTotals[monthIndex].net += appliedCents;
-        ledger.push({ date: ev.date, kind: "income", delta: appliedCents, balances: { ...balances }, monthIndex, description: ev.description });
+        ledger.push({
+          date: ev.date,
+          kind: "income",
+          delta: appliedCents,
+          balances: { ...balances },
+          monthIndex,
+          description: ev.description,
+        });
       }
     } else if (ev.kind === "bill" || ev.kind === "expense") {
       const amt = ev.amountCents || 0;
@@ -419,7 +461,14 @@ export function projectCashflow({
         monthlyTotals[monthIndex].totalBills += delta;
         monthlyTotals[monthIndex].net -= delta;
       }
-      ledger.push({ date: ev.date, kind: ev.kind, delta: -delta, balances: { ...balances }, monthIndex, description: ev.kind === "bill" ? ev.billName : ev.description });
+      ledger.push({
+        date: ev.date,
+        kind: ev.kind,
+        delta: -delta,
+        balances: { ...balances },
+        monthIndex,
+        description: ev.kind === "bill" ? ev.billName : ev.description,
+      });
     }
   }
   return { ledger, monthlySummary: monthlyTotals };

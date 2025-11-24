@@ -4,161 +4,184 @@
 cashflow-app/
 │
 ├── 📁 public/                          # Static assets served directly
-│   ├── about.txt
-│   ├── apple-touch-icon.png
-│   ├── favicon-16x16.png
-│   ├── favicon-32x32.png
-│   ├── favicon.ico
-│   ├── manifest.webmanifest            # PWA manifest
-│   ├── pwa-192.png                     # PWA icon 192x192
-│   ├── pwa-512.png                     # PWA icon 512x512
-│   ├── site.webmanifest
-│   └── vite.svg
+│   ├── 📄 about.txt
+│   ├── 📄 apple-touch-icon.png
+│   ├── 📄 favicon-16x16.png
+│   ├── 📄 favicon-32x32.png
+│   ├── 📄 favicon.ico
+│   ├── 📄 manifest.webmanifest         # PWA manifest
+│   ├── 📄 pwa-192.png                  # PWA icon (192x192)
+│   ├── 📄 pwa-512.png                  # PWA icon (512x512)
+│   ├── 📄 site.webmanifest
+│   ├── 📄 vite.svg
+│   └── 📁 templates/
+│       └── 📄 onboarding-import-template.csv
 │
 ├── 📁 src/                             # Source code
-│   ├── 📁 assets/                      # Static assets (images, etc.)
-│   │   └── react.svg
+│   ├── 📄 App.jsx                      # Main application component
+│   ├── 📄 App.css                      # Application styles
+│   ├── 📄 main.jsx                     # Application entry point
+│   ├── 📄 index.css                    # Global styles
+│   ├── 📄 firebase.js                  # Firebase configuration
+│   ├── 📄 firebaseeee1.md              # Firebase documentation/notes
+│   ├── 📄 MonthlyCashFlowInfographic.jsx  # Cashflow visualization component
 │   │
-│   ├── 📁 components/                  # Reusable React components
-│   │   └── AddExpenseModal.jsx
+│   ├── 📁 assets/                      # Static assets (images, icons)
+│   │   └── 📄 react.svg
 │   │
-│   ├── 📁 lib/                         # Utility libraries and business logic
-│   │   ├── billSharing.js              # Bill sharing functionality
-│   │   └── cashflowEngine.js           # Core cashflow calculation engine
+│   ├── 📁 components/                  # Reusable UI components
+│   │   ├── 📄 AddExpenseModal.jsx
+│   │   ├── 📄 BulkImportSpreadsheet.jsx
+│   │   └── 📄 ErrorBoundary.jsx
 │   │
 │   ├── 📁 pages/                       # Page components (routes)
-│   │   ├── Accounts.jsx                # Accounts management page
-│   │   ├── Bills.jsx                   # Bills management page
-│   │   ├── Home.jsx                    # Home/dashboard page
-│   │   ├── Planner.jsx                 # Financial planner page
-│   │   └── Settings.jsx                # Settings page
+│   │   ├── 📄 Accounts.jsx
+│   │   ├── 📄 Bills.jsx
+│   │   ├── 📄 Expenses.jsx
+│   │   ├── 📄 Home.jsx
+│   │   ├── 📄 Planner.jsx
+│   │   └── 📄 Settings.jsx
 │   │
-│   ├── App.css                         # Main application styles
-│   ├── App.jsx                         # Root application component
-│   ├── firebase.js                     # Firebase configuration and initialization
-│   ├── firebaseeee1.md                 # Firebase documentation/notes
-│   ├── index.css                       # Global styles
-│   ├── main.jsx                        # Application entry point
-│   └── MonthlyCashFlowInfographic.jsx  # Cashflow visualization component
+│   └── 📁 lib/                         # Utility libraries and business logic
+│       ├── 📄 billSharing.js           # Bill sharing functionality
+│       └── 📄 cashflowEngine.js        # Core cashflow calculation engine
+│
+├── 📁 scripts/                         # Utility scripts
+│   ├── 📄 markBillsPaidUpTo2025-11-14.js
+│   └── 📄 testCashflowEngine.mjs
 │
 ├── 📁 tests/                           # Test files
 │   ├── 📁 utils/                       # Test utilities and helpers
-│   │   ├── mockData.js                 # Mock data for testing
-│   │   └── seedFirestore.js            # Firestore seeding utilities
+│   │   ├── 📄 mockData.js
+│   │   └── 📄 seedFirestore.js
 │   │
-│   └── 📁 visual/                      # Visual regression tests (Playwright)
-│       ├── 📁 home.spec.js-snapshots/  # Home page snapshots
-│       │   ├── add-expense-modal-chromium-win32.png
-│       │   └── home-page-chromium-win32.png
+│   └── 📁 visual/                      # Visual regression tests
+│       ├── 📄 home.spec.js
+│       ├── 📄 infographic.spec.js
+│       ├── 📄 planner.spec.js
+│       ├── 📄 settings.spec.js
 │       │
-│       ├── 📁 infographic.spec.js-snapshots/  # Infographic snapshots
-│       │   └── infographic-chromium-win32.png
+│       └── 📁 home.spec.js-snapshots/
+│           ├── 📄 add-expense-modal-chromium-win32.png
+│           └── 📄 home-page-chromium-win32.png
 │       │
-│       ├── 📁 planner.spec.js-snapshots/  # Planner snapshots
-│       │   └── planner-view-chromium-win32.png
+│       ├── 📁 infographic.spec.js-snapshots/
+│           └── 📄 infographic-chromium-win32.png
 │       │
-│       ├── 📁 settings.spec.js-snapshots/  # Settings snapshots
-│       │   └── settings-page-chromium-win32.png
+│       ├── 📁 planner.spec.js-snapshots/
+│           └── 📄 planner-view-chromium-win32.png
 │       │
-│       ├── home.spec.js                # Home page visual tests
-│       ├── infographic.spec.js         # Infographic visual tests
-│       ├── planner.spec.js             # Planner visual tests
-│       └── settings.spec.js            # Settings visual tests
-│
-├── 📁 scripts/                         # Utility scripts
-│   ├── markBillsPaidUpTo2025-11-14.js  # Script to mark bills as paid
-│   └── testCashflowEngine.mjs          # Cashflow engine test script
+│       └── 📁 settings.spec.js-snapshots/
+│           └── 📄 settings-page-chromium-win32.png
 │
 ├── 📁 dist/                            # Build output (generated)
-│   ├── 📁 assets/                      # Compiled assets
-│   │   ├── index-*.css                 # Compiled CSS
-│   │   ├── index-*.js                  # Compiled JavaScript
-│   │   └── index-*.js.map              # Source maps
+│   ├── 📄 index.html
+│   ├── 📄 about.txt
+│   ├── 📄 apple-touch-icon.png
+│   ├── 📄 favicon-16x16.png
+│   ├── 📄 favicon-32x32.png
+│   ├── 📄 favicon.ico
+│   ├── 📄 manifest.webmanifest
+│   ├── 📄 pwa-192.png
+│   ├── 📄 pwa-512.png
+│   ├── 📄 registerSW.js
+│   ├── 📄 site.webmanifest
+│   ├── 📄 sw.js                        # Service worker
+│   ├── 📄 sw.js.map
+│   ├── 📄 vite.svg
+│   ├── 📄 workbox-5ffe50d4.js          # Workbox PWA library
+│   ├── 📄 workbox-5ffe50d4.js.map
 │   │
-│   ├── about.txt
-│   ├── apple-touch-icon.png
-│   ├── favicon-16x16.png
-│   ├── favicon-32x32.png
-│   ├── favicon.ico
-│   ├── index.html                      # Built HTML
-│   ├── manifest.webmanifest
-│   ├── pwa-192.png
-│   ├── pwa-512.png
-│   ├── registerSW.js                   # Service worker registration
-│   ├── site.webmanifest
-│   ├── sw.js                           # Service worker
-│   ├── sw.js.map                       # Service worker source map
-│   ├── vite.svg
-│   ├── workbox-*.js                    # Workbox PWA library
-│   └── workbox-*.js.map
+│   ├── 📁 assets/                      # Bundled assets
+│   │   ├── 📄 index-*.js               # JavaScript bundles
+│   │   ├── 📄 index-*.js.map           # Source maps
+│   │   └── 📄 index-*.css              # CSS bundles
+│   │
+│   └── 📁 templates/
+│       └── 📄 onboarding-import-template.csv
 │
 ├── 📁 test-results/                    # Test execution results (generated)
-│   └── visual-settings-Settings-V-bfc15-ould-render-settings-layout-chromium/
-│       └── settings-page-actual.png
+│   └── 📁 visual-settings-Settings-V-bfc15-ould-render-settings-layout-chromium/
+│       └── 📄 settings-page-actual.png
 │
 ├── 📁 node_modules/                    # Dependencies (generated)
 │
-├── 📄 Configuration Files
-│   ├── .gitignore                      # Git ignore rules
-│   ├── eslint.config.js                # ESLint configuration
-│   ├── firebase.json                   # Firebase configuration
-│   ├── firestore.rules                 # Firestore security rules
-│   ├── index.html                      # HTML template
-│   ├── package.json                    # NPM dependencies and scripts
-│   ├── package-lock.json               # Locked dependency versions
-│   ├── playwright.config.js            # Playwright test configuration
-│   ├── postcss.config.js               # PostCSS configuration
-│   ├── postcss.config.json             # PostCSS JSON config
-│   ├── tailwind.config.js              # Tailwind CSS configuration
-│   ├── tailwind.config.json            # Tailwind CSS JSON config
-│   └── vite.config.js                  # Vite build configuration
+├── 📄 package.json                     # Project dependencies and scripts
+├── 📄 package-lock.json                # Locked dependency versions
+├── 📄 vite.config.js                   # Vite build configuration
+├── 📄 tailwind.config.js               # Tailwind CSS configuration
+├── 📄 tailwind.config.json             # Tailwind CSS configuration (JSON)
+├── 📄 postcss.config.js                # PostCSS configuration
+├── 📄 postcss.config.json              # PostCSS configuration (JSON)
+├── 📄 eslint.config.js                 # ESLint configuration
+├── 📄 playwright.config.js             # Playwright test configuration
+├── 📄 firebase.json                    # Firebase configuration
+├── 📄 firestore.rules                  # Firestore security rules
+├── 📄 index.html                       # HTML entry point
+├── 📄 README.md                        # Project documentation
 │
-├── 📄 Firebase & Security
-│   ├── cashflow-a1c11-firebase-adminsdk-fbsvc-3cd1083b6b.json  # Firebase Admin SDK key
-│   └── serviceAccountKey.json          # Service account key
-│
-├── 📄 Data & Seeds
-│   └── seedBills.cjs                   # Bill seeding script
-│
-└── 📄 Documentation
-    └── README.md                        # Project documentation
+├── 📄 seedBills.cjs                    # Seed script for bills data
+├── 📄 serviceAccountKey.json           # Firebase service account key
+├── 📄 cashflow-a1c11-firebase-adminsdk-fbsvc-3cd1083b6b.json  # Firebase admin SDK key
+└── 📄 githubtoken.txt                  # GitHub token (should be in .gitignore)
 ```
 
-## Key Directories
+## Directory Descriptions
 
 ### `/src`
-Main application source code:
-- **`pages/`** - Route-level page components
-- **`components/`** - Reusable UI components
-- **`lib/`** - Business logic and utilities
-- **`assets/`** - Static assets like images
+Main source code directory containing all application logic, components, and utilities.
 
-### `/tests`
-Test suite:
-- **`visual/`** - Playwright visual regression tests
-- **`utils/`** - Test helpers and mock data
+### `/src/pages`
+Page-level components that correspond to different routes in the application:
+- **Home.jsx** - Dashboard/home page
+- **Bills.jsx** - Bills management page
+- **Expenses.jsx** - Expenses tracking page
+- **Accounts.jsx** - Account management page
+- **Planner.jsx** - Financial planning page
+- **Settings.jsx** - Application settings page
 
-### `/scripts`
-Utility scripts for data management and testing
+### `/src/components`
+Reusable UI components used across multiple pages:
+- **AddExpenseModal.jsx** - Modal for adding expenses
+- **BulkImportSpreadsheet.jsx** - Bulk import functionality
+- **ErrorBoundary.jsx** - Error handling component
+
+### `/src/lib`
+Core business logic and utility libraries:
+- **cashflowEngine.js** - Main cashflow calculation engine
+- **billSharing.js** - Bill sharing functionality
 
 ### `/public`
-Static files served at the root URL
+Static assets that are served directly without processing:
+- PWA icons and manifests
+- Favicons
+- Templates for data import
+
+### `/scripts`
+Utility scripts for data seeding and testing:
+- **seedBills.cjs** - Seed bills data
+- **testCashflowEngine.mjs** - Test cashflow engine
+- **markBillsPaidUpTo2025-11-14.js** - Utility script
+
+### `/tests`
+Test files organized by type:
+- **utils/** - Test utilities and mock data
+- **visual/** - Visual regression tests with Playwright
 
 ### `/dist`
-Production build output (generated by Vite)
+Build output directory (generated by Vite). Contains optimized production assets.
 
-## Technology Stack
+## Key Configuration Files
 
-- **Frontend Framework**: React 18.2.0
-- **Build Tool**: Vite
-- **Styling**: Tailwind CSS
-- **Testing**: Playwright (visual regression)
-- **Backend**: Firebase (Firestore, Authentication)
-- **PWA**: Service Worker with Workbox
+- **vite.config.js** - Vite bundler configuration
+- **tailwind.config.js** - Tailwind CSS styling configuration
+- **firebase.json** - Firebase deployment and hosting configuration
+- **firestore.rules** - Firestore database security rules
+- **playwright.config.js** - Playwright testing configuration
+- **eslint.config.js** - Code linting rules
 
-## Build & Development
+## Notes
 
-- Development server: `npm run dev`
-- Production build: `npm run build`
-- Tests: `npm test` or Playwright commands
-
+- The `dist/` folder is generated during build and should not be committed to version control
+- The `node_modules/` folder contains dependencies and should not be committed
+- Service account keys and tokens should be kept secure and not committed to version control

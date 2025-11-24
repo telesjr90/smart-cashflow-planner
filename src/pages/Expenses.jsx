@@ -1,3 +1,4 @@
+// Updated to ensure expense shape matches engine expectations
 // src/pages/Expenses.jsx
 import React, { useState, useMemo } from "react";
 import {
@@ -11,7 +12,7 @@ import {
 } from "lucide-react";
 
 /**
- * Central manager for all one‑off expenses.
+ * Central manager for all one-off expenses.
  *
  * Props:
  *  - expenses: Array of expense objects (id, amount, description, category, date, accountId)
@@ -23,12 +24,14 @@ export default function Expenses({
   accounts = [],
   onUpdateExpenses,
 }) {
+  const todayStr = new Date().toISOString().split("T")[0];
+
   const [editId, setEditId] = useState(null);
   const [draft, setDraft] = useState({
     amount: "",
     description: "",
     category: "other",
-    date: new Date().toISOString().split("T")[0],
+    date: todayStr,
     accountId: accounts[0]?.id || "",
   });
 
@@ -48,7 +51,7 @@ export default function Expenses({
       amount: "",
       description: "",
       category: "other",
-      date: new Date().toISOString().split("T")[0],
+      date: todayStr,
       accountId: accounts[0]?.id || "",
     });
   };
@@ -60,7 +63,7 @@ export default function Expenses({
       amount: expense.amount != null ? String(expense.amount) : "",
       description: expense.description || "",
       category: expense.category || "other",
-      date: expense.date || new Date().toISOString().split("T")[0],
+      date: expense.date || todayStr,
       accountId: expense.accountId || accounts[0]?.id || "",
     });
   };
@@ -72,24 +75,37 @@ export default function Expenses({
       amount: "",
       description: "",
       category: "other",
-      date: new Date().toISOString().split("T")[0],
+      date: todayStr,
       accountId: accounts[0]?.id || "",
     });
   };
 
   const handleSave = () => {
     const amt = parseFloat(draft.amount);
-    if (!draft.description || isNaN(amt) || amt <= 0) return;
+    const trimmedDescription = (draft.description || "").trim();
+
+    // Normalize date: if empty or malformed, fall back to today
+    const safeDate =
+      draft.date && draft.date.length >= 10 ? draft.date : todayStr;
+
+    // Normalize account: require a valid accountId so the engine can route outflows
+    const safeAccountId = draft.accountId || accounts[0]?.id || "";
+
+    // Guards: description, positive amount, valid account
+    if (!trimmedDescription || isNaN(amt) || amt <= 0 || !safeAccountId) {
+      return;
+    }
+
     let next;
     if (editId === "new") {
       // Create new expense
       const newExp = {
         id: `exp-${Date.now()}`,
         amount: amt,
-        description: draft.description,
+        description: trimmedDescription,
         category: draft.category || "other",
-        date: draft.date,
-        accountId: draft.accountId,
+        date: safeDate, // always a YYYY-MM-DD string
+        accountId: safeAccountId,
         createdAt: new Date().toISOString(),
       };
       next = [...expenses, newExp];
@@ -100,10 +116,10 @@ export default function Expenses({
           ? {
               ...e,
               amount: amt,
-              description: draft.description,
+              description: trimmedDescription,
               category: draft.category || "other",
-              date: draft.date,
-              accountId: draft.accountId,
+              date: safeDate,
+              accountId: safeAccountId,
             }
           : e
       );
@@ -158,7 +174,9 @@ export default function Expenses({
                     type="date"
                     className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs"
                     value={draft.date}
-                    onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, date: e.target.value })
+                    }
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -169,7 +187,9 @@ export default function Expenses({
                     className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs"
                     placeholder="0.00"
                     value={draft.amount}
-                    onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, amount: e.target.value })
+                    }
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -179,7 +199,9 @@ export default function Expenses({
                     className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs"
                     placeholder="What was this for?"
                     value={draft.description}
-                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, description: e.target.value })
+                    }
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -187,7 +209,9 @@ export default function Expenses({
                   <select
                     className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs bg-white"
                     value={draft.category}
-                    onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, category: e.target.value })
+                    }
                   >
                     <option value="other">Other</option>
                     <option value="groceries">Groceries</option>
@@ -204,7 +228,9 @@ export default function Expenses({
                   <select
                     className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs bg-white"
                     value={draft.accountId}
-                    onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, accountId: e.target.value })
+                    }
                   >
                     {(accounts || []).map((acc) => (
                       <option key={acc.id} value={acc.id}>
@@ -247,7 +273,9 @@ export default function Expenses({
                         type="date"
                         className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs"
                         value={draft.date}
-                        onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+                        onChange={(e) =>
+                          setDraft({ ...draft, date: e.target.value })
+                        }
                       />
                     </div>
                     <div className="flex items-center gap-2">
@@ -257,7 +285,9 @@ export default function Expenses({
                         step="0.01"
                         className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs"
                         value={draft.amount}
-                        onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
+                        onChange={(e) =>
+                          setDraft({ ...draft, amount: e.target.value })
+                        }
                       />
                     </div>
                     <div className="flex items-center gap-2">
@@ -266,7 +296,9 @@ export default function Expenses({
                         type="text"
                         className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs"
                         value={draft.description}
-                        onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                        onChange={(e) =>
+                          setDraft({ ...draft, description: e.target.value })
+                        }
                       />
                     </div>
                     <div className="flex items-center gap-2">
@@ -274,7 +306,9 @@ export default function Expenses({
                       <select
                         className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs bg-white"
                         value={draft.category}
-                        onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+                        onChange={(e) =>
+                          setDraft({ ...draft, category: e.target.value })
+                        }
                       >
                         <option value="other">Other</option>
                         <option value="groceries">Groceries</option>
@@ -291,7 +325,9 @@ export default function Expenses({
                       <select
                         className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs bg-white"
                         value={draft.accountId}
-                        onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
+                        onChange={(e) =>
+                          setDraft({ ...draft, accountId: e.target.value })
+                        }
                       >
                         {(accounts || []).map((acc) => (
                           <option key={acc.id} value={acc.id}>
@@ -324,7 +360,8 @@ export default function Expenses({
                         {exp.description || exp.category || "Expense"}
                       </div>
                       <div className="text-slate-500">
-                        {exp.date} · {exp.category || "other"} · {accountMap[exp.accountId] || ""}
+                        {exp.date} · {exp.category || "other"} ·{" "}
+                        {accountMap[exp.accountId] || ""}
                       </div>
                     </div>
                     <div className="text-right">

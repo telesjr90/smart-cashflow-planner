@@ -40,6 +40,7 @@ function Row({ label, value }) {
 
 // Preset categories for budgets. These defaults are loaded when a new household
 // has no budgets defined yet. Users can rename, add, or delete categories.
+// Scope defaults to "shared" and no owner/account attached.
 const DEFAULT_BUDGET_CATEGORIES = {
   housing: { label: "Housing", amount: 0 },
   groceries: { label: "Groceries", amount: 0 },
@@ -167,10 +168,13 @@ export default function Settings({
     const newId = `acct-${Date.now()}`;
     setLocalAccounts((prev) => {
       const isFirst = prev.length === 0;
-      const opening = isFirst
-        ? // Allocate the plan's starting balance to the first account
-          (localStartingBalance === "" || localStartingBalance == null ? 0 : Number(localStartingBalance) || 0)
-        : 0;
+      const opening =
+        isFirst
+          ? (localStartingBalance === "" || localStartingBalance == null
+              ? 0
+              : Number(localStartingBalance) || 0)
+          : 0;
+  
       return [
         ...prev,
         {
@@ -178,11 +182,15 @@ export default function Settings({
           name: "New account",
           type: "deposit",
           openingBalance: opening,
+          // Ownership metadata
+          ownerRole: localRole,  // "H" | "W" | "other"
+          ownerUid: uid || null, // from Settings props
         },
       ];
     });
     setDirtyAccounts(true);
   };
+  
 
   const handleDeleteAccount = (id) => {
     setLocalAccounts((prev) => prev.filter((a) => a.id !== id));
@@ -339,14 +347,26 @@ export default function Settings({
   };
 
   // ---------- Goals local state ----------
-  // Helper to normalize goals to include new shared fields with defaults.
+
+  // Helper to normalize goals to include shared fields plus new owner/timeline/account with defaults.
   const normalizeGoal = (goal) => {
+    const baseScope = goal.scope || "personal";
+    const computedOwner =
+      goal.owner ??
+      (baseScope === "personal"
+        ? goal.createdBy || role || "H"
+        : null);
+
     return {
-      scope: "personal",
-      status: "active",
-      pendingFor: null,
-      createdBy: role || "H",
-      contributions: {},
+      scope: baseScope,
+      status: goal.status || "active",
+      pendingFor: goal.pendingFor ?? null,
+      createdBy: goal.createdBy || role || "H",
+      contributions: goal.contributions || {},
+      owner: computedOwner, // "H" | "W" | null
+      startDate: goal.startDate || "", // YYYY-MM-DD
+      endDate: goal.endDate || "", // YYYY-MM-DD
+      accountId: goal.accountId || null,
       ...goal,
     };
   };
@@ -366,26 +386,31 @@ export default function Settings({
   }, [goals]);
 
   const handleAddGoal = () => {
-    // When adding a new goal we include the shared goal fields with sensible defaults.
+    // When adding a new goal we include the shared goal fields with sensible defaults,
+    // plus new owner/timeline/account fields.
     const newGoal = normalizeGoal({
       id: `goal-${Date.now()}`,
       name: "New goal",
       targetAmount: 0,
       perMonth: 0,
       savedSoFar: 0,
-      // New goals are personal by default. createdBy is current role.
       scope: "personal",
       status: "active",
       pendingFor: null,
       createdBy: role || "H",
       contributions: {},
+      owner: role || "H",
+      startDate: "",
+      endDate: "",
+      accountId: null,
     });
     setLocalGoals((prev) => [...prev, newGoal]);
     setDirtyGoals(true);
   };
 
   const handleGoalChange = (id, updates) => {
-    // Generic field updater for goals. Does not manage scope or contributions.
+    // Generic field updater for goals. Does not manage scope or contributions
+    // (those have specialized helpers).
     setLocalGoals((prev) =>
       prev.map((goal) => (goal.id === id ? { ...goal, ...updates } : goal))
     );
@@ -394,21 +419,26 @@ export default function Settings({
 
   // Update the goal's scope (personal/shared). When switching to shared,
   // initialize contributions if missing and derive perMonth from the sum.
+  // When switching to personal, ensure an owner is set.
   const handleGoalScopeChange = (id, scope) => {
     setLocalGoals((prev) =>
       prev.map((goal) => {
         if (goal.id !== id) return goal;
         const updated = { ...goal, scope };
         if (scope === "personal") {
-          // Reset contributions when switching back to personal.
+          // Personal goals do not use partner contributions breakdown.
           updated.contributions = {};
+          // Ensure an owner is set; default to the current user role.
+          updated.owner = goal.owner || role || "H";
           // perMonth remains user editable for personal goals.
         } else if (scope === "shared") {
-          // Ensure contributions object exists and derive perMonth
+          // Shared goals: ensure contributions object exists and derive perMonth
+          // from partners' contributions.
           const H = updated.contributions?.H ?? 0;
           const W = updated.contributions?.W ?? 0;
           updated.contributions = { H, W };
           updated.perMonth = parseFloat(H || 0) + parseFloat(W || 0);
+          updated.owner = null; // shared goals have no single owner
         }
         return updated;
       })
@@ -467,6 +497,23 @@ export default function Settings({
     setDirtyGoals(false);
   };
 
+  // Filter which goals are visible to the current user, enforcing:
+  // - Show all shared goals
+  // - Show only personal goals owned by this partner
+  // - If role is "other"/unknown, show everything to avoid locking out admins
+  const visibleGoals = useMemo(() => {
+    if (localRole !== "H" && localRole !== "W") {
+      return localGoals;
+    }
+    return localGoals.filter((goal) => {
+      const scope = goal.scope || "personal";
+      if (scope === "shared") return true;
+      // personal
+      if (!goal.owner) return true; // legacy goals without owner visible for safety
+      return goal.owner === localRole;
+    });
+  }, [localGoals, localRole]);
+
   // ---------- Category budgets local state ----------
   // Use defaults when incoming budgets are empty. Convert to array via useMemo below.
   const initialBudgets = useMemo(() => {
@@ -483,12 +530,24 @@ export default function Settings({
 
   const handleAddBudgetCategory = () => {
     const newKey = `category-${Date.now()}`;
-    setLocalBudgets((prev) => ({ ...prev, [newKey]: { label: "New category", amount: 0 } }));
+    setLocalBudgets((prev) => ({
+      ...prev,
+      [newKey]: {
+        label: "New category",
+        amount: 0,
+        scope: "personal",
+        owner: localRole === "H" || localRole === "W" ? localRole : "H",
+        accountId: null,
+      },
+    }));
     setDirtyBudgets(true);
   };
 
   const handleBudgetChange = (key, updates) => {
-    setLocalBudgets((prev) => ({ ...prev, [key]: { ...prev[key], ...updates } }));
+    setLocalBudgets((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], ...updates },
+    }));
     setDirtyBudgets(true);
   };
 
@@ -506,6 +565,46 @@ export default function Settings({
     onUpdateBudgets(localBudgets);
     setDirtyBudgets(false);
   };
+
+  // Derived arrays for display
+  const budgetsArray = useMemo(
+    () =>
+      Object.entries(localBudgets).map(([key, cfg]) => {
+        const {
+          label = key,
+          amount = 0,
+          scope = "shared",
+          owner = null,
+          accountId = null,
+        } = cfg || {};
+        return {
+          key,
+          label,
+          amount,
+          scope,
+          owner,
+          accountId,
+        };
+      }),
+    [localBudgets]
+  );
+
+  // Apply visibility rules:
+  // - Show shared budgets to both partners
+  // - Show personal budgets only to the owning partner
+  // - If role is "other"/unknown, show all
+  const visibleBudgets = useMemo(() => {
+    if (localRole !== "H" && localRole !== "W") {
+      return budgetsArray;
+    }
+    return budgetsArray.filter(({ scope, owner }) => {
+      const effScope = scope || "shared";
+      if (effScope === "shared") return true;
+      // personal
+      if (!owner) return true; // legacy budgets without owner visible so they can be cleaned up
+      return owner === localRole;
+    });
+  }, [budgetsArray, localRole]);
 
   // ---------- Bill sharing local state ----------
   // Keep track of the last committed bill sharing configuration.  This
@@ -620,17 +719,6 @@ export default function Settings({
     setLocalBillSharing(next);
     setDirtyBillSharing(false);
   };
-
-  // Derived arrays for display
-  const budgetsArray = useMemo(
-    () =>
-      Object.entries(localBudgets).map(([key, cfg]) => ({
-        key,
-        label: cfg.label || key,
-        amount: cfg.amount ?? 0,
-      })),
-    [localBudgets]
-  );
 
   // Refs for scrolling to specific sections (goals & budgets) when requested
   const goalsRef = useRef(null);
@@ -1170,9 +1258,9 @@ export default function Settings({
                 <Plus size={12} /> Add goal
               </button>
             </div>
-            {localGoals.length === 0 && <p className="text-xs text-slate-500">No goals defined yet.</p>}
+            {visibleGoals.length === 0 && <p className="text-xs text-slate-500">No goals defined yet.</p>}
             <div className="space-y-3">
-              {localGoals.map((goal) => (
+              {visibleGoals.map((goal) => (
                 <div
                   key={goal.id}
                   className="p-2 border border-slate-200 rounded-lg bg-slate-50 space-y-2"
@@ -1199,13 +1287,13 @@ export default function Settings({
                         onChange={(e) =>
                           handleGoalChange(goal.id, {
                             targetAmount:
-                              e.target.value === '' ? 0 : parseFloat(e.target.value),
+                              e.target.value === "" ? 0 : parseFloat(e.target.value),
                           })
                         }
                         placeholder="0.00"
                       />
                     </label>
-                    {goal.scope === 'personal' ? (
+                    {goal.scope === "personal" ? (
                       <label className="flex flex-col text-[10px] text-slate-500">
                         <span>Monthly contribution</span>
                         <input
@@ -1227,18 +1315,18 @@ export default function Settings({
                     )}
                     <div className="flex items-center justify-end space-x-1">
                       {/* Show accept/reject for pending goals when applicable */}
-                      {goal.status === 'pending' && goal.pendingFor === localRole ? (
+                      {goal.status === "pending" && goal.pendingFor === localRole ? (
                         <>
                           <button
                             type="button"
-                            onClick={() => handleGoalApproval(goal.id, 'accept')}
+                            onClick={() => handleGoalApproval(goal.id, "accept")}
                             className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-emerald-700"
                           >
                             Accept
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleGoalApproval(goal.id, 'reject')}
+                            onClick={() => handleGoalApproval(goal.id, "reject")}
                             className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-rose-700"
                           >
                             Reject
@@ -1254,8 +1342,9 @@ export default function Settings({
                       </button>
                     </div>
                   </div>
-                  {/* Second row: scope selector and partner contributions if shared */}
+                  {/* Second row: scope, owner (for personal), account, dates, and partner contributions if shared */}
                   <div className="grid grid-cols-6 gap-2 items-center">
+                    {/* Scope selector */}
                     <label className="flex flex-col text-[10px] text-slate-500 col-span-2">
                       <span>Scope</span>
                       <select
@@ -1267,7 +1356,64 @@ export default function Settings({
                         <option value="shared">Shared</option>
                       </select>
                     </label>
-                    {goal.scope === 'shared' && (
+
+                    {/* Owner selector for personal goals */}
+                    {goal.scope === "personal" && (
+                      <label className="flex flex-col text-[10px] text-slate-500">
+                        <span>Owner</span>
+                        <select
+                          className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                          value={goal.owner || ""}
+                          onChange={(e) => handleGoalChange(goal.id, { owner: e.target.value || null })}
+                        >
+                          <option value="">Select</option>
+                          <option value="H">Partner H</option>
+                          <option value="W">Partner W</option>
+                        </select>
+                      </label>
+                    )}
+
+                    {/* Account attachment */}
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Account</span>
+                      <select
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={goal.accountId || ""}
+                        onChange={(e) => handleGoalChange(goal.id, { accountId: e.target.value || null })}
+                      >
+                        <option value="">None</option>
+                        {localAccounts.map((acct) => (
+                          <option key={acct.id} value={acct.id}>
+                            {acct.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    {/* Start date */}
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Start date</span>
+                      <input
+                        type="date"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={goal.startDate || ""}
+                        onChange={(e) => handleGoalChange(goal.id, { startDate: e.target.value })}
+                      />
+                    </label>
+
+                    {/* End/target date */}
+                    <label className="flex flex-col text-[10px] text-slate-500">
+                      <span>Target date</span>
+                      <input
+                        type="date"
+                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                        value={goal.endDate || ""}
+                        onChange={(e) => handleGoalChange(goal.id, { endDate: e.target.value })}
+                      />
+                    </label>
+
+                    {/* Shared contributions (only when shared) */}
+                    {goal.scope === "shared" && (
                       <>
                         <label className="flex flex-col text-[10px] text-slate-500">
                           <span>Partner H share</span>
@@ -1277,7 +1423,7 @@ export default function Settings({
                             className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                             value={goal.contributions?.H ?? 0}
                             onChange={(e) =>
-                              handleGoalContributionChange(goal.id, 'H', e.target.value)
+                              handleGoalContributionChange(goal.id, "H", e.target.value)
                             }
                             placeholder="0.00"
                           />
@@ -1290,7 +1436,7 @@ export default function Settings({
                             className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
                             value={goal.contributions?.W ?? 0}
                             onChange={(e) =>
-                              handleGoalContributionChange(goal.id, 'W', e.target.value)
+                              handleGoalContributionChange(goal.id, "W", e.target.value)
                             }
                             placeholder="0.00"
                           />
@@ -1331,11 +1477,14 @@ export default function Settings({
                 <Plus size={12} /> Add category
               </button>
             </div>
-            {budgetsArray.length === 0 && <p className="text-xs text-slate-500">No budget categories defined yet.</p>}
+            {visibleBudgets.length === 0 && (
+              <p className="text-xs text-slate-500">No budget categories defined yet.</p>
+            )}
             <div className="space-y-3">
-              {budgetsArray.map(({ key, label, amount }) => (
+              {visibleBudgets.map(({ key, label, amount, scope, owner, accountId }) => (
                 <div key={key} className="p-2 border border-slate-200 rounded-lg bg-slate-50">
-                  <div className="grid grid-cols-3 gap-2 items-center">
+                  <div className="grid grid-cols-4 gap-2 items-center">
+                    {/* Category name */}
                     <label className="flex flex-col text-[10px] text-slate-500">
                       <span>Category</span>
                       <input
@@ -1346,6 +1495,8 @@ export default function Settings({
                         placeholder="Category name"
                       />
                     </label>
+
+                    {/* Amount */}
                     <label className="flex flex-col text-[10px] text-slate-500">
                       <span>Amount</span>
                       <input
@@ -1361,7 +1512,76 @@ export default function Settings({
                         placeholder="0.00"
                       />
                     </label>
-                    <div className="flex items-center justify-end">
+
+                    {/* Scope + owner (for personal) */}
+                    <div className="flex flex-col gap-1 text-[10px] text-slate-500">
+                      <label className="flex flex-col">
+                        <span>Scope</span>
+                        <select
+                          className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                          value={scope || "shared"}
+                          onChange={(e) => {
+                            const nextScope = e.target.value;
+                            const updates =
+                              nextScope === "personal"
+                                ? {
+                                    scope: "personal",
+                                    owner:
+                                      owner ||
+                                      (localRole === "H" || localRole === "W"
+                                        ? localRole
+                                        : "H"),
+                                  }
+                                : {
+                                    scope: "shared",
+                                    owner: null,
+                                  };
+                            handleBudgetChange(key, updates);
+                          }}
+                        >
+                          <option value="shared">Shared</option>
+                          <option value="personal">Personal</option>
+                        </select>
+                      </label>
+                      {scope === "personal" && (
+                        <label className="flex flex-col">
+                          <span>Owner</span>
+                          <select
+                            className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                            value={owner || ""}
+                            onChange={(e) =>
+                              handleBudgetChange(key, {
+                                owner: e.target.value || null,
+                              })
+                            }
+                          >
+                            <option value="">Select</option>
+                            <option value="H">Partner H</option>
+                            <option value="W">Partner W</option>
+                          </select>
+                        </label>
+                      )}
+                    </div>
+
+                    {/* Account + delete */}
+                    <div className="flex flex-col items-end justify-between gap-1">
+                      <label className="flex flex-col text-[10px] text-slate-500 w-full">
+                        <span>Account</span>
+                        <select
+                          className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                          value={accountId || ""}
+                          onChange={(e) =>
+                            handleBudgetChange(key, { accountId: e.target.value || null })
+                          }
+                        >
+                          <option value="">None</option>
+                          {localAccounts.map((acct) => (
+                            <option key={acct.id} value={acct.id}>
+                              {acct.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <button
                         type="button"
                         className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"

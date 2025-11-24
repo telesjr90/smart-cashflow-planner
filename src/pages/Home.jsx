@@ -1,10 +1,5 @@
-// Updated in Step 5 – Discretionary excludes savings/goal contributions
-// This file is based on the original Home.jsx from the Smart Cash Flow Planner
-// repository. It has been modified to add a notification card for pending
-// shared goals and budgets requiring partner approval. The component now accepts
-// `pendingGoalsCount` and `pendingBudgetsCount` props and a callback
-// `onGoToReviewPending` which navigates to the appropriate section in
-// Settings when the user has items to review.
+// Updated Home.jsx – scoped "My / Household / Partner" cash view,
+// onboarding gating, and pending shared goals/budgets card.
 
 import React, { useMemo } from "react";
 import {
@@ -24,20 +19,27 @@ import { projectCashflow, fromCents } from "../lib/cashflowEngine.js";
  * - personScope: 'self' | 'partner' | 'both'
  * - setPersonScope: (v) => void
  * - startDate: ISO string of plan start
- * - bills: Array of bills
+ * - bills: Array of bills (may include ownerRole/ownerUid)
  * - paidFlags: { [billId: string]: { [monthIndex: number]: boolean } }
- * - discretionaryLeft: number    // PHASE 4: wire into engine
  * - savingsToDate: number
- * - budgets: Array<{ id, name, remaining: number }>
- * - onTogglePaid?: ({ bill, monthIndex }) => void
- * - onAddExpense?: ({ amount, category, date }) => void
+ * - budgets: Array<{ id, name, remaining: number, total: number }>
+ * - onTogglePaid?: (bill, monthIndex, nextIsPaid) => void
+ * - onAddExpense?: () => void
  * - mode: 'projected' | 'actual'
  * - setMode: (v) => void
- * - income?: { husband: number, wife: number }
+ * - income?: { husband: number, wife: number }     // per-pay incomes
  * - paySchedule?: { type: "semi-monthly", day1: number, day2: number|"last" }
- * - pendingGoalsCount?: number               // NEW: number of pending shared goals
- * - pendingBudgetsCount?: number            // NEW: number of pending shared budgets
- * - onGoToReviewPending?: () => void        // NEW: navigate to review pending items
+ * - accounts: []
+ * - allocationRules: []
+ * - residualAccountId: string | null
+ * - startingBalance: number
+ * - expenses: []
+ * - onGoToSettings: () => void
+ * - onGoToBills: () => void
+ * - onGoToSettingsBudgets: () => void
+ * - pendingGoalsCount?: number
+ * - pendingBudgetsCount?: number
+ * - onGoToReviewPending?: () => void
  */
 
 const DEFAULT_START_DATE = "2025-11-15";
@@ -50,7 +52,7 @@ const fmt = (v) =>
 
 const todayISO = () => new Date().toISOString().split("T")[0];
 
-// Neutral fallback income: default to zero to avoid showing example numbers
+// Neutral fallback income: default to zero to avoid showing sample numbers
 const FALLBACK_INCOME = {
   husband: 0,
   wife: 0,
@@ -61,6 +63,41 @@ const FALLBACK_PAY_SCHEDULE = {
   day1: 15,
   day2: "last",
 };
+
+// 🔑 scope income based on Me / Household / Partner view
+function scopeIncomeByPersonScope(rawIncome, role, personScope) {
+  const base = {
+    husband: Number(rawIncome?.husband || 0),
+    wife: Number(rawIncome?.wife || 0),
+  };
+
+  // Household view → full income
+  if (personScope === "both") {
+    return base;
+  }
+
+  // "Me" view
+  if (personScope === "self") {
+    if (role === "W") {
+      return { husband: 0, wife: base.wife };
+    }
+    // default: treat as Partner H
+    return { husband: base.husband, wife: 0 };
+  }
+
+  // "Partner" view
+  if (personScope === "partner") {
+    if (role === "W") {
+      // I'm W, partner is H
+      return { husband: base.husband, wife: 0 };
+    }
+    // I'm H, partner is W
+    return { husband: 0, wife: base.wife };
+  }
+
+  // Fallback to household
+  return base;
+}
 
 function upToNextSunday(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
@@ -80,13 +117,6 @@ function weekRangeLabel(startISO) {
       day: "numeric",
     });
   return `${fmtShort(start)} – ${fmtShort(end)}`;
-}
-
-function weekOfMonth(date, monthStartISO) {
-  const d = new Date(date + "T00:00:00");
-  const m0 = new Date(monthStartISO + "T00:00:00");
-  const diff = d.getDate() - m0.getDate();
-  return Math.floor(diff / 7);
 }
 
 function isSameMonth(dateISO, monthStartISO) {
@@ -136,7 +166,6 @@ export default function Home({
   budgets = [],
   onTogglePaid,
   onAddExpense,
-  // PHASE 4 PROP: We need expenses passed to Home to calculate the Summary accurately
   expenses = [],
   mode = "projected",
   setMode = () => {},
@@ -146,29 +175,19 @@ export default function Home({
   allocationRules = [],
   residualAccountId = null,
   startingBalance = 0,
-  // NEW: navigation callbacks for empty state/onboarding
   onGoToSettings = () => {},
   onGoToBills = () => {},
-  // Navigate to budgets section in Settings
   onGoToSettingsBudgets = () => {},
-  // NEW: counts and callback for pending shared items
   pendingGoalsCount = 0,
   pendingBudgetsCount = 0,
   onGoToReviewPending = () => {},
 }) {
-  // Determine whether the plan needs setup. Only show onboarding when no
-  // meaningful data exists across income, bills and expenses. Previously the
-  // condition short-circuited if either income was zero/missing or no bills were
-  // present, which prevented the dashboard from showing when a user had
-  // configured income or added expenses but not yet entered bills. Here we
-  // compute flags for each data type separately and require all to be empty
-  // before triggering the onboarding UI.
+  // --- Onboarding gating: only show "Let’s set up your plan" when *everything* is empty ---
   const hasIncome =
     income &&
     (Number(income.husband || 0) > 0 || Number(income.wife || 0) > 0);
   const hasBills = Array.isArray(bills) && bills.length > 0;
   const hasExpenses = Array.isArray(expenses) && expenses.length > 0;
-  // Show onboarding only when there is no income, no bills and no expenses
   const needsSetup = !hasIncome && !hasBills && !hasExpenses;
 
   if (needsSetup) {
@@ -232,7 +251,7 @@ export default function Home({
   const monthStart = currentMonthStart(startDate);
   const weekLabel = weekRangeLabel(monthStart);
 
-  // Weekly view stats: how many bills and overspent categories this week
+  // Weekly view stats
   const { billsThisWeek, overspentCats } = useMemo(() => {
     const mStart = new Date(monthStart + "T00:00:00");
     const mEnd = new Date(mStart);
@@ -252,28 +271,35 @@ export default function Home({
     const overspentCats = (budgets || []).filter(
       (c) => (c.remaining ?? 0) <= 0
     ).length;
+
     return { billsThisWeek, overspentCats };
   }, [bills, monthStart, budgets]);
 
+  // --- Household-level engine projection (unscoped; "true" household picture) ---
   const {
     monthlyIncome,
     monthlyBills,
     monthlyNet,
     contributionsThisMonth,
+    hFraction,
+    wFraction,
   } = useMemo(() => {
-    if (!startDate) {
-      return {
-        monthlyIncome: 0,
-        monthlyBills: 0,
-        monthlyNet: 0,
-        contributionsThisMonth: 0,
-      };
-    }
+    const baseDefaults = {
+      monthlyIncome: 0,
+      monthlyBills: 0,
+      monthlyNet: 0,
+      contributionsThisMonth: 0,
+      hFraction: 0.5,
+      wFraction: 0.5,
+    };
+
+    if (!startDate) return baseDefaults;
 
     const effectiveStart =
       startDate && startDate.length >= 10 ? startDate : DEFAULT_START_DATE;
 
-    const effIncome = {
+    // Per-pay incomes for each partner
+    const rawIncome = {
       husband:
         income && Number.isFinite(+income?.husband)
           ? +income.husband
@@ -283,6 +309,18 @@ export default function Home({
           ? +income.wife
           : FALLBACK_INCOME.wife,
     };
+
+    // Fractions of household income based on *raw* incomes
+    const hPerPay = rawIncome.husband || 0;
+    const wPerPay = rawIncome.wife || 0;
+    const perPayTotal = hPerPay + wPerPay;
+
+    let hFraction = 0.5;
+    let wFraction = 0.5;
+    if (perPayTotal > 0) {
+      hFraction = hPerPay / perPayTotal;
+      wFraction = wPerPay / perPayTotal;
+    }
 
     const effSchedule = {
       type: paySchedule?.type || FALLBACK_PAY_SCHEDULE.type,
@@ -304,44 +342,32 @@ export default function Home({
         months: monthsToProject,
         accounts: accounts || [],
         bills,
-        income: effIncome,
+        income: rawIncome, // household-level income
         paySchedule: effSchedule,
         allocationRules: allocationRules || [],
         residualAccountId: residualAccountId || null,
         paidBills: {},
-        // PHASE 4 WIRING
         expenses,
-        mode, // Pass mode to respect "Actual" filter on Home dashboard too
+        mode,
       });
 
       const ledger = result.ledger || [];
       const monthlySummary = result.monthlySummary || [];
 
       if (!monthlySummary.length) {
-        return {
-          monthlyIncome: 0,
-          monthlyBills: 0,
-          monthlyNet: 0,
-          contributionsThisMonth: 0,
-        };
+        return baseDefaults;
       }
 
       const currentIdx = getMonthIndexFromStart(effectiveStart, todayISO());
-
       const summaryForCurrent =
         monthlySummary.find((m) => m.monthIndex === currentIdx) ||
         monthlySummary[0];
 
       if (!summaryForCurrent) {
-        return {
-          monthlyIncome: 0,
-          monthlyBills: 0,
-          monthlyNet: 0,
-          contributionsThisMonth: 0,
-        };
+        return baseDefaults;
       }
 
-      // Step 5 – compute how much income was routed into savings/goal accounts
+      // Compute this month's savings / goal contributions
       let contributionsCents = 0;
 
       const savingsAccountIds = (accounts || [])
@@ -402,15 +428,12 @@ export default function Home({
         monthlyBills: billsVal,
         monthlyNet: netVal,
         contributionsThisMonth: contribVal,
+        hFraction,
+        wFraction,
       };
     } catch (e) {
       console.warn("Home monthly engine projection failed", e);
-      return {
-        monthlyIncome: 0,
-        monthlyBills: 0,
-        monthlyNet: 0,
-        contributionsThisMonth: 0,
-      };
+      return baseDefaults;
     }
   }, [
     startDate,
@@ -425,8 +448,9 @@ export default function Home({
   ]);
 
   // Step 5 – Discretionary excludes savings/goal contributions.
-  // Start from the household's starting balances plus this month's net change,
-  // then subtract any contributions routed into savings/goal accounts.
+  // For "actual" mode we trust the real balances the user entered as "cash right now",
+  // and subtract only this month's savings/goal contributions.
+  // For "projected" mode we add this month's projected net change to starting balances.
   const startingBalanceForHousehold =
     (accounts && accounts.length
       ? accounts.reduce(
@@ -436,10 +460,28 @@ export default function Home({
       : Number(startingBalance || 0) || 0);
 
   const monthlyNetForCurrentMonth = monthlyNet || 0;
-  const discretionaryLeftValue =
-    startingBalanceForHousehold +
-    monthlyNetForCurrentMonth -
-    (contributionsThisMonth || 0);
+
+  const baseDiscretionary =
+    mode === "actual"
+      ? startingBalanceForHousehold - (contributionsThisMonth || 0)
+      : startingBalanceForHousehold +
+        monthlyNetForCurrentMonth -
+        (contributionsThisMonth || 0);
+
+  // Now apply a share based on personScope + role.
+  // If incomes are not set yet (both zero), we keep the household total.
+  let share = 1;
+  if (hFraction != null && wFraction != null) {
+    if (personScope === "self") {
+      share = role === "W" ? wFraction : hFraction;
+    } else if (personScope === "partner") {
+      share = role === "W" ? hFraction : wFraction;
+    } else {
+      share = 1; // household
+    }
+  }
+
+  const discretionaryLeftValue = baseDiscretionary * share;
 
   const canToggleBill = (bill) => {
     if (!bill) return false;
@@ -533,10 +575,14 @@ export default function Home({
                     : pendingGoalsCount > 0
                     ? `${pendingGoalsCount} shared goal${
                         pendingGoalsCount > 1 ? "s" : ""
-                      } ${pendingGoalsCount > 1 ? "are" : "is"} waiting for your approval.`
+                      } ${
+                        pendingGoalsCount > 1 ? "are" : "is"
+                      } waiting for your approval.`
                     : `${pendingBudgetsCount} budget${
                         pendingBudgetsCount > 1 ? "s" : ""
-                      } ${pendingBudgetsCount > 1 ? "are" : "is"} waiting for your approval.`}
+                      } ${
+                        pendingBudgetsCount > 1 ? "are" : "is"
+                      } waiting for your approval.`}
                 </p>
                 <button
                   type="button"
@@ -689,7 +735,11 @@ export default function Home({
                         onClick={() =>
                           onTogglePaid &&
                           canToggleBill(bill) &&
-                          onTogglePaid(bill, monthIndexForCurrentMonth, !isPaid)
+                          onTogglePaid(
+                            bill,
+                            monthIndexForCurrentMonth,
+                            !isPaid
+                          )
                         }
                         className={`w-4 h-4 rounded-full border flex items-center justify-center text-[9px] ${
                           isPaid

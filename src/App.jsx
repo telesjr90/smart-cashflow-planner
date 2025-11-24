@@ -13,10 +13,6 @@ import React, {
   useCallback,
 } from "react";
 
-// Pull in dayjs for robust date handling. It gracefully falls back to the
-// current date when given undefined input. Without this import the app
-// would crash on the first bill entry when startDate is missing.
-
 // A simple error boundary ensures that unexpected runtime errors do not
 // surface as blank screens. See src/components/ErrorBoundary.jsx.
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -27,7 +23,6 @@ import {
   Settings as SettingsIcon,
   LogOut,
   Wallet,
-  Users2,
   CalendarDays,
   ArrowRightLeft,
 } from "lucide-react";
@@ -53,10 +48,9 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
-  query,
   serverTimestamp,
   setDoc,
-  where,
+  runTransaction,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -68,6 +62,7 @@ const isAgentDemo =
 
 if (typeof window !== "undefined" && isAgentDemo) {
   // Let existing guards short-circuit backend writes
+  // eslint-disable-next-line no-undef
   window.__TEST_USER__ = true;
 }
 
@@ -116,6 +111,18 @@ const emptyUserData = {
   updatedAt: null,
 };
 
+const DEFAULT_SECTION_VERSIONS = {
+  core: 0,
+  bills: 0,
+  goals: 0,
+  budgets: 0,
+  accounts: 0,
+  allocations: 0,
+  income: 0,
+  billSharing: 0,
+  expenses: 0,
+};
+
 const withIds = (arr) =>
   arr.map((b) => ({
     ...b,
@@ -156,6 +163,8 @@ async function ensureUserDoc(user) {
         householdId: user.uid,
       },
       data: { ...emptyUserData },
+      dataVersion: 0, // optional global fallback
+      sectionVersions: { ...DEFAULT_SECTION_VERSIONS },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -163,6 +172,7 @@ async function ensureUserDoc(user) {
   }
 }
 
+// Legacy helper (still used for some simple writes, e.g. profile merges)
 async function saveUserPartial(uid, partialData) {
   const ref = doc(db, USERS, uid);
   await setDoc(
@@ -180,6 +190,59 @@ async function saveUserProfile(uid, profileUpdates) {
   }
   updatePayload.updatedAt = serverTimestamp();
   await setDoc(ref, updatePayload, { merge: true });
+}
+
+// New: per-section transactional save with conflict detection
+async function saveUserSectionsWithVersion(
+  uid,
+  sections,
+  localSectionVersions,
+  updateFn
+) {
+  const ref = doc(db, USERS, uid);
+
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) {
+      throw new Error("user-doc-missing");
+    }
+
+    const docData = snap.data();
+    const serverData = { ...emptyUserData, ...(docData.data || {}) };
+    const serverSectionVersions = docData.sectionVersions || {};
+
+    // 1) Check versions only for the sections we care about
+    for (const section of sections) {
+      const serverVersion = serverSectionVersions[section] ?? 0;
+      const localVersion = localSectionVersions[section] ?? 0;
+
+      if (serverVersion !== localVersion) {
+        const err = new Error("section-version-conflict");
+        err.section = section;
+        err.serverVersion = serverVersion;
+        err.localVersion = localVersion;
+        throw err;
+      }
+    }
+
+    // 2) Compute next data and which sections should be bumped
+    const { nextData, touchedSections = sections } = updateFn(serverData) || {};
+
+    // 3) Bump only the touched sections
+    const nextSectionVersions = { ...serverSectionVersions };
+    touchedSections.forEach((section) => {
+      const curr = nextSectionVersions[section] ?? 0;
+      nextSectionVersions[section] = curr + 1;
+    });
+
+    tx.update(ref, {
+      data: nextData,
+      sectionVersions: nextSectionVersions,
+      updatedAt: serverTimestamp(),
+    });
+
+    return nextSectionVersions;
+  });
 }
 
 async function loadHouseholdMembers(currentUserUid) {
@@ -219,10 +282,6 @@ function Tabs({ current, onChange }) {
     { key: "expenses", label: "Expenses", icon: ArrowRightLeft },
   ];
 
-  // Use a stable callback so that the onClick handler always refers to the
-  // latest onChange passed from the parent. Without this wrapper a stale
-  // closure could capture an outdated onChange and ignore subsequent
-  // reassignments when switching modes/pages. See Agent task description.
   const handleTabClick = useCallback(
     (key) => {
       if (typeof onChange === "function") {
@@ -233,13 +292,6 @@ function Tabs({ current, onChange }) {
   );
 
   return (
-    // Use a fixed position for the bottom navigation so it is always
-    // rendered at the very bottom of the viewport, outside of any scrolling
-    // content. Using fixed positioning prevents content overlays (such as
-    // scroll containers or modals) from accidentally intercepting click
-    // events and makes the nav consistently responsive after visiting
-    // different pages. See QA regression notes about an unresponsive
-    // navigation bar after visiting the Planner page.
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 pointer-events-auto">
       <div className="max-w-md mx-auto flex items-stretch justify-between px-1 py-1">
         {items.map((item) => {
@@ -277,20 +329,18 @@ export default function App() {
   const [networkError, setNetworkError] = useState(false);
 
   const [tab, setTab] = useState("home");
-  // Section hint for navigating to specific settings sections. When navigating
-  // from other pages (e.g. Accounts) we capture which section should be
-  // focused and then scroll to it in Settings.jsx via scrollIntoView.
   const [settingsSection, setSettingsSection] = useState(null);
-  const handleGoToSettingsSection = useCallback(
-    (section) => {
-      setSettingsSection(section);
-      setTab("settings");
-    },
-    []
-  );
+  const handleGoToSettingsSection = useCallback((section) => {
+    setSettingsSection(section);
+    setTab("settings");
+  }, []);
   const [personScope, setPersonScope] = useState("self");
   const [mode, setMode] = useState("projected");
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+
+  const [mySectionVersions, setMySectionVersions] = useState(
+    DEFAULT_SECTION_VERSIONS
+  );
 
   const userUnsubRef = useRef(null);
   const seededOnce = useRef(false);
@@ -309,8 +359,10 @@ export default function App() {
           householdId: "demo-household",
         },
         data: { ...emptyUserData },
+        sectionVersions: { ...DEFAULT_SECTION_VERSIONS },
       });
       setMyData({ ...emptyUserData });
+      setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
       setHousehold([]);
       setLoading(false);
       setHasCached(true);
@@ -329,6 +381,7 @@ export default function App() {
         setMe(null);
         setMyData(null);
         setHousehold([]);
+        setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
         setLoading(false);
         setHasCached(false);
         return;
@@ -353,6 +406,22 @@ export default function App() {
             const core = { ...emptyUserData, ...(data?.data || {}) };
             setMe(data || null);
             setMyData(core);
+
+            const sv = data?.sectionVersions || {};
+            setMySectionVersions({
+              core: sv.core ?? DEFAULT_SECTION_VERSIONS.core,
+              bills: sv.bills ?? DEFAULT_SECTION_VERSIONS.bills,
+              goals: sv.goals ?? DEFAULT_SECTION_VERSIONS.goals,
+              budgets: sv.budgets ?? DEFAULT_SECTION_VERSIONS.budgets,
+              accounts: sv.accounts ?? DEFAULT_SECTION_VERSIONS.accounts,
+              allocations:
+                sv.allocations ?? DEFAULT_SECTION_VERSIONS.allocations,
+              income: sv.income ?? DEFAULT_SECTION_VERSIONS.income,
+              billSharing:
+                sv.billSharing ?? DEFAULT_SECTION_VERSIONS.billSharing,
+              expenses: sv.expenses ?? DEFAULT_SECTION_VERSIONS.expenses,
+            });
+
             setHasCached(true);
             try {
               setHouseholdLoading(true);
@@ -367,6 +436,7 @@ export default function App() {
             // No Firestore doc yet -> start with a blank plan so the UI can render
             setMe(null);
             setMyData(emptyUserData);
+            setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
             setHasCached(true);
           }
         },
@@ -377,6 +447,7 @@ export default function App() {
           if (!myData) {
             setMyData(emptyUserData); // Fallback so UI can still render
           }
+          setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
           setHasCached(true);
         }
       );
@@ -391,7 +462,8 @@ export default function App() {
         userUnsubRef.current = null;
       }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const logout = useCallback(() => {
     if (isAgentDemo) {
@@ -401,38 +473,78 @@ export default function App() {
     auth.signOut().catch(console.warn);
   }, []);
 
-  // --- Handlers ---
+  // --- Handlers with per-section conflict detection ---
+
   const handleUpdateBills = useCallback(
-    (nextBills) => {
+    async (nextBills) => {
       const base = myData || emptyUserData;
-      const nextData = { ...base, bills: nextBills };
-      // Always update local state so UI reflects change
-      setMyData(nextData);
+      const optimistic = { ...base, bills: nextBills };
+      setMyData(optimistic);
+
       // In demo mode, skip backend
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["bills"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, bills: nextBills },
+            touchedSections: ["bills"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to save bills", err);
+        if (err.message === "section-version-conflict" && err.section === "bills") {
+          alert(
+            "Your partner updated Bills while you were editing. We'll reload their latest changes so you can review and reapply yours."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleChangeBillAccount = useCallback(
-    (billId, accountId) => {
+    async (billId, accountId) => {
       const base = myData || emptyUserData;
       const updatedBills = (base.bills || []).map((b) =>
         b.id === billId ? { ...b, accountId } : b
       );
-      const nextData = { ...base, bills: updatedBills };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      const optimistic = { ...base, bills: updatedBills };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["bills"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, bills: updatedBills },
+            touchedSections: ["bills"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update bill account", err);
+        if (err.message === "section-version-conflict" && err.section === "bills") {
+          alert(
+            "Your partner updated Bills while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleTogglePaid = useCallback(
-    ({ billId, monthIndex, next }) => {
+    async ({ billId, monthIndex, next }) => {
       const base = myData || emptyUserData;
       const startDate = base.startDate || DEFAULT_START_DATE;
       const dateStr = getDateStrForMonthIndex(startDate, monthIndex);
@@ -440,136 +552,350 @@ export default function App() {
       const map = { ...(base.paidBills || {}) };
       if (next) map[key] = true;
       else delete map[key];
-      const nextData = { ...base, paidBills: map };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      const optimistic = { ...base, paidBills: map };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["bills"],
+          mySectionVersions,
+          (serverData) => {
+            const current = { ...(serverData.paidBills || {}) };
+            if (next) current[key] = true;
+            else delete current[key];
+            return {
+              nextData: { ...serverData, paidBills: current },
+              touchedSections: ["bills"],
+            };
+          }
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to toggle bill paid", err);
+        if (err.message === "section-version-conflict" && err.section === "bills") {
+          alert(
+            "Your partner updated Bills while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleBulkMark = useCallback(
-    ({ billIds, monthIndex, value }) => {
+    async ({ billIds, monthIndex, value }) => {
       const base = myData || emptyUserData;
       const startDate = base.startDate || DEFAULT_START_DATE;
       const dateStr = getDateStrForMonthIndex(startDate, monthIndex);
-      const map = { ...(base.paidBills || {}) };
+      const optimisticMap = { ...(base.paidBills || {}) };
+
       billIds.forEach((billId) => {
         const key = `${dateStr}:${billId}`;
-        if (value) map[key] = true;
-        else delete map[key];
+        if (value) optimisticMap[key] = true;
+        else delete optimisticMap[key];
       });
-      const nextData = { ...base, paidBills: map };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+
+      const optimistic = { ...base, paidBills: optimisticMap };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["bills"],
+          mySectionVersions,
+          (serverData) => {
+            const current = { ...(serverData.paidBills || {}) };
+            billIds.forEach((billId) => {
+              const key = `${dateStr}:${billId}`;
+              if (value) current[key] = true;
+              else delete current[key];
+            });
+            return {
+              nextData: { ...serverData, paidBills: current },
+              touchedSections: ["bills"],
+            };
+          }
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to bulk mark bills", err);
+        if (err.message === "section-version-conflict" && err.section === "bills") {
+          alert(
+            "Your partner updated Bills while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleUpdateAccounts = useCallback(
-    (nextAccounts, nextResidualId) => {
+    async (nextAccounts, nextResidualId) => {
       const base = myData || emptyUserData;
       const safeResidual =
         nextResidualId ||
         base.residualAccountId ||
         (nextAccounts[0] && nextAccounts[0].id) ||
         null;
-      const nextData = {
+      const optimistic = {
         ...base,
         accounts: nextAccounts,
         residualAccountId: safeResidual,
       };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["accounts"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: {
+              ...serverData,
+              accounts: nextAccounts,
+              residualAccountId: safeResidual,
+            },
+            touchedSections: ["accounts"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update accounts", err);
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "accounts"
+        ) {
+          alert(
+            "Your partner updated Accounts while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleUpdateAllocationRules = useCallback(
-    (nextRules) => {
+    async (nextRules) => {
       const base = myData || emptyUserData;
-      const nextData = { ...base, allocationRules: nextRules };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      const optimistic = { ...base, allocationRules: nextRules };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["allocations"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, allocationRules: nextRules },
+            touchedSections: ["allocations"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update allocation rules", err);
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "allocations"
+        ) {
+          alert(
+            "Your partner updated allocation rules while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleUpdateIncomeAndPaySchedule = useCallback(
-    (nextIncome, nextPaySchedule) => {
+    async (nextIncome, nextPaySchedule) => {
       const base = myData || emptyUserData;
-      const nextData = {
+      const optimistic = {
         ...base,
         income: nextIncome,
         paySchedule: nextPaySchedule,
       };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["income"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: {
+              ...serverData,
+              income: nextIncome,
+              paySchedule: nextPaySchedule,
+              // extraIncomes stays as-is here
+            },
+            touchedSections: ["income"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update income/pay schedule", err);
+        if (err.message === "section-version-conflict" && err.section === "income") {
+          alert(
+            "Your partner updated income or pay schedule while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleUpdateGoals = useCallback(
-    (newGoals) => {
+    async (newGoals) => {
       const base = myData || emptyUserData;
-      const nextData = { ...base, goals: newGoals };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      const optimistic = { ...base, goals: newGoals };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["goals"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, goals: newGoals },
+            touchedSections: ["goals"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update goals", err);
+        if (err.message === "section-version-conflict" && err.section === "goals") {
+          alert(
+            "Your partner updated Goals while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleUpdateBudgets = useCallback(
-    (newBudgetsObj) => {
+    async (newBudgetsObj) => {
       const base = myData || emptyUserData;
-      const nextData = { ...base, categoryBudgets: newBudgetsObj };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      const optimistic = { ...base, categoryBudgets: newBudgetsObj };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["budgets"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, categoryBudgets: newBudgetsObj },
+            touchedSections: ["budgets"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update budgets", err);
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "budgets"
+        ) {
+          alert(
+            "Your partner updated Budgets while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleUpdateStartingBalance = useCallback(
-    (nextStartingBalance) => {
+    async (nextStartingBalance) => {
       const base = myData || emptyUserData;
-      const nextData = { ...base, startingBalance: nextStartingBalance };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      const optimistic = { ...base, startingBalance: nextStartingBalance };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["core"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, startingBalance: nextStartingBalance },
+            touchedSections: ["core"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update starting balance", err);
+        if (err.message === "section-version-conflict" && err.section === "core") {
+          alert(
+            "Your partner updated core plan settings while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
-  // Central update handler for expenses
   const handleUpdateExpenses = useCallback(
-    (nextExpenses) => {
+    async (nextExpenses) => {
       const base = myData || emptyUserData;
-      const nextData = { ...base, expenses: nextExpenses };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      const optimistic = { ...base, expenses: nextExpenses };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["expenses"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, expenses: nextExpenses },
+            touchedSections: ["expenses"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update expenses", err);
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "expenses"
+        ) {
+          alert(
+            "Your partner updated Expenses while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleAddExpense = useCallback(
     (newExpense) => {
-      // Delegate to handleUpdateExpenses for consistent update logic
       const current = myData?.expenses || [];
       handleUpdateExpenses([...current, newExpense]);
     },
@@ -577,68 +903,167 @@ export default function App() {
   );
 
   const handleUpdateExtraIncome = useCallback(
-    (newExtraIncomes) => {
+    async (newExtraIncomes) => {
       const base = myData || emptyUserData;
-      const nextData = { ...base, extraIncomes: newExtraIncomes };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch(console.warn);
+      const optimistic = { ...base, extraIncomes: newExtraIncomes };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["income"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, extraIncomes: newExtraIncomes },
+            touchedSections: ["income"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update extra incomes", err);
+        if (err.message === "section-version-conflict" && err.section === "income") {
+          alert(
+            "Your partner updated income-related data while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   const handleUpdateBillSharing = useCallback(
-    (nextBillSharing) => {
+    async (nextBillSharing) => {
       const base = myData || emptyUserData;
-      const nextData = { ...base, billSharing: nextBillSharing };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
-      saveUserPartial(auth.currentUser.uid, nextData).catch((e) =>
-        console.warn("Failed to update bill sharing", e)
-      );
+      const optimistic = { ...base, billSharing: nextBillSharing };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      try {
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["billSharing"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, billSharing: nextBillSharing },
+            touchedSections: ["billSharing"],
+          })
+        );
+        setMySectionVersions(newSectionVersions);
+      } catch (err) {
+        console.warn("Failed to update bill sharing", err);
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "billSharing"
+        ) {
+          alert(
+            "Your partner updated bill sharing settings while you were editing. We'll reload their latest changes so you can review."
+          );
+        }
+      }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
-  const handleUpdateProfile = useCallback(
-    (updates) => {
-      // In demo mode, update local "me" so UI reflects change
-      if (isAgentDemo) {
-        setMe((prev) => {
-          const prevProfile = prev?.profile || {};
-          return {
-            ...(prev || {}),
-            profile: { ...prevProfile, ...updates },
-          };
-        });
-        return;
-      }
-      if (!auth.currentUser) return;
-      saveUserProfile(auth.currentUser.uid, updates).catch(console.warn);
-    },
-    []
-  );
+  const handleUpdateProfile = useCallback((updates) => {
+    // In demo mode, update local "me" so UI reflects change
+    if (isAgentDemo) {
+      setMe((prev) => {
+        const prevProfile = prev?.profile || {};
+        return {
+          ...(prev || {}),
+          profile: { ...prevProfile, ...updates },
+        };
+      });
+      return;
+    }
+    if (!auth.currentUser) return;
+    saveUserProfile(auth.currentUser.uid, updates).catch(console.warn);
+  }, []);
 
   const handleInfographicMergeWrite = useCallback(
     async (payload) => {
       const base = myData || emptyUserData;
-      const nextData = { ...base, ...payload };
-      setMyData(nextData);
-      if (window.__TEST_USER__) return;
-      if (!auth.currentUser) return;
+      const optimistic = { ...base, ...payload };
+      setMyData(optimistic);
+
+      // eslint-disable-next-line no-undef
+      if (window.__TEST_USER__ || !auth.currentUser) return;
+
+      // Infer which sections are touched by the infographic payload
+      const sections = new Set();
+      if ("goals" in payload) sections.add("goals");
+      if ("categoryBudgets" in payload) sections.add("budgets");
+      if ("accounts" in payload || "residualAccountId" in payload)
+        sections.add("accounts");
+      if ("allocationRules" in payload) sections.add("allocations");
+      if (
+        "income" in payload ||
+        "paySchedule" in payload ||
+        "extraIncomes" in payload
+      )
+        sections.add("income");
+      if ("expenses" in payload) sections.add("expenses");
+      if ("billSharing" in payload) sections.add("billSharing");
+      if (
+        "startingBalance" in payload ||
+        "startDate" in payload ||
+        "balanceSplit" in payload
+      )
+        sections.add("core");
+
+      const sectionList = Array.from(sections);
+      if (sectionList.length === 0) {
+        // Fallback: just do a simple merge write
+        try {
+          await saveUserPartial(auth.currentUser.uid, optimistic);
+        } catch (e) {
+          console.warn("Failed to sync infographic planning data", e);
+        }
+        return;
+      }
+
       try {
-        await saveUserPartial(auth.currentUser.uid, nextData);
+        const newSectionVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          sectionList,
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, ...payload },
+            touchedSections: sectionList,
+          })
+        );
+        setMySectionVersions(newSectionVersions);
       } catch (e) {
         console.warn("Failed to sync infographic planning data", e);
+        if (e.message === "section-version-conflict") {
+          alert(
+            "Your partner updated some parts of the plan while you were editing the dashboard. We'll reload their latest changes so you can review."
+          );
+        }
       }
     },
-    [myData]
+    [myData, mySectionVersions]
   );
 
   // --- derived values ---
   const canEnter = useMemo(() => !!user, [user]);
+
+  // Unified starting balance across app
+  const unifiedStartingBalance = useMemo(() => {
+    const acct = myData?.accounts || [];
+    if (acct.length > 0) {
+      return acct.reduce(
+        (sum, a) => sum + (Number(a.openingBalance || 0) || 0),
+        0
+      );
+    }
+    return Number(myData?.startingBalance || 0);
+  }, [myData?.accounts, myData?.startingBalance]);
 
   const balances = useMemo(() => {
     const data = myData || emptyUserData;
@@ -667,33 +1092,31 @@ export default function App() {
     return flags;
   }, [myData?.paidBills, myData?.startDate]);
 
-  // Determine a safe starting date. If the user hasn't specified a
-  // startDate yet (e.g. when first adding a bill), fall back to
-  // today's date instead of the hard-coded DEFAULT_START_DATE to
-  // prevent crashes in downstream date computations. dayjs formats
-  // consistently as YYYY-MM-DD.
   const safeStartDate = useMemo(() => {
     const candidate = myData?.startDate;
     if (candidate) return candidate;
-    // Fall back to today in YYYY-MM-DD format. Use native Date API to
-    // avoid bringing in external dependencies.
     return new Date().toISOString().slice(0, 10);
   }, [myData?.startDate]);
   const startDate = safeStartDate;
-  const accounts = useMemo(
-    () =>
-      myData?.accounts || [
-        {
-          id: "chequing",
-          name: "Chequing",
-          type: "deposit",
-          openingBalance: myData?.startingBalance ?? DEFAULT_STARTING_BALANCE,
-        },
-      ],
-    [myData]
-  );
+
+  const accounts = useMemo(() => {
+    const acct = myData?.accounts;
+    if (acct && acct.length > 0) {
+      return acct;
+    }
+    return [
+      {
+        id: "chequing",
+        name: "Chequing",
+        type: "deposit",
+        openingBalance: unifiedStartingBalance,
+      },
+    ];
+  }, [myData?.accounts, unifiedStartingBalance]);
+
   const allocationRules = myData?.allocationRules || [];
   const residualAccountId = myData?.residualAccountId || accounts[0]?.id;
+
   const income = useMemo(
     () => ({
       husband: Number(myData?.income?.husband || DEFAULT_INCOME.husband),
@@ -701,10 +1124,12 @@ export default function App() {
     }),
     [myData]
   );
+
   const paySchedule = useMemo(
     () => myData?.paySchedule || DEFAULT_PAY_SCHEDULE,
     [myData]
   );
+
   const extraIncomes = useMemo(
     () => myData?.extraIncomes || [],
     [myData]
@@ -754,12 +1179,6 @@ export default function App() {
     }));
   }, [householdBills, myData, user, role]);
 
-  // Derive a list of active budgets for the Home dashboard.  Legacy
-  // budgets without a status field are considered active.  When a
-  // shared budget has contributions defined we sum the H + W
-  // contributions to compute its monthly amount; otherwise fall back to
-  // the legacy `amount` field.  Pending or rejected budgets are
-  // excluded from the dashboard entirely.
   const budgetListForHome = useMemo(() => {
     const raw = myData?.categoryBudgets || {};
     const list = [];
@@ -788,12 +1207,13 @@ export default function App() {
     [myData?.goals]
   );
 
-  // Count pending shared goals/budgets requiring my approval
-  const pendingSharedGoalsForMe = useMemo(() => {
-    return (myData?.goals || []).filter(
-      (g) => g?.status === "pending" && g?.pendingFor === role
-    ).length;
-  }, [myData?.goals, role]);
+  const pendingSharedGoalsForMe = useMemo(
+    () =>
+      (myData?.goals || []).filter(
+        (g) => g?.status === "pending" && g?.pendingFor === role
+      ).length,
+    [myData?.goals, role]
+  );
 
   const pendingSharedBudgetsForMe = useMemo(() => {
     const raw = myData?.categoryBudgets || {};
@@ -812,7 +1232,6 @@ export default function App() {
     );
   }
 
-  // In demo mode, if some race leaves us without user yet, show a safe loader
   if (isAgentDemo && !canEnter) {
     return (
       <ErrorBoundary>
@@ -850,11 +1269,10 @@ export default function App() {
             </button>
 
             <p className="text-[10px] text-slate-400 text-center mt-2">
-              Your data is stored securely in Firebase and can be unlinked at any
-              time.
+              Your data is stored securely in Firebase and can be unlinked at
+              any time.
             </p>
           </div>
-
         </Wrapper>
       </ErrorBoundary>
     );
@@ -871,7 +1289,10 @@ export default function App() {
                 Smart Cash Flow Planner
               </div>
               <div className="text-xs font-semibold text-slate-900">
-                Hi {me?.profile?.displayName?.split(" ")[0] || user?.displayName?.split(" ")[0] || "there"}
+                Hi{" "}
+                {me?.profile?.displayName?.split(" ")[0] ||
+                  user?.displayName?.split(" ")[0] ||
+                  "there"}
               </div>
             </div>
           </div>
@@ -885,7 +1306,6 @@ export default function App() {
         </div>
 
         {tab === "home" && (
-          // Step 2 – Home wired to accounts, allocationRules, residualAccountId, startingBalance
           <Home
             role={role}
             personScope={personScope}
@@ -900,7 +1320,9 @@ export default function App() {
             accounts={accounts}
             allocationRules={allocationRules}
             residualAccountId={residualAccountId}
-            startingBalance={myData?.startingBalance ?? DEFAULT_STARTING_BALANCE}
+            startingBalance={
+              myData?.startingBalance ?? DEFAULT_STARTING_BALANCE
+            }
             budgets={budgetListForHome}
             savingsToDate={savingsToDate}
             onAddExpense={() => setIsExpenseModalOpen(true)}
@@ -911,13 +1333,11 @@ export default function App() {
             pendingGoalsCount={pendingSharedGoalsForMe}
             pendingBudgetsCount={pendingSharedBudgetsForMe}
             onGoToReviewPending={() => {
-              // Priority: Goals then Budgets
               if (pendingSharedGoalsForMe > 0) {
                 handleGoToSettingsSection("goals");
               } else if (pendingSharedBudgetsForMe > 0) {
                 handleGoToSettingsSection("budgets");
               } else {
-                // Default fallback if counts are stale
                 handleGoToSettingsSection("goals");
               }
             }}
@@ -952,12 +1372,18 @@ export default function App() {
             liveIncome={income}
             livePaySchedule={paySchedule}
             liveBills={displayedBills}
+            liveAccounts={accounts}
+            liveStartingBalance={unifiedStartingBalance}
+            liveAllocationRules={allocationRules}
             liveGoals={myData?.goals || []}
             liveCategoryBudgets={myData?.categoryBudgets || {}}
             paidBills={paidFlags}
             mergeWrite={handleInfographicMergeWrite}
             liveExtraIncomes={extraIncomes}
             onUpdateExtraIncomes={handleUpdateExtraIncome}
+            liveExpenses={myData?.expenses || []}
+            mode={mode}
+            setMode={setMode}
           />
         )}
 
@@ -990,11 +1416,13 @@ export default function App() {
             startDate={startDate}
             startingBalance={myData?.startingBalance ?? DEFAULT_STARTING_BALANCE}
             accounts={accounts}
+            bills={myData?.bills || []}                 
             residualAccountId={residualAccountId}
             allocationRules={allocationRules}
             income={income}
             paySchedule={paySchedule}
             onUpdateAccounts={handleUpdateAccounts}
+            onUpdateBills={handleUpdateBills}          
             onUpdateAllocationRules={handleUpdateAllocationRules}
             onUpdateIncomeAndPaySchedule={handleUpdateIncomeAndPaySchedule}
             goals={myData?.goals || []}

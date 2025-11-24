@@ -21,6 +21,13 @@ import {
  * - memberNames?: { H?: string, W?: string }
  * - accounts?: Array<{ id: string, name: string }>
  * - residualAccountId?: string
+ * - categoryBudgets?: {
+ *     [key: string]: {
+ *       label?: string,
+ *       scope?: 'personal'|'shared',
+ *       owner?: 'H'|'W'|null
+ *     }
+ *   }                     // NEW: drives the category dropdown
  * - onTogglePaid?: ({ billId, monthIndex, next }) => void
  * - onBulkMark?: ({ billIds, monthIndex, value }) => void
  * - onChangeBillAccount?: (billId: string, accountId: string) => void
@@ -202,6 +209,7 @@ export default function Bills({
   memberNames = { H: "Partner H", W: "Partner W" },
   accounts = [],
   residualAccountId,
+  categoryBudgets = {}, // NEW: drives the category dropdown
   onTogglePaid,
   onBulkMark,
   onChangeBillAccount,
@@ -231,6 +239,63 @@ export default function Bills({
   // state can show account selector if needed.
   const hasAccounts = accounts && accounts.length > 0;
 
+  // ---------- budget category options (from categoryBudgets + visibility rules) ----------
+  const budgetOptions = useMemo(() => {
+    const raw = categoryBudgets || {};
+    const arr = Object.entries(raw).map(([key, cfg]) => ({
+      key,
+      label: cfg?.label || key,
+      scope: cfg?.scope || "shared",
+      owner: cfg?.owner ?? null,
+    }));
+
+    // If role is unknown/other, show all categories (admin-style)
+    if (role !== "H" && role !== "W") return arr;
+
+    // Otherwise apply same visibility rule as Settings:
+    // - show all shared
+    // - show personal only if owner === role
+    return arr.filter((b) => {
+      const scope = b.scope || "shared";
+      if (scope === "shared") return true;
+      if (!b.owner) return true; // legacy entries without owner remain visible
+      return b.owner === role;
+    });
+  }, [categoryBudgets, role]);
+
+  const categoryLabelForKey = useCallback(
+    (key) => {
+      if (!key) return "";
+      const found = budgetOptions.find((b) => b.key === key);
+      return found?.label || "";
+    },
+    [budgetOptions]
+  );
+
+  const categoryKeyForBill = useCallback(
+    (bill) => {
+      const current = bill?.category || "";
+      if (!current) return "";
+      // If it already matches a key, keep it
+      if (budgetOptions.some((b) => b.key === current)) return current;
+      // Try to map by label (for legacy bills where category was the label)
+      const byLabel = budgetOptions.find((b) => b.label === current);
+      return byLabel ? byLabel.key : "";
+    },
+    [budgetOptions]
+  );
+
+  const categoryLabelForBill = useCallback(
+    (bill) => {
+      const key = categoryKeyForBill(bill);
+      const label = categoryLabelForKey(key);
+      return label || bill?.category || "";
+    },
+    [categoryKeyForBill, categoryLabelForKey]
+  );
+
+  const defaultCategoryKey = budgetOptions.length ? budgetOptions[0].key : "";
+
   // Helper to begin adding a new bill.  Sets up a draft with sensible
   // defaults and enters the editing state.  This is used in both the empty
   // and normal views.
@@ -244,10 +309,11 @@ export default function Bills({
       amount: "",
       dueDay: 1,
       payer: role,
-      category: "",
+      // Category is now a budget key; default to first visible budget if any
+      category: defaultCategoryKey,
       accountId: defaultAccountId,
     });
-  }, [onUpdateBills, residualAccountId, accounts, role]);
+  }, [onUpdateBills, residualAccountId, accounts, role, defaultCategoryKey]);
 
   // Determine if the list is empty.  We avoid early returns so that
   // React hooks maintain a consistent call order across renders.
@@ -414,7 +480,8 @@ export default function Bills({
       amount: bill.amount ?? "",
       dueDay: bill.dueDay || 1,
       payer: bill.payer || role,
-      category: bill.category || "",
+      // category stored as budget key, but map legacy values too
+      category: categoryKeyForBill(bill) || defaultCategoryKey,
       accountId: resolveAccountId(bill),
     });
   };
@@ -435,6 +502,7 @@ export default function Bills({
       Math.max(1, parseInt(draft.dueDay || 1, 10))
     );
     const accountId = resolveAccountId({ ...draft, dueDay: cleanDueDay });
+    const categoryKey = draft.category || "";
     let nextBills;
     if (editingId === "new") {
       const id =
@@ -448,7 +516,8 @@ export default function Bills({
         amount: cleanAmount,
         dueDay: cleanDueDay,
         payer: draft.payer || role,
-        category: draft.category || "",
+        // category is now a budget key (or empty string if none)
+        category: categoryKey,
         accountId,
       };
       nextBills = [...bills, newBill];
@@ -461,7 +530,7 @@ export default function Bills({
               amount: cleanAmount,
               dueDay: cleanDueDay,
               payer: draft.payer || b.payer,
-              category: draft.category || b.category,
+              category: categoryKey || b.category,
               accountId,
             }
           : b
@@ -592,14 +661,26 @@ export default function Bills({
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] text-slate-500">Category</span>
-                    <input
-                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                      value={draft.category}
+                    <select
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
+                      value={draft.category || ""}
                       onChange={(e) =>
                         setDraft((d) => ({ ...d, category: e.target.value }))
                       }
-                      placeholder="e.g. utilities"
-                    />
+                    >
+                      {budgetOptions.length === 0 ? (
+                        <option value="">No budget categories</option>
+                      ) : (
+                        <>
+                          <option value="">Select</option>
+                          {budgetOptions.map((b) => (
+                            <option key={b.key} value={b.key}>
+                              {b.label}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
                   </label>
                 </div>
                 {/* account selector if accounts exist */}
@@ -645,6 +726,7 @@ export default function Bills({
                         Math.max(1, parseInt(draft.dueDay || 1, 10))
                       );
                       const accountId = draft.accountId || "";
+                      const categoryKey = draft.category || "";
                       const id =
                         draft.id ||
                         `${
@@ -658,7 +740,7 @@ export default function Bills({
                         amount: cleanAmount,
                         dueDay: cleanDueDay,
                         payer: draft.payer || role,
-                        category: draft.category || "",
+                        category: categoryKey,
                         accountId,
                       };
                       onUpdateBills([...(bills || []), newBill]);
@@ -782,14 +864,26 @@ export default function Bills({
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] text-slate-500">Category</span>
-                    <input
-                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
-                      value={draft.category}
+                    <select
+                      className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
+                      value={draft.category || ""}
                       onChange={(e) =>
                         setDraft((d) => ({ ...d, category: e.target.value }))
                       }
-                      placeholder="e.g. utilities"
-                    />
+                    >
+                      {budgetOptions.length === 0 ? (
+                        <option value="">No budget categories</option>
+                      ) : (
+                        <>
+                          <option value="">Select</option>
+                          {budgetOptions.map((b) => (
+                            <option key={b.key} value={b.key}>
+                              {b.label}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
                   </label>
                 </div>
                 <div className="mt-1">
@@ -848,6 +942,7 @@ export default function Bills({
                   ? acct.name
                   : acctId || "Unassigned"
                 : item.accountId || "Unassigned";
+              const catLabel = categoryLabelForBill(item);
               return (
                 <div
                   key={`${item.id}-${item.monthIndex}`}
@@ -884,6 +979,11 @@ export default function Bills({
                             ? memberNames.W || "Partner W"
                             : "Auto"}
                         </span>
+                        {catLabel && (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                            {catLabel}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1">

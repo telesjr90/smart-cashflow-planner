@@ -1,3 +1,4 @@
+// Updated to fix starting balance + actual mode wiring
 // Updated in Step 4 – Dashboard starting balances from real data
 // src/MonthlyCashFlowInfographic.jsx
 //
@@ -31,7 +32,6 @@ const TARGET_W_SHARE = 0.49;
 
 const DEFAULT_START_DATE = "2025-11-15";
 const DEFAULT_STARTING_BALANCE = 0;
-const DEFAULT_BALANCE_SPLIT = { husband: 0, wife: 0 };
 
 const clampNumber = (n) => (Number.isFinite(n) ? n : 0);
 const fmt = (v) =>
@@ -39,6 +39,19 @@ const fmt = (v) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+
+// Helper to sum opening balances from account objects.
+// Falls back to a provided starting balance if no accounts exist.
+function sumOpeningBalance(accounts, fallbackStartingBalance = 0) {
+  if (Array.isArray(accounts) && accounts.length) {
+    return accounts.reduce(
+      (sum, acc) => sum + clampNumber(acc?.openingBalance ?? 0),
+      0
+    );
+  }
+  const fb = Number(fallbackStartingBalance || 0);
+  return Number.isFinite(fb) ? fb : 0;
+}
 
 // No sample bills initially; live bills will overwrite this array
 const initialBills = [];
@@ -62,12 +75,6 @@ function autoAssignBills(allBills) {
     ).push({
       ...b,
     })
-  );
-
-const sumOpeningBalance = (accounts) =>
-  (Array.isArray(accounts) ? accounts : []).reduce(
-    (sum, acc) => sum + clampNumber(acc?.openingBalance ?? 0),
-    0
   );
 
   const total = allBills.reduce((s, b) => s + b.amount, 0);
@@ -150,13 +157,12 @@ function computeGoalContributions(goals = []) {
   return contributions;
 }
 
-// Reducer to take raw engine results and produce infographic-friendly rows
+// Reducer to take raw engine results and produce infographic-friendly rows.
+// NOTE: Our engine currently does not attach per-week data to monthlySummary;
+// this helper is kept for compatibility with the upstream shape and will
+// gracefully no-op when weeks are absent.
 function buildWeeklyView({
-  startDate,
   monthlySummary,
-  bills,
-  income,
-  extraIncomes,
 }) {
   if (!monthlySummary || !monthlySummary.length)
     return {
@@ -234,21 +240,24 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     liveAllocationRules,
     // Phase 3 props
     liveExtraIncomes,
-    onUpdateExtraIncomes,
+    onUpdateExtraIncomes, // (not used here yet, but kept for compatibility)
     // Phase 4 props: goals & budgets (read-only here)
     liveGoals,
     liveCategoryBudgets,
     // Mode control props (optional)
     mode: modeProp,
     setMode: setModeProp,
+    // NEW: live expenses + residual account from App
+    liveExpenses,
+    residualAccountId: residualAccountIdProp,
   } = props;
 
-  // Planning state
+  // Planning state (kept mostly for persistence / FS mirror,
+  // but starting balance is now driven from liveAccounts/liveStartingBalance).
   const [startDate, setStartDate] = useState(DEFAULT_START_DATE);
   const [startingBalance, setStartingBalance] = useState(
     DEFAULT_STARTING_BALANCE
   );
-  const [balanceSplit, setBalanceSplit] = useState(DEFAULT_BALANCE_SPLIT);
 
   // Partner incomes default to zero until provided via live props or user input
   const [hIncome, setHIncome] = useState(0);
@@ -391,7 +400,6 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       if (saved.startDate) setStartDate(saved.startDate);
       if (typeof saved.startingBalance === "number")
         setStartingBalance(saved.startingBalance);
-      if (saved.balanceSplit) setBalanceSplit(saved.balanceSplit);
       if (saved.hIncome) setHIncome(saved.hIncome);
       if (saved.wIncome) setWIncome(saved.wIncome);
       if (saved.bills) setBills(saved.bills);
@@ -413,7 +421,6 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       if (!liveStartDate && data.startDate) setStartDate(data.startDate);
       if (typeof data.startingBalance === "number")
         setStartingBalance(data.startingBalance);
-      if (data.balanceSplit) setBalanceSplit(data.balanceSplit);
       if (!liveBills && Array.isArray(data.bills)) setBills(data.bills);
       if (!liveExtraIncomes && Array.isArray(data.extraIncomes))
         setExtraIncomes(data.extraIncomes);
@@ -426,6 +433,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     },
     [liveStartDate, liveBills, liveIncome, liveExtraIncomes]
   );
+
   const loadFsFacts = useCallback(async () => {
     if (usePropFacts || !userDocRef) return;
     setFsError(null);
@@ -441,6 +449,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       setFsError("Unable to load latest data. Working locally.");
     }
   }, [userDocRef, usePropFacts, overlayPlanningFromFs]);
+
   useEffect(() => {
     loadFsFacts();
   }, [loadFsFacts]);
@@ -450,7 +459,6 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     const toSave = {
       startDate,
       startingBalance,
-      balanceSplit,
       hIncome,
       wIncome,
       bills,
@@ -468,7 +476,6 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   }, [
     startDate,
     startingBalance,
-    balanceSplit,
     hIncome,
     wIncome,
     bills,
@@ -479,53 +486,31 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     mode,
   ]);
 
-  // Hydrate starting balance & split from live accounts / props when no saved value
+  // --- Starting balance hydration ---
+  // Compute the unified starting balance from live accounts + liveStartingBalance
+  const inferredStartingBalance = useMemo(
+    () =>
+      sumOpeningBalance(
+        liveAccounts,
+        typeof liveStartingBalance === "number"
+          ? liveStartingBalance
+          : DEFAULT_STARTING_BALANCE
+      ),
+    [liveAccounts, liveStartingBalance]
+  );
+
+  // Keep local startingBalance in sync with the unified starting balance.
   useEffect(() => {
-    // Do not override an explicit or previously loaded starting balance
-    if (
-      typeof startingBalance === "number" &&
-      startingBalance !== DEFAULT_STARTING_BALANCE
-    ) {
-      return;
+    if (typeof inferredStartingBalance !== "number") return;
+    if (startingBalance !== inferredStartingBalance) {
+      setStartingBalance(inferredStartingBalance);
     }
-
-    if (
-      typeof liveStartingBalance === "number" &&
-      liveStartingBalance > 0
-    ) {
-      setStartingBalance(liveStartingBalance);
-      return;
-    }
-
-    const totalFromAccounts = sumOpeningBalance(liveAccounts);
-    if (!totalFromAccounts) return;
-
-    setStartingBalance(totalFromAccounts);
-
-    // If no split has been configured yet, derive a simple split so the engine
-    // starts from the real household total instead of zero.
-    const h = clampNumber(balanceSplit.husband || 0);
-    const w = clampNumber(balanceSplit.wife || 0);
-    if (h === 0 && w === 0) {
-      const half = Math.round(totalFromAccounts / 2);
-      setBalanceSplit({
-        husband: half,
-        wife: totalFromAccounts - half,
-      });
-    }
-  }, [
-    liveStartingBalance,
-    liveAccounts,
-    startingBalance,
-    balanceSplit.husband,
-    balanceSplit.wife,
-  ]);
+  }, [inferredStartingBalance, startingBalance]);
 
   // Debounced Firestore mirror
   const planMirrorDeps = [
     startDate,
     startingBalance,
-    balanceSplit,
     hIncome,
     wIncome,
     bills,
@@ -545,7 +530,6 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     debouncedFsMirror({
       startDate,
       startingBalance,
-      balanceSplit,
       hIncome,
       wIncome,
       bills,
@@ -560,6 +544,8 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   // --- Bills & goal wiring helpers ---
 
   // Enhance bills with partner/payer semantics.  AUTO means "let the app decide"
+  // This is retained for potential future use, but engine now uses liveBills
+  // directly with real accountId mappings.
   const finalBills = useMemo(() => {
     if (!Array.isArray(bills) || bills.length === 0) return [];
     const withDefaults = bills.map((b, idx) => ({
@@ -584,30 +570,56 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
   // Engine projection re-runs any time planning inputs or mode change
   const enginePaidBills = useMemo(() => paidBills || {}, [paidBills]);
+
   const engineProjection = useMemo(() => {
     if (!startDate) {
       return { monthlySummary: [], finalBalancesByAccount: {} };
     }
     try {
-      const accountsForEngine = [
-        {
-          id: "H",
-          type: "checking",
-          openingBalance: balanceSplit.husband || 0,
-        },
-        {
-          id: "W",
-          type: "checking",
-          openingBalance: balanceSplit.wife || 0,
-        },
-      ];
-      const engineBills = (finalBills || []).map((b) => ({
-        id: b.id,
-        name: b.name,
-        amount: b.amount,
-        dueDay: b.dueDay,
-        accountId: b.payer === "W" ? "W" : "H",
+      // Build accounts for engine from liveAccounts (single source of truth).
+      const accountsForEngine =
+        Array.isArray(liveAccounts) && liveAccounts.length
+          ? liveAccounts.map((a, idx) => ({
+              id: a.id || `acc-${idx}`,
+              type: a.type || "checking",
+              openingBalance: clampNumber(a.openingBalance || 0),
+            }))
+          : [
+              {
+                id: "default",
+                type: "checking",
+                openingBalance: clampNumber(
+                  typeof inferredStartingBalance === "number"
+                    ? inferredStartingBalance
+                    : startingBalance || 0
+                ),
+              },
+            ];
+
+      // Choose a safe residual account ID
+      const safeResidualId =
+        residualAccountIdProp &&
+        accountsForEngine.some((a) => a.id === residualAccountIdProp)
+          ? residualAccountIdProp
+          : accountsForEngine[0]?.id;
+
+      // Use liveBills as the engine's bill source so accountId wiring is preserved.
+      const sourceBills = Array.isArray(liveBills) ? liveBills : [];
+      const engineBills = sourceBills.map((b, idx) => ({
+        id: b.id || `b${idx}`,
+        name: b.name || "Bill",
+        amount: Number(b.amount || 0),
+        dueDay: b.dueDay != null ? b.dueDay : 1,
+        accountId:
+          (b.accountId &&
+            accountsForEngine.some((a) => a.id === b.accountId) &&
+            b.accountId) ||
+          safeResidualId,
+        status: b.status || "active",
       }));
+
+      const safeExpenses = Array.isArray(liveExpenses) ? liveExpenses : [];
+
       const { monthlySummary, finalBalancesByAccount } = projectCashflow({
         startDate,
         months: 14,
@@ -615,12 +627,13 @@ export default function MonthlyCashFlowInfographic(props = {}) {
         bills: engineBills,
         income: { husband: hIncome || 0, wife: wIncome || 0 },
         extraIncomes: extraIncomes,
+        expenses: safeExpenses,
         paySchedule:
           livePaySchedule && livePaySchedule.type
             ? livePaySchedule
             : { type: "semi-monthly", day1: 15, day2: "last" },
         allocationRules: liveAllocationRules || [],
-        residualAccountId: "H",
+        residualAccountId: safeResidualId,
         paidBills: enginePaidBills,
         mode: mode,
       });
@@ -634,9 +647,6 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     }
   }, [
     startDate,
-    balanceSplit.husband,
-    balanceSplit.wife,
-    finalBills,
     hIncome,
     wIncome,
     extraIncomes,
@@ -644,6 +654,12 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     livePaySchedule,
     liveAllocationRules,
     mode,
+    liveBills,
+    liveAccounts,
+    liveExpenses,
+    inferredStartingBalance,
+    startingBalance,
+    residualAccountIdProp,
   ]);
 
   const engineFirstMonth = useMemo(() => {
@@ -667,20 +683,19 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   const weeksView = useMemo(
     () =>
       buildWeeklyView({
-        startDate,
         monthlySummary: engineProjection.monthlySummary,
-        bills: finalBills,
-        income: { husband: hIncome, wife: wIncome },
-        extraIncomes,
       }),
-    [startDate, engineProjection, finalBills, hIncome, wIncome, extraIncomes]
+    [engineProjection]
   );
 
   // Total starting balance & end-of-month balances from the engine
+  // Starting balance now always reflects unified App-level truth:
+  // sumOpeningBalance(liveAccounts, liveStartingBalance)
   const totalStartBalance = useMemo(
-    () => (balanceSplit.husband || 0) + (balanceSplit.wife || 0),
-    [balanceSplit.husband, balanceSplit.wife]
+    () => inferredStartingBalance,
+    [inferredStartingBalance]
   );
+
   const totalEndBalance = useMemo(() => {
     const fb = engineProjection.finalBalancesByAccount || {};
     return Object.values(fb).reduce((sum, v) => sum + Number(v || 0), 0);
@@ -730,7 +745,8 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     };
   }, [totalEndBalance]);
 
-  // Discretionary calculations use goal contributions
+  // Discretionary calculations use goal contributions and the engine's
+  // first-month income/bills/net, which now include both bills and expenses.
   const discretionaryView = useMemo(() => {
     if (!engineFirstMonth) {
       return {
@@ -883,7 +899,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                 Starting Balance
               </div>
               <div className="font-bold text-slate-700 text-base">
-                {fmt(startingBalance || totalStartBalance)}
+                {fmt(totalStartBalance)}
               </div>
             </div>
             <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100">
