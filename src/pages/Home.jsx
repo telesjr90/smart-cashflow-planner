@@ -50,7 +50,20 @@ const fmt = (v) =>
     maximumFractionDigits: 2,
   })}`;
 
-const todayISO = () => new Date().toISOString().split("T")[0];
+// Today’s date helper using local time instead of UTC.  Using toISOString()
+// can yield tomorrow’s date when the local timezone is behind UTC.  We build
+// the date string manually from local date parts.  Example: Vancouver on
+// 2025-11-23 should produce "2025-11-23" rather than "2025-11-24".
+const todayISO = () => {
+  const now = new Date();
+  return (
+    now.getFullYear() +
+    "-" +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(now.getDate()).padStart(2, "0")
+  );
+};
 
 // Neutral fallback income: default to zero to avoid showing sample numbers
 const FALLBACK_INCOME = {

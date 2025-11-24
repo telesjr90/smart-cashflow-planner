@@ -1,4 +1,3 @@
-// src/pages/Bills.jsx
 import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   ListChecks,
@@ -342,7 +341,9 @@ export default function Bills({
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const saved = window?.localStorage?.getItem("billsSelectedMonth");
     const parsed = Number.isFinite(parseInt(saved)) ? parseInt(saved) : null;
-    return parsed != null ? parsed : defaultMonth;
+    const initial = parsed != null ? parsed : defaultMonth;
+    // Clamp to valid range (0..13) to avoid selecting out-of-bounds months when saved value is invalid
+    return Math.max(0, Math.min(13, initial));
   });
   useEffect(() => {
     try {

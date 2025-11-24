@@ -313,7 +313,11 @@ export function projectCashflow({
   const safeBills = Array.isArray(bills) ? bills : [];
   const safePaidBills = paidBills || {};
   const billEvents = [];
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // Compute today's date in the user's local timezone (YYYY-MM-DD).
+  // Using toISOString() can produce a different date when the local timezone is behind UTC
+  // (e.g. Vancouver on Nov 23 may yield 2025-11-24).  Use local date parts instead.
+  const _now = new Date();
+  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
   for (let m = 0; m < projectionMonths; m++) {
     for (const b of safeBills) {
       if (!b?.id) continue;
