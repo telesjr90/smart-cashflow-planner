@@ -678,7 +678,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
         net: Number(fromCents(w.net)),
       })),
     };
-  }, [engineProjection]);
+  }, [engineProjection, mode]);
 
   const weeksView = useMemo(
     () =>
@@ -697,9 +697,21 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   );
 
   const totalEndBalance = useMemo(() => {
+    // FIX: Dashboard must reflect *this month’s* projection,
+    // not the full 14-month horizon.
+    if (engineFirstMonth && typeof inferredStartingBalance === "number") {
+      return inferredStartingBalance + (engineFirstMonth.net || 0);
+    }
+
+    // Fallback: original behavior if summary unavailable
     const fb = engineProjection.finalBalancesByAccount || {};
     return Object.values(fb).reduce((sum, v) => sum + Number(v || 0), 0);
-  }, [engineProjection.finalBalancesByAccount]);
+  }, [
+    engineFirstMonth,
+    inferredStartingBalance,
+    engineProjection.finalBalancesByAccount,
+    mode,
+  ]);
 
   // Simple health descriptor based on end balance
   const healthDescriptor = useMemo(() => {
@@ -789,7 +801,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
         leftover: wNet - goalsW,
       },
     };
-  }, [engineFirstMonth, goalContributions, hIncome, wIncome]);
+  }, [engineFirstMonth, goalContributions, hIncome, wIncome, mode]);
 
   // Confirmed discretionary overrides
   const discretionaryForRole = useMemo(() => {
