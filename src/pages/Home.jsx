@@ -1,6 +1,3 @@
-// Updated Home.jsx – scoped "My / Household / Partner" cash view,
-// onboarding gating, and pending shared goals/budgets card.
-
 import React, { useMemo } from "react";
 import {
   Wallet,
@@ -195,6 +192,15 @@ export default function Home({
   pendingBudgetsCount = 0,
   onGoToReviewPending = () => {},
 }) {
+  // Derive active budgets and overspent count for the current view.
+  // If no budgets exist, fall back to an empty array. A budget is
+  // considered overspent when it has a positive total and its remaining
+  // amount is negative.
+  const activeBudgets = budgets || [];
+  const overspentCount = activeBudgets.filter(
+    (b) => b.total > 0 && b.remaining < 0
+  ).length;
+
   // --- Onboarding gating: only show "Let’s set up your plan" when *everything* is empty ---
   const hasIncome =
     income &&
@@ -687,7 +693,7 @@ export default function Home({
                 Overspent budgets
               </div>
               <div className="text-sm font-semibold mt-1">
-                {overspentCats || 0}
+                {overspentCount}
               </div>
             </div>
             <div className="bg-emerald-50 text-emerald-900 rounded-2xl p-2.5 flex flex-col justify-between border border-emerald-100">
@@ -729,8 +735,18 @@ export default function Home({
                       {b.name}
                     </span>
                   </div>
-                  <div className="text-slate-600">
-                    {fmt(b.remaining)} / {fmt(b.total)}
+                  <div className="flex flex-col items-end text-slate-600">
+                    <span className="text-xs text-slate-500">
+                      Spent {fmt(b.spent)} of {fmt(b.total)}
+                    </span>
+                    <span className="text-xs font-medium text-slate-700">
+                      Remaining {fmt(Math.max(0, b.remaining))}
+                    </span>
+                    {b.remaining < 0 && (
+                      <span className="ml-2 text-[11px] text-rose-500 font-semibold">
+                        Overspent by {fmt(Math.abs(b.remaining))}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))
