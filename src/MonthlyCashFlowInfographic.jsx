@@ -1,16 +1,12 @@
 // Updated to fix starting balance + actual mode wiring
 // Updated in Step 4 – Dashboard starting balances from real data
-// src/MonthlyCashFlowInfographic.jsx
 //
-// This component renders the monthly cash-flow “infographic” dashboard. It is
-// largely based on the upstream implementation from the smart-cashflow-planner
-// repository.  For Phase 3 we have introduced enhanced goal filtering and
-// contribution logic to support shared budgets and goals.  Any goal whose
-// status is "pending" or "rejected" is ignored (missing status defaults to
-// "active").  Shared goals sum partner contributions for the household total
-// and personal goals allocate the entire per-month amount to the creating
-// partner.  These totals feed into the discretionary budget calculations so
-// that partner-only views subtract each partner's goal savings individually.
+// This component renders the monthly cash-flow “infographic” dashboard.  It
+// builds on the upstream implementation and adds logic for shared goal
+// contributions, mode toggling and interactive discretionary balances.  In
+// addition to using the first-month net from the cashflow engine, we now
+// subtract any goal contributions when computing the end-of-month balance
+// and the available discretionary cash.  See QA bug #3 for details.
 
 import React, {
   useState,
@@ -123,9 +119,7 @@ function normalizeGoals(goals = []) {
 
 // Filter out pending/rejected goals
 function filterActiveGoals(goals = []) {
-  return normalizeGoals(goals).filter(
-    (g) => g.status === GOAL_STATUS_ACTIVE
-  );
+  return normalizeGoals(goals).filter((g) => g.status === GOAL_STATUS_ACTIVE);
 }
 
 // Compute partner-specific and household goal contributions per month
@@ -161,9 +155,7 @@ function computeGoalContributions(goals = []) {
 // NOTE: Our engine currently does not attach per-week data to monthlySummary;
 // this helper is kept for compatibility with the upstream shape and will
 // gracefully no-op when weeks are absent.
-function buildWeeklyView({
-  monthlySummary,
-}) {
+function buildWeeklyView({ monthlySummary }) {
   if (!monthlySummary || !monthlySummary.length)
     return {
       weeks: [],
@@ -182,13 +174,29 @@ function buildWeeklyView({
   };
 
   const weeks = firstMonth.weeks || [];
+  // Always render a continuous set of week rows (5 weeks max).
+  // The upstream engine may omit weeks that have no events, which causes the
+  // planner to skip week numbers (e.g. jump from Week 1 to Week 3).  To make
+  // the UI easier to scan, build a fixed number of week objects and fill
+  // missing entries with zero values and a placeholder label.  Each week
+  // retains any existing data from the engine and coerces income/bills/net
+  // from cents into numbers.
+  const maxWeeks = 5;
+  const resultWeeks = [];
+  for (let i = 0; i < maxWeeks; i++) {
+    const original = weeks[i] || {};
+    const weekNumber =
+      original.weekNumber || original.week || original.weekNum || i + 1;
+    resultWeeks.push({
+      ...original,
+      weekNumber,
+      income: Number(fromCents(original.income || 0)),
+      bills: Number(fromCents(original.bills || 0)),
+      net: Number(fromCents(original.net || 0)),
+    });
+  }
   return {
-    weeks: weeks.map((w) => ({
-      ...w,
-      income: Number(fromCents(w.income)),
-      bills: Number(fromCents(w.bills)),
-      net: Number(fromCents(w.net)),
-    })),
+    weeks: resultWeeks,
     summary: base,
   };
 }
@@ -697,10 +705,16 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   );
 
   const totalEndBalance = useMemo(() => {
-    // FIX: Dashboard must reflect *this month’s* projection,
-    // not the full 14-month horizon.
+    // Updated: subtract goal contributions from the first-month net to
+    // determine true end-of-month balance.  Contributions represent money
+    // allocated to savings and should reduce the available cash.  See QA bug #3.
     if (engineFirstMonth && typeof inferredStartingBalance === "number") {
-      return inferredStartingBalance + (engineFirstMonth.net || 0);
+      const contributionsSum =
+        (goalContributions?.H || 0) +
+        (goalContributions?.W || 0) +
+        (goalContributions?.household || 0);
+      const netAfterContrib = (engineFirstMonth.net || 0) - contributionsSum;
+      return inferredStartingBalance + netAfterContrib;
     }
 
     // Fallback: original behavior if summary unavailable
@@ -711,6 +725,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     inferredStartingBalance,
     engineProjection.finalBalancesByAccount,
     mode,
+    goalContributions,
   ]);
 
   // Simple health descriptor based on end balance
@@ -769,36 +784,42 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     }
 
     const { income, bills, net } = engineFirstMonth;
-    const goalsHousehold = goalContributions.household;
-    const goalsH = goalContributions.H;
-    const goalsW = goalContributions.W;
+    // Compute net after subtracting all goal contributions.  Then allocate
+    // the remainder to each partner based on their income fraction.
+    const goalsHousehold = goalContributions.household || 0;
+    const goalsH = goalContributions.H || 0;
+    const goalsW = goalContributions.W || 0;
+    const totalContributions = goalsHousehold + goalsH + goalsW;
 
-    const householdLeftover = net - goalsHousehold;
+    // Net after contributions; this is the amount of cash available for the month
+    // across the entire household.
+    const netAfterContrib = net - totalContributions;
     const hIncomeShare = hIncome || 0;
     const wIncomeShare = wIncome || 0;
     const incomeTotal = hIncomeShare + wIncomeShare || 1;
 
-    const hNet = (net * hIncomeShare) / incomeTotal;
-    const wNet = (net * wIncomeShare) / incomeTotal;
+    // Allocate the netAfterContrib proportionally to each partner
+    const hShare = (netAfterContrib * hIncomeShare) / incomeTotal;
+    const wShare = (netAfterContrib * wIncomeShare) / incomeTotal;
 
     return {
       household: {
         income,
         bills,
-        goals: goalsHousehold,
-        leftover: householdLeftover,
+        goals: totalContributions,
+        leftover: netAfterContrib,
       },
       H: {
         income: hIncomeShare,
         bills: (bills * hIncomeShare) / incomeTotal,
         goals: goalsH,
-        leftover: hNet - goalsH,
+        leftover: hShare,
       },
       W: {
         income: wIncomeShare,
         bills: (bills * wIncomeShare) / incomeTotal,
         goals: goalsW,
-        leftover: wNet - goalsW,
+        leftover: wShare,
       },
     };
   }, [engineFirstMonth, goalContributions, hIncome, wIncome, mode]);
@@ -1038,9 +1059,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                       <span className="text-slate-500">Net</span>
                       <span
                         className={`font-semibold ${
-                          w.net >= 0
-                            ? "text-emerald-600"
-                            : "text-rose-600"
+                          w.net >= 0 ? "text-emerald-600" : "text-rose-600"
                         }`}
                       >
                         {fmt(w.net)}

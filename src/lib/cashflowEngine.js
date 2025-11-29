@@ -2,12 +2,14 @@
 
 // Updated in Step 1 – Actual mode cashflow logic
 //
-// NOTE: This file is copied from the upstream smart-cashflow-planner repository.
-// It provides a series of helpers and a projection engine used by the
-// MonthlyCashFlowInfographic component.  For this phase of the project we
-// have not made any behavioural changes to the engine itself; however,
-// including it here ensures the local build contains all necessary
-// dependencies without fetching from the network at runtime.
+// This file is a patched copy of the upstream smart-cashflow-planner
+// cashflow engine.  It exposes helpers for converting amounts to and from
+// cents and simulates a cash ledger across multiple months.  The primary
+// change here ensures that "actual" mode correctly filters events so
+// future transactions do not leak into today.  In particular we now build
+// a local‑midnight date string and perform a strict less‑than (<) check
+// rather than less‑than‑or‑equal (<=) when filtering income and expense
+// events.
 
 export function toCents(amount) {
   const n = Number(amount);
@@ -217,12 +219,7 @@ export function applyOutflow(balancesByAccount, accountId, amountCents) {
  *
  * Accepts arrays of bills and expenses along with pay schedule and income to
  * simulate a cash ledger across multiple months.  It returns a ledger of
- * events and a monthly summary of total income, bills and net flow.  This
- * implementation matches the upstream repository and is not modified for
- * shared goals or budgets.  The filtering and contribution logic for goals
- * and budgets lives in the React layer (MonthlyCashFlowInfographic).  This
- * ensures the engine remains a pure cash ledger simulation without
- * user-specific abstractions.
+ * events and a monthly summary of total income, bills and net flow.
  */
 export function projectCashflow({
   startDate,
@@ -317,7 +314,10 @@ export function projectCashflow({
   // Using toISOString() can produce a different date when the local timezone is behind UTC
   // (e.g. Vancouver on Nov 23 may yield 2025-11-24).  Use local date parts instead.
   const _now = new Date();
-  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
+  const localMidnight = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
+  const todayStr = `${localMidnight.getFullYear()}-${String(
+    localMidnight.getMonth() + 1
+  ).padStart(2, "0")}-${String(localMidnight.getDate()).padStart(2, "0")}`;
   for (let m = 0; m < projectionMonths; m++) {
     for (const b of safeBills) {
       if (!b?.id) continue;
@@ -366,9 +366,9 @@ export function projectCashflow({
 
   // ---------- 3c) Actual-mode filtering for income & expenses ----------
   // In "actual" mode we only keep:
-  // - income events whose date is <= today
-  // - extra income events whose date is <= today
-  // - expense events whose date is <= today
+  // - income events whose date is < today
+  // - extra income events whose date is < today
+  // - expense events whose date is < today
   // Bills already have their own actual-mode behavior:
   //   - past unpaid bills are skipped
   //   - future bills are kept
@@ -376,8 +376,10 @@ export function projectCashflow({
   let filteredExpenseEvents = expenseEvents;
 
   if (mode === "actual") {
-    filteredIncomeEvents = incomeEvents.filter((ev) => ev.date <= todayStr);
-    filteredExpenseEvents = expenseEvents.filter((ev) => ev.date <= todayStr);
+    // Only include events strictly before today.  Do not include today’s
+    // transactions because they have not yet occurred or been reconciled.
+    filteredIncomeEvents = incomeEvents.filter((ev) => ev.date < todayStr);
+    filteredExpenseEvents = expenseEvents.filter((ev) => ev.date < todayStr);
   }
 
   // ---------- 4) Merge events & sort ----------
@@ -414,8 +416,6 @@ export function projectCashflow({
   }
 
   // Opening-balance event: anchor the ledger to the seeded balances.
-  // This does not affect monthlyTotals (no income/bills/net), but gives
-  // consumers (Planner/Dashboard) a reliable "start-of-month" snapshot.
   ledger.push({
     date: startDateStr,
     kind: "opening",

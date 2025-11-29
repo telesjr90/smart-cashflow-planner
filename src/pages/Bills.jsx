@@ -11,26 +11,19 @@ import {
 } from "lucide-react";
 
 /**
- * EXPECTED PROPS:
- * - role: 'H' | 'W'
- * - startDate: 'YYYY-MM-DD'
- * - bills: Array<{ id, name, amount, dueDay, payer: 'H'|'W'|'AUTO', category?: string, accountId?: string }>
- * - paidFlags: { [billId: string]: { [monthIndex: number]: boolean } }
- * - personScope?: 'self'|'other'|'combined'
- * - memberNames?: { H?: string, W?: string }
- * - accounts?: Array<{ id: string, name: string }>
- * - residualAccountId?: string
- * - categoryBudgets?: {
- *     [key: string]: {
- *       label?: string,
- *       scope?: 'personal'|'shared',
- *       owner?: 'H'|'W'|null
- *     }
- *   }
- * - onTogglePaid?: ({ billId, monthIndex, next }) => void
- * - onBulkMark?: ({ billIds, monthIndex, value }) => void
- * - onChangeBillAccount?: (billId: string, accountId: string) => void
- * - onUpdateBills?: (nextBills: Array<Bill>) => void
+ * Patched Bills page for Smart Cash‑Flow Planner
+ *
+ * This file is based on the upstream `src/pages/Bills.jsx` but includes fixes
+ * for the month scroller bug (QA issue #4).  Specifically, when the
+ * household start date changes (e.g. when creating a new household), the
+ * selected month in the Bills page should reset to the current month
+ * relative to the new start date.  Without this, the scroller can jump
+ * ahead to a different year based on a stale value saved in localStorage.
+ *
+ * Additionally, when saving a new bill or editing an existing one, the
+ * scroller is now anchored to the month of the saved bill (typically the
+ * current month) and persists this value to localStorage.  This prevents
+ * confusion where the UI remains on an unrelated month after adding a bill.
  */
 
 const fmt = (v) =>
@@ -214,7 +207,7 @@ export default function Bills({
   onChangeBillAccount,
   onUpdateBills,
 }) {
-  // Guard against undefined or falsy start dates. When no startDate is
+  // Guard against undefined or falsy start dates.  When no startDate is
   // provided (e.g. immediately after creating a new household) the month
   // helper functions will throw. Render a friendly message instructing the
   // user to set a start date in Settings instead of crashing the app.
@@ -247,10 +240,8 @@ export default function Bills({
       scope: cfg?.scope || "shared",
       owner: cfg?.owner ?? null,
     }));
-
     // If role is unknown/other, show all categories (admin-style)
     if (role !== "H" && role !== "W") return arr;
-
     // Otherwise apply same visibility rule as Settings:
     // - show all shared
     // - show personal only if owner === role
@@ -329,6 +320,7 @@ export default function Bills({
       return [];
     }
   }, [startDate]);
+
   const defaultMonth = useMemo(() => {
     try {
       return currentMonthIndex(startDate);
@@ -337,6 +329,7 @@ export default function Bills({
       return 0;
     }
   }, [startDate]);
+
   // Persist selected month in local storage so the user doesn't lose context on nav changes.
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const saved = window?.localStorage?.getItem("billsSelectedMonth");
@@ -345,6 +338,8 @@ export default function Bills({
     // Clamp to valid range (0..13) to avoid selecting out-of-bounds months when saved value is invalid
     return Math.max(0, Math.min(13, initial));
   });
+
+  // Save selectedMonth whenever it changes
   useEffect(() => {
     try {
       window?.localStorage?.setItem(
@@ -355,6 +350,21 @@ export default function Bills({
       // ignore storage failures
     }
   }, [selectedMonth]);
+
+  // Reset selectedMonth when defaultMonth (derived from startDate) changes.  This
+  // ensures that when the start date is updated (e.g. new household), the
+  // scroller jumps back to the current month rather than using a stale value
+  useEffect(() => {
+    setSelectedMonth(defaultMonth);
+    try {
+      window?.localStorage?.setItem(
+        "billsSelectedMonth",
+        String(defaultMonth)
+      );
+    } catch (e) {
+      // ignore storage failures
+    }
+  }, [defaultMonth]);
 
   const [status, setStatus] = useState("all"); // all | unpaid | paid | overdue
   const [owner, setOwner] = useState(
@@ -376,7 +386,6 @@ export default function Bills({
   // Flatten bills → one row per bill for the selected month
   const monthItems = useMemo(() => {
     if (!startDate) return [];
-
     const start = new Date(startDate + "T00:00:00");
     const baseYear = start.getFullYear();
     const baseMonth = start.getMonth();
@@ -386,24 +395,20 @@ export default function Bills({
       baseMonth + selectedMonth,
       1
     ).getMonth();
-
     const today = new Date();
     const todayYear = today.getFullYear();
     const todayMonth = today.getMonth();
     const todayDay = today.getDate();
-
     return (bills || [])
       .map((b) => {
         const safeDueDay = clampDueDayToMonth(year, monthIndex0, b.dueDay);
         const dueDate = new Date(year, monthIndex0, safeDueDay);
         const paid = !!paidFlags?.[b.id]?.[selectedMonth];
-
         const overdue =
           !paid &&
           year === todayYear &&
           monthIndex0 === todayMonth &&
           safeDueDay < todayDay;
-
         return {
           ...b,
           dueDay: safeDueDay,
@@ -413,20 +418,17 @@ export default function Bills({
         };
       })
       .sort(
-        (a, b) =>
-          a.dueDay - b.dueDay || a.name.localeCompare(b.name || "")
+        (a, b) => a.dueDay - b.dueDay || a.name.localeCompare(b.name || "")
       );
   }, [bills, paidFlags, startDate, selectedMonth]);
 
   // Owner filter (mine / other / both)
   const ownerFiltered = useMemo(() => {
     if (owner === "both") return monthItems;
-
     const isMine = (payer) => {
       if (payer === "AUTO") return true; // shared auto bills count for both views
       return payer === role;
     };
-
     return monthItems.filter((it) => {
       if (owner === "mine") return isMine(it.payer);
       if (owner === "other") return !isMine(it.payer) && it.payer !== "AUTO";
@@ -481,8 +483,7 @@ export default function Bills({
   const resolveAccountId = (bill) => {
     if (!hasAccounts) return bill.accountId || "";
     if (bill.accountId && accountMap[bill.accountId]) return bill.accountId;
-    if (residualAccountId && accountMap[residualAccountId])
-      return residualAccountId;
+    if (residualAccountId && accountMap[residualAccountId]) return residualAccountId;
     if (accounts && accounts.length > 0) return accounts[0].id;
     return "";
   };
@@ -514,10 +515,7 @@ export default function Bills({
       return;
     }
     const cleanAmount = Number.isFinite(+draft.amount) ? +draft.amount : 0;
-    const cleanDueDay = Math.min(
-      31,
-      Math.max(1, parseInt(draft.dueDay || 1, 10))
-    );
+    const cleanDueDay = Math.min(31, Math.max(1, parseInt(draft.dueDay || 1, 10)));
     const accountId = resolveAccountId({ ...draft, dueDay: cleanDueDay });
     const categoryKey = draft.category || "";
     let nextBills;
@@ -554,14 +552,22 @@ export default function Bills({
       );
     }
     onUpdateBills(nextBills);
+    // After saving a bill, reset the month scroller to the current month.  This
+    // aligns the UI with the month in which the bill was saved and prevents
+    // the scroller from persisting an unrelated month.
+    const idx = currentMonthIndex(startDate);
+    setSelectedMonth(idx);
+    try {
+      window?.localStorage?.setItem("billsSelectedMonth", String(idx));
+    } catch (e) {
+      // ignore storage failures
+    }
     cancelEdit();
   };
 
   const handleDelete = (billId) => {
     if (!onUpdateBills) return;
-    const confirmed = window.confirm(
-      "Delete this bill from all future months?"
-    );
+    const confirmed = window.confirm("Delete this bill from all future months?");
     if (!confirmed) return;
     const nextBills = bills.filter((b) => b.id !== billId);
     onUpdateBills(nextBills);
@@ -708,9 +714,7 @@ export default function Bills({
                 {hasAccounts && (
                   <div className="mt-1">
                     <label className="flex flex-col gap-1">
-                      <span className="text-[11px] text-slate-500">
-                        Account
-                      </span>
+                      <span className="text-[11px] text-slate-500">Account</span>
                       <select
                         className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
                         value={draft.accountId}
@@ -767,6 +771,17 @@ export default function Bills({
                         accountId,
                       };
                       onUpdateBills([...(bills || []), newBill]);
+                      // After saving the first bill, reset the month scroller to the current month
+                      const idx = currentMonthIndex(startDate);
+                      setSelectedMonth(idx);
+                      try {
+                        window?.localStorage?.setItem(
+                          "billsSelectedMonth",
+                          String(idx)
+                        );
+                      } catch (e) {
+                        // ignore storage failures
+                      }
                       setEditingId(null);
                       setDraft(null);
                     }}
@@ -781,11 +796,7 @@ export default function Bills({
       ) : (
         <>
           {/* Month scroller */}
-          <MonthScroller
-            months={months}
-            selected={selectedMonth}
-            onChange={setSelectedMonth}
-          />
+          <MonthScroller months={months} selected={selectedMonth} onChange={setSelectedMonth} />
           {/* Filters */}
           <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-2">
             <Segmented
@@ -819,9 +830,7 @@ export default function Bills({
           {/* Add / edit bill panel */}
           <div className="mx-4 mt-4 rounded-2xl border border-slate-200 bg-white p-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-semibold text-slate-700">
-                Bills editor
-              </div>
+              <div className="text-xs font-semibold text-slate-700">Bills editor</div>
               <button
                 className="text-xs px-3 py-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
                 onClick={startAdd}
@@ -837,9 +846,7 @@ export default function Bills({
                     <input
                       className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
                       value={draft.name}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, name: e.target.value }))
-                      }
+                      onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                       placeholder="Bill name"
                     />
                   </label>
@@ -850,9 +857,7 @@ export default function Bills({
                       step="0.01"
                       className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
                       value={draft.amount}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, amount: e.target.value }))
-                      }
+                      onChange={(e) => setDraft((d) => ({ ...d, amount: e.target.value }))}
                       placeholder="0.00"
                     />
                   </label>
@@ -866,9 +871,7 @@ export default function Bills({
                       max={31}
                       className="border border-slate-200 rounded-xl px-2 py-1 text-xs"
                       value={draft.dueDay}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, dueDay: e.target.value }))
-                      }
+                      onChange={(e) => setDraft((d) => ({ ...d, dueDay: e.target.value }))}
                     />
                   </label>
                   <label className="flex flex-col gap-1">
@@ -876,16 +879,10 @@ export default function Bills({
                     <select
                       className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
                       value={draft.payer}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, payer: e.target.value }))
-                      }
+                      onChange={(e) => setDraft((d) => ({ ...d, payer: e.target.value }))}
                     >
-                      <option value="H">
-                        {memberNames.H || "Partner H"}
-                      </option>
-                      <option value="W">
-                        {memberNames.W || "Partner W"}
-                      </option>
+                      <option value="H">{memberNames.H || "Partner H"}</option>
+                      <option value="W">{memberNames.W || "Partner W"}</option>
                       <option value="AUTO">Auto</option>
                     </select>
                   </label>
@@ -894,9 +891,7 @@ export default function Bills({
                     <select
                       className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
                       value={draft.category || ""}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, category: e.target.value }))
-                      }
+                      onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))}
                     >
                       {budgetOptions.length === 0 ? (
                         <option value="">No budget categories</option>
@@ -920,9 +915,7 @@ export default function Bills({
                       <select
                         className="border border-slate-200 rounded-xl px-2 py-1 text-xs bg-white"
                         value={resolveAccountId(draft)}
-                        onChange={(e) =>
-                          setDraft((d) => ({ ...d, accountId: e.target.value }))
-                        }
+                        onChange={(e) => setDraft((d) => ({ ...d, accountId: e.target.value }))}
                       >
                         {accounts.map((a) => (
                           <option key={a.id} value={a.id}>
@@ -931,9 +924,7 @@ export default function Bills({
                         ))}
                       </select>
                     ) : (
-                      <div className="text-[11px] text-slate-500">
-                        No accounts defined yet.
-                      </div>
+                      <div className="text-[11px] text-slate-500">No accounts defined yet.</div>
                     )}
                   </label>
                 </div>
@@ -964,11 +955,7 @@ export default function Bills({
             {filtered.map((item) => {
               const acctId = resolveAccountId(item);
               const acct = hasAccounts ? accountMap[acctId] : null;
-              const accountLabel = hasAccounts
-                ? acct
-                  ? acct.name
-                  : acctId || "Unassigned"
-                : item.accountId || "Unassigned";
+              const accountLabel = hasAccounts ? (acct ? acct.name : acctId || "Unassigned") : item.accountId || "Unassigned";
               const catLabel = categoryLabelForBill(item);
               return (
                 <div
@@ -979,51 +966,29 @@ export default function Bills({
                     className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300"
                     onClick={() => handleToggle(item)}
                   >
-                    {item.paid ? (
-                      <CheckCircle2 className="text-emerald-600" size={16} />
-                    ) : (
-                      <Circle className="text-slate-300" size={16} />
-                    )}
+                    {item.paid ? <CheckCircle2 className="text-emerald-600" size={16} /> : <Circle className="text-slate-300" size={16} />}
                   </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="truncate text-sm font-semibold text-slate-900">
-                        {item.name}
-                      </div>
-                      <div className="text-sm font-semibold text-slate-900">
-                        {fmt(item.amount)}
-                      </div>
+                      <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                      <div className="text-sm font-semibold text-slate-900">{fmt(item.amount)}</div>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                       <div className="flex items-center gap-2">
+                        <span>Due {String(item.dueDay).padStart(2, "0")}</span>
                         <span>
-                          Due {String(item.dueDay).padStart(2, "0")}
+                          • {item.payer === "H" ? memberNames.H || "Partner H" : item.payer === "W" ? memberNames.W || "Partner W" : "Auto"}
                         </span>
-                        <span>
-                          • {item.payer === "H"
-                            ? memberNames.H || "Partner H"
-                            : item.payer === "W"
-                            ? memberNames.W || "Partner W"
-                            : "Auto"}
-                        </span>
-                        {catLabel && (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
-                            {catLabel}
-                          </span>
-                        )}
+                        {catLabel && <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">{catLabel}</span>}
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1">
-                          <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                            Account
-                          </span>
+                          <span className="text-[10px] uppercase tracking-wide text-slate-400">Account</span>
                           {hasAccounts && onChangeBillAccount ? (
                             <select
                               className="text-[11px] border border-slate-200 rounded-full px-2 py-0.5 bg-slate-50 text-slate-700"
                               value={acctId}
-                              onChange={(e) =>
-                                onChangeBillAccount(item.id, e.target.value)
-                              }
+                              onChange={(e) => onChangeBillAccount(item.id, e.target.value)}
                             >
                               {accounts.map((a) => (
                                 <option key={a.id} value={a.id}>
@@ -1032,9 +997,7 @@ export default function Bills({
                               ))}
                             </select>
                           ) : (
-                            <span className="text-[11px] text-slate-600">
-                              {accountLabel}
-                            </span>
+                            <span className="text-[11px] text-slate-600">{accountLabel}</span>
                           )}
                         </div>
                         {onUpdateBills && (
@@ -1044,16 +1007,14 @@ export default function Bills({
                               className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
                               onClick={() => startEdit(item)}
                             >
-                              <Pencil size={12} />
-                              Edit
+                              <Pencil size={12} /> Edit
                             </button>
                             <button
                               type="button"
                               className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
                               onClick={() => handleDelete(item.id)}
                             >
-                              <Trash2 size={12} />
-                              Delete
+                              <Trash2 size={12} /> Delete
                             </button>
                           </div>
                         )}
