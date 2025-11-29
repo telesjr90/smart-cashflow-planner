@@ -1,15 +1,15 @@
 // Updated to fix starting balance + actual mode wiring
 
-// Updated in Step 1 – Actual mode cashflow logic
+// Updated in Step 2 – Actual mode cashflow logic
 //
-// This file is a patched copy of the upstream smart-cashflow-planner
+// This file is a patched copy of the upstream smart‑cashflow‑planner
 // cashflow engine.  It exposes helpers for converting amounts to and from
 // cents and simulates a cash ledger across multiple months.  The primary
 // change here ensures that "actual" mode correctly filters events so
 // future transactions do not leak into today.  In particular we now build
-// a local‑midnight date string and perform a strict less‑than (<) check
-// rather than less‑than‑or‑equal (<=) when filtering income and expense
-// events.
+// a local‑midnight date string and perform an inclusive less‑than‑or‑equal
+// (<=) check when filtering income and expense events, allowing
+// transactions that occur on the current date to be included.
 
 export function toCents(amount) {
   const n = Number(amount);
@@ -366,9 +366,9 @@ export function projectCashflow({
 
   // ---------- 3c) Actual-mode filtering for income & expenses ----------
   // In "actual" mode we only keep:
-  // - income events whose date is < today
-  // - extra income events whose date is < today
-  // - expense events whose date is < today
+  // - income events whose date is <= today
+  // - extra income events whose date is <= today
+  // - expense events whose date is <= today
   // Bills already have their own actual-mode behavior:
   //   - past unpaid bills are skipped
   //   - future bills are kept
@@ -376,10 +376,18 @@ export function projectCashflow({
   let filteredExpenseEvents = expenseEvents;
 
   if (mode === "actual") {
-    // Only include events strictly before today.  Do not include today’s
-    // transactions because they have not yet occurred or been reconciled.
-    filteredIncomeEvents = incomeEvents.filter((ev) => ev.date < todayStr);
-    filteredExpenseEvents = expenseEvents.filter((ev) => ev.date < todayStr);
+    // Include events up to and including today.  We allow today's transactions
+    // to be part of the ledger in actual mode because they occur on the current date.
+    filteredIncomeEvents = incomeEvents.filter((ev) => {
+      const d = ev.date || ev.dateStr;
+      if (!d) return false;
+      return d <= todayStr;
+    });
+    filteredExpenseEvents = expenseEvents.filter((ev) => {
+      const d = ev.date || ev.dateStr;
+      if (!d) return false;
+      return d <= todayStr;
+    });
   }
 
   // ---------- 4) Merge events & sort ----------
