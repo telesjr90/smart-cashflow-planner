@@ -598,7 +598,6 @@ export default function App() {
         if (value) optimisticMap[key] = true;
         else delete optimisticMap[key];
       });
-
       const optimistic = { ...base, paidBills: optimisticMap };
       setMyData(optimistic);
 
@@ -1179,27 +1178,61 @@ export default function App() {
     }));
   }, [householdBills, myData, user, role]);
 
+  // Budgets summary for Home
   const budgetListForHome = useMemo(() => {
     const raw = myData?.categoryBudgets || {};
+    const expenses = myData?.expenses || [];
+
+    // Determine which month the Home view is showing.
+    const startDateStr = safeStartDate; // already computed above
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const currentMonthIndex = getMonthIndexFromStart(startDateStr, todayStr);
+
+    // Aggregate expenses for the current month by category key
+    const spentByCategory = {};
+    for (const exp of expenses) {
+      const dateStr = exp.date || exp.dateStr;
+      if (!dateStr) continue;
+      const mIdx = getMonthIndexFromStart(startDateStr, dateStr);
+      if (mIdx !== currentMonthIndex) continue;
+
+      const catKey = exp.category || exp.categoryId || "uncategorized";
+      const value = Number(exp.amount || 0) || 0;
+      if (!spentByCategory[catKey]) spentByCategory[catKey] = 0;
+      spentByCategory[catKey] += value;
+    }
+
     const list = [];
+
     Object.entries(raw).forEach(([cat, cfg]) => {
       const status = cfg?.status || "active";
       if (status !== "active") return;
-      let amount = 0;
+
+      // Budgeted amount – either per-partner contributions or a single amount
+      let total = 0;
       if (cfg?.contributions && typeof cfg.contributions === "object") {
-        amount = (cfg.contributions.H || 0) + (cfg.contributions.W || 0);
+        total = (cfg.contributions.H || 0) + (cfg.contributions.W || 0);
       } else {
-        amount = cfg?.amount || 0;
+        total = cfg?.amount || 0;
       }
+
+      // Skip zero-amount budgets from the Home list
+      if (!total) return;
+
+      const spent = spentByCategory[cat] || 0;
+      const remaining = total - spent;
+
       list.push({
         id: cat,
         name: cfg?.label || cat,
-        remaining: amount,
-        total: amount,
+        total,
+        spent,
+        remaining,
       });
     });
+
     return list;
-  }, [myData?.categoryBudgets]);
+  }, [myData?.categoryBudgets, myData?.expenses, safeStartDate]);
 
   const savingsToDate = useMemo(
     () =>
@@ -1416,13 +1449,13 @@ export default function App() {
             startDate={startDate}
             startingBalance={myData?.startingBalance ?? DEFAULT_STARTING_BALANCE}
             accounts={accounts}
-            bills={myData?.bills || []}                 
+            bills={myData?.bills || []}
             residualAccountId={residualAccountId}
             allocationRules={allocationRules}
             income={income}
             paySchedule={paySchedule}
             onUpdateAccounts={handleUpdateAccounts}
-            onUpdateBills={handleUpdateBills}          
+            onUpdateBills={handleUpdateBills}
             onUpdateAllocationRules={handleUpdateAllocationRules}
             onUpdateIncomeAndPaySchedule={handleUpdateIncomeAndPaySchedule}
             goals={myData?.goals || []}
