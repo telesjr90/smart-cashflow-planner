@@ -191,6 +191,7 @@ export default function Home({
   pendingGoalsCount = 0,
   pendingBudgetsCount = 0,
   onGoToReviewPending = () => {},
+  homeCashflowSummary = null,
 }) {
   // Derive active budgets and overspent count for the current view.
   // If no budgets exist, fall back to an empty array. A budget is
@@ -575,6 +576,19 @@ export default function Home({
   );
 
   const pendingCount = (pendingGoalsCount || 0) + (pendingBudgetsCount || 0);
+  // Derive cash left (in cents) from the summary for this month.
+const isProjected = mode === "projected";
+let cashLeft = 0;
+if (homeCashflowSummary) {
+  if (isProjected && homeCashflowSummary.projected) {
+    cashLeft = homeCashflowSummary.projected.net || 0;
+  } else if (!isProjected && homeCashflowSummary.actual) {
+    cashLeft = homeCashflowSummary.actual.net || 0;
+  }
+}
+// Convert cents to a dollar value for display
+const cashLeftDollars = Number(fromCents(cashLeft));
+
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -588,6 +602,9 @@ export default function Home({
               <div className="flex items-baseline gap-2 mt-1">
                 <div className="text-2xl font-semibold">
                   {fmt(discretionaryLeftValue)}
+                </div>
+                <div className="text-2xl font-semibold">
+                  {fmt(cashLeftDollars)}
                 </div>
                 <div className="text-[11px] text-slate-400">
                   {mode === "projected"

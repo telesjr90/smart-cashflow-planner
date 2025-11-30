@@ -34,6 +34,7 @@ import Settings from "./pages/Settings";
 import Accounts from "./pages/Accounts";
 import MonthlyCashFlowInfographic from "./MonthlyCashFlowInfographic";
 import Expenses from "./pages/Expenses";
+import { projectCashflow } from "./lib/cashflowEngine.js";
 
 // Bill sharing helper: preprocess bills according to household rules
 import { applyBillSharing } from "./lib/billSharing";
@@ -1178,6 +1179,52 @@ export default function App() {
     }));
   }, [householdBills, myData, user, role]);
 
+  // Summary of current month for Home banner
+  const homeCashflowSummary = useMemo(() => {
+    const data = myData || emptyUserData;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const monthIndex = getMonthIndexFromStart(safeStartDate, todayStr);
+    const months = Math.max(1, monthIndex + 1);
+    try {
+      // run projection separately for projected and actual modes
+      const runProjection = (m) =>
+        projectCashflow({
+          startDate: safeStartDate,
+          months,
+          accounts,
+          bills: displayedBills,
+          income,
+          paySchedule,
+          allocationRules,
+          residualAccountId,
+          paidBills: data.paidBills || {},
+          extraIncomes: data.extraIncomes || [],
+          expenses: data.expenses || [],
+          mode: m,
+        });
+      const projProjected = runProjection("projected");
+      const projActual = runProjection("actual");
+      const monthSummaryProjected =
+        (projProjected.monthlySummary || [])[monthIndex] || null;
+      const monthSummaryActual =
+        (projActual.monthlySummary || [])[monthIndex] || null;
+      return { projected: monthSummaryProjected, actual: monthSummaryActual };
+    } catch (e) {
+      console.warn("homeCashflowSummary failed", e);
+      return null;
+    }
+  }, [
+    myData,
+    safeStartDate,
+    accounts,
+    displayedBills,
+    income,
+    paySchedule,
+    allocationRules,
+    residualAccountId,
+  ]);
+
+
   // Budgets summary for Home
   const budgetListForHome = useMemo(() => {
     const raw = myData?.categoryBudgets || {};
@@ -1374,6 +1421,8 @@ export default function App() {
                 handleGoToSettingsSection("goals");
               }
             }}
+            homeCashflowSummary={homeCashflowSummary}
+
           />
         )}
 
