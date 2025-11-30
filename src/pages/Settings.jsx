@@ -1495,8 +1495,8 @@ useEffect(() => {
           </Card>
         </section>
 
-        {/* Budgets section */}
-        <section ref={budgetsRef} className="mt-4">
+                {/* Budgets section */}
+                <section ref={budgetsRef} className="mt-4">
           <Card className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -1511,9 +1511,18 @@ useEffect(() => {
                 <Plus size={12} /> Add category
               </button>
             </div>
+
+            {/* Budgets helper text: explain shared nature and tracking together */}
+            <p className="text-[11px] text-slate-500 mb-2">
+              These category budgets are shared across your household. If you and
+              your partner use different spending cards, you can still track them
+              together here.
+            </p>
+
             {visibleBudgets.length === 0 && (
               <p className="text-xs text-slate-500">No budget categories defined yet.</p>
             )}
+
             <div className="space-y-3">
               {visibleBudgets.map(({ key, label, amount, scope, owner, accountId }) => (
                 <div key={key} className="p-2 border border-slate-200 rounded-lg bg-slate-50">
@@ -1628,6 +1637,7 @@ useEffect(() => {
                 </div>
               ))}
             </div>
+
             {dirtyBudgets && (
               <div className="mt-3 flex justify-end">
                 <button

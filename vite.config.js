@@ -8,31 +8,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "apple-touch-icon.png"],
-      manifest: {
-        name: "Smart Cash Flow Planner",
-        short_name: "Cash Flow",
-        description: "Household cash flow, weekly allocations, and planning.",
-        start_url: "/",
-        display: "standalone",
-        background_color: "#ffffff",
-        theme_color: "#10b981",
-        icons: [
-          { src: "pwa-192.png", sizes: "192x192", type: "image/png" },
-          { src: "pwa-512.png", sizes: "512x512", type: "image/png" },
-          {
-            src: "pwa-maskable-512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "maskable",
-          },
-        ],
-      },
+      includeAssets: ["pwa-192.png", "pwa-512.png"],
+      // We ship our own manifest.json inside /public
+      manifest: false,
     }),
   ],
-  base: "/",          // ✅ Ensure correct path resolution for Firebase Hosting
+  base: "/",          // ✅ Matches Firebase Hosting path resolution
   build: {
-    outDir: "dist",    // ✅ Match firebase.json "public": "dist"
-    sourcemap: true,   // optional but helpful for debugging
+    outDir: "dist",    // ✅ Matches firebase.json "public": "dist"
+    sourcemap: true,   // (Optional) helpful for debugging
   },
 });

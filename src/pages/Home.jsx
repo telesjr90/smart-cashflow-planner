@@ -730,12 +730,20 @@ const cashLeftDollars = Number(fromCents(cashLeft));
               <CheckCircle2 size={16} />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">
-                Budgets &amp; goals
-              </h2>
-              <p className="text-[11px] text-slate-500">
-                How your plan maps to spending and savings targets
-              </p>
+            <h2 className="text-xs font-semibold text-slate-700 tracking-wide">
+              Budgets &amp; goals
+            </h2>
+            {/* Updated subtitle and hint for shared budgets */}
+            <div className="text-xs text-slate-500">
+              Shared household budgets and savings targets.
+              Person scope affects cash totals above, but these envelopes are
+              shared for now.
+            </div>
+            {personScope !== "both" && (
+              <div className="mt-1 text-[10px] text-slate-400">
+                Viewing shared budgets in household view.
+              </div>
+            )}
             </div>
           </div>
 
