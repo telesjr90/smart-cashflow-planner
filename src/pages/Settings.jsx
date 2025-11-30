@@ -90,6 +90,7 @@ export default function Settings({
   scrollToSection = null,
   // Callback to reset the scroll hint once handled.
   onResetScrollHint = () => {},
+  onDirtyChange,
 }) {
   const primaryName = displayName || email || "User";
   const startLabel = startDate || "Not set";
@@ -658,6 +659,39 @@ export default function Settings({
     const isDirty = curr.mode !== base.mode || currH !== baseH || currW !== baseW;
     setDirtyBillSharing(isDirty);
   }, [localBillSharing]);
+
+  // Track overall dirty state and notify parent when it changes
+const [isDirty, setIsDirty] = useState(false);
+
+// Compute whether any settings section is dirty
+useEffect(() => {
+  const combinedDirty =
+    dirtyStartingBalance ||
+    dirtyProfile ||
+    dirtyAccounts ||
+    dirtyRules ||
+    dirtyIncomeSchedule ||
+    dirtyGoals ||
+    dirtyBudgets ||
+    dirtyBillSharing;
+  setIsDirty(combinedDirty);
+}, [
+  dirtyStartingBalance,
+  dirtyProfile,
+  dirtyAccounts,
+  dirtyRules,
+  dirtyIncomeSchedule,
+  dirtyGoals,
+  dirtyBudgets,
+  dirtyBillSharing,
+]);
+
+// Propagate dirty state to parent via callback
+useEffect(() => {
+  if (typeof onDirtyChange === "function") {
+    onDirtyChange(isDirty);
+  }
+}, [isDirty, onDirtyChange]);
 
   // Handle mode changes by updating the local state only.  The dirty flag
   // will be derived automatically by the effect above.

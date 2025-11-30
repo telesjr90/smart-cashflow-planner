@@ -330,11 +330,30 @@ export default function App() {
   const [networkError, setNetworkError] = useState(false);
 
   const [tab, setTab] = useState("home");
-  const [settingsSection, setSettingsSection] = useState(null);
-  const handleGoToSettingsSection = useCallback((section) => {
-    setSettingsSection(section);
-    setTab("settings");
-  }, []);
+const [settingsSection, setSettingsSection] = useState(null);
+// Track unsaved changes in Settings page
+const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
+
+const handleGoToSettingsSection = useCallback((section) => {
+  setSettingsSection(section);
+  setTab("settings");
+}, []);
+
+// Guard tab changes if there are unsaved changes in Settings
+const handleTabChange = useCallback(
+  (next) => {
+    if (next === tab) return;
+    if (hasUnsavedSettings) {
+      const ok = window.confirm(
+        "You have unsaved changes in Settings. Leave without saving?"
+      );
+      if (!ok) return;
+    }
+    setTab(next);
+  },
+  [tab, hasUnsavedSettings]
+);
+
   const [personScope, setPersonScope] = useState("self");
   const [mode, setMode] = useState("projected");
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -1516,6 +1535,7 @@ export default function App() {
             onUpdateBillSharing={handleUpdateBillSharing}
             scrollToSection={settingsSection}
             onResetScrollHint={() => setSettingsSection(null)}
+            onDirtyChange={setHasUnsavedSettings}
           />
         )}
 
@@ -1549,7 +1569,8 @@ export default function App() {
           />
         )}
 
-        <Tabs current={tab} onChange={setTab} />
+        <Tabs current={tab} onChange={handleTabChange} />
+
 
         <AddExpenseModal
           isOpen={isExpenseModalOpen}
