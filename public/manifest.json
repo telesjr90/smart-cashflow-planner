@@ -1,7 +1,9 @@
 {
+    "id": "/?homescreen=1",
     "name": "Smart Cash Flow Planner",
     "short_name": "Cashflow",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#4f46e5",
