@@ -1,3 +1,5 @@
+// File: src/App.jsx
+
 // Updated in Step 2 – Home wired to core financial context
 // This file has been modified as part of the Agent Mode tasks to address
 // several user-reported issues. Please see the repository history for a
@@ -16,16 +18,8 @@ import React, {
 // A simple error boundary ensures that unexpected runtime errors do not
 // surface as blank screens. See src/components/ErrorBoundary.jsx.
 import ErrorBoundary from "./components/ErrorBoundary";
-import {
-  Home as HomeIcon,
-  ListChecks,
-  Target,
-  Settings as SettingsIcon,
-  LogOut,
-  Wallet,
-  CalendarDays,
-  ArrowRightLeft,
-} from "lucide-react";
+
+import AppShell from "./components/layout/AppShell";
 
 import Home from "./pages/Home";
 import Bills from "./pages/Bills";
@@ -38,6 +32,7 @@ import { projectCashflow } from "./lib/cashflowEngine.js";
 
 // Bill sharing helper: preprocess bills according to household rules
 import { applyBillSharing } from "./lib/billSharing";
+import { getDefaultPlannerStartDate } from "./lib/dateUtils";
 
 // Components
 import AddExpenseModal from "./components/AddExpenseModal";
@@ -72,7 +67,7 @@ const USERS = "users";
 // ---------------- Defaults ----------------
 // Neutral defaults for a new plan.  The app should not bootstrap with
 // example data – instead, encourage the user to input their real numbers.
-const DEFAULT_START_DATE = "2025-11-15";
+const DEFAULT_START_DATE = getDefaultPlannerStartDate();
 // Starting balance defaults to zero; the user can set this in Settings.
 const DEFAULT_STARTING_BALANCE = 0;
 // Balance split defaults to zero for each partner.
@@ -260,61 +255,6 @@ async function loadHouseholdMembers(currentUserUid) {
     console.warn("loadHouseholdMembers failed", e);
     return [];
   }
-}
-
-// ---------------- UI helpers ----------------
-const Wrapper = ({ children }) => (
-  <div className="min-h-screen bg-slate-50 flex flex-col">
-    <div className="flex-1 max-w-md mx-auto w-full bg-white shadow-sm border-x border-slate-200 flex flex-col">
-      {children}
-    </div>
-  </div>
-);
-
-// ---------------- Tabs ----------------
-function Tabs({ current, onChange }) {
-  const items = [
-    { key: "home", label: "Home", icon: HomeIcon },
-    { key: "planner", label: "Planner", icon: Target },
-    { key: "dashboard", label: "Dashboard", icon: CalendarDays },
-    { key: "bills", label: "Bills", icon: ListChecks },
-    { key: "accounts", label: "Accounts", icon: Wallet },
-    { key: "settings", label: "Settings", icon: SettingsIcon },
-    { key: "expenses", label: "Expenses", icon: ArrowRightLeft },
-  ];
-
-  const handleTabClick = useCallback(
-    (key) => {
-      if (typeof onChange === "function") {
-        onChange(key);
-      }
-    },
-    [onChange]
-  );
-
-  return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 pointer-events-auto">
-      <div className="max-w-md mx-auto flex items-stretch justify-between px-1 py-1">
-        {items.map((item) => {
-          const Icon = item.icon;
-          const active = current === item.key;
-          return (
-            <button
-              type="button"
-              key={item.key}
-              onClick={() => handleTabClick(item.key)}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl transition-colors ${
-                active ? "bg-indigo-50 text-indigo-600" : "text-slate-500"
-              }`}
-            >
-              <Icon size={18} />
-              <span className="text-[10px] font-medium">{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </nav>
-  );
 }
 
 // ---------------- Main App ----------------
@@ -546,7 +486,10 @@ export default function App() {
         setMySectionVersions(newSectionVersions);
       } catch (err) {
         console.warn("Failed to save bills", err);
-        if (err.message === "section-version-conflict" && err.section === "bills") {
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "bills"
+        ) {
           alert(
             "Your partner updated Bills while you were editing. We'll reload their latest changes so you can review and reapply yours."
           );
@@ -581,7 +524,10 @@ export default function App() {
         setMySectionVersions(newSectionVersions);
       } catch (err) {
         console.warn("Failed to update bill account", err);
-        if (err.message === "section-version-conflict" && err.section === "bills") {
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "bills"
+        ) {
           alert(
             "Your partner updated Bills while you were editing. We'll reload their latest changes so you can review."
           );
@@ -624,7 +570,10 @@ export default function App() {
         setMySectionVersions(newSectionVersions);
       } catch (err) {
         console.warn("Failed to toggle bill paid", err);
-        if (err.message === "section-version-conflict" && err.section === "bills") {
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "bills"
+        ) {
           alert(
             "Your partner updated Bills while you were editing. We'll reload their latest changes so you can review."
           );
@@ -673,7 +622,10 @@ export default function App() {
         setMySectionVersions(newSectionVersions);
       } catch (err) {
         console.warn("Failed to bulk mark bills", err);
-        if (err.message === "section-version-conflict" && err.section === "bills") {
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "bills"
+        ) {
           alert(
             "Your partner updated Bills while you were editing. We'll reload their latest changes so you can review."
           );
@@ -797,7 +749,10 @@ export default function App() {
         setMySectionVersions(newSectionVersions);
       } catch (err) {
         console.warn("Failed to update income/pay schedule", err);
-        if (err.message === "section-version-conflict" && err.section === "income") {
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "income"
+        ) {
           alert(
             "Your partner updated income or pay schedule while you were editing. We'll reload their latest changes so you can review."
           );
@@ -829,7 +784,10 @@ export default function App() {
         setMySectionVersions(newSectionVersions);
       } catch (err) {
         console.warn("Failed to update goals", err);
-        if (err.message === "section-version-conflict" && err.section === "goals") {
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "goals"
+        ) {
           alert(
             "Your partner updated Goals while you were editing. We'll reload their latest changes so you can review."
           );
@@ -896,7 +854,10 @@ export default function App() {
         setMySectionVersions(newSectionVersions);
       } catch (err) {
         console.warn("Failed to update starting balance", err);
-        if (err.message === "section-version-conflict" && err.section === "core") {
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "core"
+        ) {
           alert(
             "Your partner updated core plan settings while you were editing. We'll reload their latest changes so you can review."
           );
@@ -971,7 +932,10 @@ export default function App() {
         setMySectionVersions(newSectionVersions);
       } catch (err) {
         console.warn("Failed to update extra incomes", err);
-        if (err.message === "section-version-conflict" && err.section === "income") {
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === "income"
+        ) {
           alert(
             "Your partner updated income-related data while you were editing. We'll reload their latest changes so you can review."
           );
@@ -1271,7 +1235,6 @@ export default function App() {
     residualAccountId,
   ]);
 
-
   // Budgets summary for Home
   const budgetListForHome = useMemo(() => {
     const raw = myData?.categoryBudgets || {};
@@ -1349,12 +1312,20 @@ export default function App() {
     ).length;
   }, [myData?.categoryBudgets, role]);
 
+  // Greeting label for AppShell header
+  const greetingName =
+    me?.profile?.displayName?.split(" ")[0] ||
+    user?.displayName?.split(" ")[0] ||
+    "there";
+
   if (loading && !hasCached) {
     return (
       <ErrorBoundary>
-        <Wrapper>
-          <div className="p-6 text-sm text-slate-600">Loading...</div>
-        </Wrapper>
+        <div className="min-h-screen bg-slate-50 flex flex-col">
+          <div className="flex-1 max-w-md mx-auto w-full bg-white shadow-sm border-x border-slate-200 flex flex-col">
+            <div className="p-6 text-sm text-slate-600">Loading...</div>
+          </div>
+        </div>
       </ErrorBoundary>
     );
   }
@@ -1362,9 +1333,13 @@ export default function App() {
   if (isAgentDemo && !canEnter) {
     return (
       <ErrorBoundary>
-        <Wrapper>
-          <div className="p-6 text-sm text-slate-600">Loading demo mode...</div>
-        </Wrapper>
+        <div className="min-h-screen bg-slate-50 flex flex-col">
+          <div className="flex-1 max-w-md mx-auto w-full bg-white shadow-sm border-x border-slate-200 flex flex-col">
+            <div className="p-6 text-sm text-slate-600">
+              Loading demo mode...
+            </div>
+          </div>
+        </div>
       </ErrorBoundary>
     );
   }
@@ -1372,66 +1347,57 @@ export default function App() {
   if (!canEnter) {
     return (
       <ErrorBoundary>
-        <Wrapper>
-          <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 gap-4">
-            <div className="text-center space-y-2">
-              <div className="text-xs uppercase tracking-wide text-slate-400">
-                Smart Cash Flow Planner
+        <div className="min-h-screen bg-slate-50 flex flex-col">
+          <div className="flex-1 max-w-md mx-auto w-full bg-white shadow-sm border-x border-slate-200 flex flex-col">
+            <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 gap-4">
+              <div className="text-center space-y-2">
+                <div className="text-xs uppercase tracking-wide text-slate-400">
+                  Smart Cash Flow Planner
+                </div>
+                <div className="text-lg font-semibold text-slate-900">
+                  Sign in to continue
+                </div>
+                <p className="text-xs text-slate-500">
+                  Connect with your Google account to load your household plan
+                  and sync changes across devices.
+                </p>
               </div>
-              <div className="text-lg font-semibold text-slate-900">
-                Sign in to continue
-              </div>
-              <p className="text-xs text-slate-500">
-                Connect with your Google account to load your household plan and
-                sync changes across devices.
+
+              <button
+                type="button"
+                onClick={loginWithGoogle}
+                className="inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:bg-indigo-800"
+              >
+                Sign in with Google
+              </button>
+
+              <p className="text-[10px] text-slate-400 text-center mt-2">
+                Your data is stored securely in Firebase and can be unlinked at
+                any time.
               </p>
             </div>
-
-            <button
-              type="button"
-              onClick={loginWithGoogle}
-              className="inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:bg-indigo-800"
-            >
-              Sign in with Google
-            </button>
-
-            <p className="text-[10px] text-slate-400 text-center mt-2">
-              Your data is stored securely in Firebase and can be unlinked at
-              any time.
-            </p>
           </div>
-        </Wrapper>
+        </div>
       </ErrorBoundary>
     );
   }
 
   return (
     <ErrorBoundary>
-      <Wrapper>
-        <div className="p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wallet className="text-indigo-600" size={18} />
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                Smart Cash Flow Planner
-              </div>
-              <div className="text-xs font-semibold text-slate-900">
-                Hi{" "}
-                {me?.profile?.displayName?.split(" ")[0] ||
-                  user?.displayName?.split(" ")[0] ||
-                  "there"}
-              </div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={logout}
-            className="text-xs text-slate-600 hover:text-slate-900"
-          >
-            <LogOut size={16} />
-          </button>
-        </div>
-
+      <AppShell
+        tab={tab}
+        onTabChange={handleTabChange}
+        greetingName={greetingName}
+        onLogout={logout}
+        footer={
+          <AddExpenseModal
+            isOpen={isExpenseModalOpen}
+            onClose={() => setIsExpenseModalOpen(false)}
+            onSave={handleAddExpense}
+            accounts={accounts}
+          />
+        }
+      >
         {tab === "home" && (
           <Home
             role={role}
@@ -1469,7 +1435,6 @@ export default function App() {
               }
             }}
             homeCashflowSummary={homeCashflowSummary}
-
           />
         )}
 
@@ -1495,6 +1460,7 @@ export default function App() {
         {tab === "dashboard" && (
           <MonthlyCashFlowInfographic
             uid={user?.uid}
+            householdId={householdId}
             role={role}
             personScope={personScope}
             liveStartDate={startDate}
@@ -1516,22 +1482,22 @@ export default function App() {
           />
         )}
 
-      {tab === "bills" && (
-              <Bills
-                householdId={householdId}
-                role={role}
-                startDate={startDate}
-                bills={displayedBills}
-                paidFlags={paidFlags}
-                personScope={personScope}
-                accounts={accounts}
-                residualAccountId={residualAccountId}
-                onTogglePaid={handleTogglePaid}
-                onBulkMark={handleBulkMark}
-                onChangeBillAccount={handleChangeBillAccount}
-                onUpdateBills={handleUpdateBills}
-              />
-            )}
+        {tab === "bills" && (
+          <Bills
+            householdId={householdId}
+            role={role}
+            startDate={startDate}
+            bills={displayedBills}
+            paidFlags={paidFlags}
+            personScope={personScope}
+            accounts={accounts}
+            residualAccountId={residualAccountId}
+            onTogglePaid={handleTogglePaid}
+            onBulkMark={handleBulkMark}
+            onChangeBillAccount={handleChangeBillAccount}
+            onUpdateBills={handleUpdateBills}
+          />
+        )}
 
         {tab === "settings" && (
           <Settings
@@ -1544,7 +1510,9 @@ export default function App() {
             onUpdateProfile={handleUpdateProfile}
             balances={balances}
             startDate={startDate}
-            startingBalance={myData?.startingBalance ?? DEFAULT_STARTING_BALANCE}
+            startingBalance={
+              myData?.startingBalance ?? DEFAULT_STARTING_BALANCE
+            }
             accounts={accounts}
             bills={myData?.bills || []}
             residualAccountId={residualAccountId}
@@ -1597,17 +1565,7 @@ export default function App() {
             onUpdateExpenses={handleUpdateExpenses}
           />
         )}
-
-        <Tabs current={tab} onChange={handleTabChange} />
-
-
-        <AddExpenseModal
-          isOpen={isExpenseModalOpen}
-          onClose={() => setIsExpenseModalOpen(false)}
-          onSave={handleAddExpense}
-          accounts={accounts}
-        />
-      </Wrapper>
+      </AppShell>
     </ErrorBoundary>
   );
 }

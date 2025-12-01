@@ -9,6 +9,7 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
+import { safeLocalStorage, makeScopedKey } from "../lib/safeLocalStorage";
 
 /**
  * Patched Bills page for Smart Cash‑Flow Planner
@@ -337,23 +338,21 @@ export default function Bills({
   }, [startDate]);
 
   // Compose a namespaced localStorage key for the selected month.
-  // If householdId is provided, prefix the key with the household ID to avoid
-  // cross-household interference and stale values. Without a householdId,
-  // persistence is skipped to prevent bleed across users.
-  const storageKey = householdId ? `billsSelectedMonth:${householdId}` : null;
+  // We scope by householdId when available; otherwise we skip persistence
+  // entirely to avoid cross-household interference.
+  const storageKey = useMemo(
+    () => makeScopedKey("billsSelectedMonth", { householdId }),
+    [householdId]
+  );
 
   // Persist selected month in local storage so the user doesn't lose context on nav changes.
   const [selectedMonth, setSelectedMonth] = useState(() => {
     let initial = defaultMonth;
     if (storageKey) {
-      try {
-        const saved = window?.localStorage?.getItem(storageKey);
-        const num = parseInt(saved, 10);
-        if (Number.isFinite(num)) {
-          initial = num;
-        }
-      } catch (e) {
-        // ignore storage failures
+      const saved = safeLocalStorage.getItem(storageKey);
+      const num = parseInt(saved, 10);
+      if (Number.isFinite(num)) {
+        initial = num;
       }
     }
     // Clamp to valid range (0..13) to avoid selecting out-of-bounds months when saved value is invalid
@@ -363,11 +362,7 @@ export default function Bills({
   // Save selectedMonth whenever it changes
   useEffect(() => {
     if (!storageKey) return;
-    try {
-      window?.localStorage?.setItem(storageKey, String(selectedMonth));
-    } catch (e) {
-      // ignore storage failures
-    }
+    safeLocalStorage.setItem(storageKey, String(selectedMonth));
   }, [selectedMonth, storageKey]);
 
   // Reset selectedMonth when defaultMonth (derived from startDate) changes.  This
@@ -376,11 +371,7 @@ export default function Bills({
   useEffect(() => {
     setSelectedMonth(defaultMonth);
     if (!storageKey) return;
-    try {
-      window?.localStorage?.setItem(storageKey, String(defaultMonth));
-    } catch (e) {
-      // ignore storage failures
-    }
+    safeLocalStorage.setItem(storageKey, String(defaultMonth));
   }, [defaultMonth, storageKey]);
 
   const [status, setStatus] = useState("all"); // all | unpaid | paid | overdue
@@ -569,17 +560,13 @@ export default function Bills({
       );
     }
     onUpdateBills(nextBills);
-        // After saving a bill, reset the month scroller to the current month.  This
+    // After saving a bill, reset the month scroller to the current month.  This
     // aligns the UI with the month in which the bill was saved and prevents
     // the scroller from persisting an unrelated month.
     const idx = currentMonthIndex(startDate);
     setSelectedMonth(idx);
     if (storageKey) {
-      try {
-        window?.localStorage?.setItem(storageKey, String(idx));
-      } catch (e) {
-        // ignore storage failures
-      }
+      safeLocalStorage.setItem(storageKey, String(idx));
     }
     cancelEdit();
   };
@@ -790,19 +777,15 @@ export default function Bills({
                         accountId,
                       };
                       onUpdateBills([...(bills || []), newBill]);
-                                             // After saving the first bill, reset the month scroller to the current month
-                                              const idx = currentMonthIndex(startDate);
-                                              setSelectedMonth(idx);
-                                              if (storageKey) {
-                                                try {
-                                                  window?.localStorage?.setItem(storageKey, String(idx));
-                                                } catch (e) {
-                                                  // ignore storage failures
-                                                }
-                                              }
-                                              setEditingId(null);
-                                              setDraft(null);
-                                            }}
+                      // After saving the first bill, reset the month scroller to the current month
+                      const idx = currentMonthIndex(startDate);
+                      setSelectedMonth(idx);
+                      if (storageKey) {
+                        safeLocalStorage.setItem(storageKey, String(idx));
+                      }
+                      setEditingId(null);
+                      setDraft(null);
+                    }}
                                           >
                       
                     Save

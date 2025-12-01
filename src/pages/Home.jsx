@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { projectCashflow, fromCents } from "../lib/cashflowEngine.js";
+import { getDefaultPlannerStartDate } from "../lib/dateUtils";
 
 /**
  * EXPECTED PROPS:
@@ -39,7 +40,7 @@ import { projectCashflow, fromCents } from "../lib/cashflowEngine.js";
  * - onGoToReviewPending?: () => void
  */
 
-const DEFAULT_START_DATE = "2025-11-15";
+const DEFAULT_START_DATE = getDefaultPlannerStartDate();
 
 const fmt = (v) =>
   `$${Number(v ?? 0).toLocaleString("en-US", {

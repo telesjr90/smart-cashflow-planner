@@ -1,5 +1,6 @@
-// Updated to fix starting balance + actual mode wiring
-// src/pages/Planner.jsx
+// File: src/pages/Planner.jsx
+// Updated to fix starting balance + actual mode wiring and remove hard-coded default date
+
 import React, { useMemo, useState } from "react";
 import {
   CalendarDays,
@@ -12,8 +13,7 @@ import {
   fromCents,
   getDateForMonthIndex,
 } from "../lib/cashflowEngine.js";
-
-const DEFAULT_START_DATE = "2025-11-15";
+import { getDefaultPlannerStartDate } from "../lib/dateUtils.js";
 
 function TagPill({ children, className = "" }) {
   return (
@@ -72,8 +72,14 @@ export default function Planner({
   // PHASE 4: Expenses prop
   expenses = [],
 }) {
+  // If a persisted startDate is provided, always respect it.
+  // Only fall back to a dynamic default for brand new households
+  // that do not have a configured planner date yet.
   const effectiveStartDate =
-    startDate && startDate.length >= 10 ? startDate : DEFAULT_START_DATE;
+    startDate && startDate.length >= 10
+      ? startDate
+      : getDefaultPlannerStartDate();
+
   const monthsToProject = 3;
   const [monthOffset, setMonthOffset] = useState(0);
 
@@ -220,7 +226,8 @@ export default function Planner({
     return result.sort((a, b) => a.weekIndex - b.weekIndex);
   }, [ledger, activeYear, activeMonthIndex0, daysInActiveMonth]);
 
-  // Sum of real account balances (as entered by the user)
+  // Sum of real account balances (as entered by the user on the Accounts screen).
+  // This is used as the "actual" household balance in Actual mode.
   const startingBalanceForHousehold = useMemo(
     () =>
       (accounts || []).reduce(
@@ -230,11 +237,34 @@ export default function Planner({
     [accounts]
   );
 
-  // Derive start-of-month and end-of-month balances from the ledger.
-  // In "projected" mode we use the engine's ledger for both.
-  // In "actual" mode we:
-  //   - use the ledger (which includes the opening event) for start-of-month,
-  //   - show the real account balances for the end-of-month display.
+  /**
+   * Start & end balances used in the monthly summary card.
+   *
+   * SHARED BEHAVIOR (both modes):
+   * - We derive a "start-of-month" snapshot from the ledger:
+   *   - Look at the last ledger event STRICTLY BEFORE the first day
+   *     of the active month.
+   *   - If none exists, fall back to the first ledger event.
+   *   - Sum `event.balances` across all accounts to get a single
+   *     household balance in cents.
+   *
+   * PROJECTED MODE:
+   * - startBalanceCents: sum of balances at the last event before the month.
+   * - endBalanceCents: sum of balances at the last event inside the month
+   *   (i.e. the engine's projected end-of-month snapshot).
+   *
+   * ACTUAL MODE:
+   * - startBalanceCents: same ledger-based start-of-month snapshot
+   *   as projected mode (so you can compare like-for-like).
+   * - endBalanceCents: the sum of REAL account balances from the Accounts
+   *   screen (sum of `openingBalance`), not the ledger's end-of-month.
+   *
+   * IMPORTANT:
+   * - In Actual mode, `startBalanceCents + net (for this month)` may NOT
+   *   equal `endBalanceCents`. This is intentional: it reflects any
+   *   adjustments or corrections you've made directly on your accounts
+   *   outside of the month’s modeled events.
+   */
   const { startBalanceCents, endBalanceCents } = useMemo(() => {
     const centsFromAccounts = Math.round(
       (startingBalanceForHousehold || 0) * 100
@@ -290,14 +320,14 @@ export default function Planner({
 
     if (mode === "actual") {
       return {
-        // Use engine + opening event for the "start-of-month" snapshot
+        // Use the engine + opening event for the "start-of-month" snapshot.
         startBalanceCents: startFromLedger,
-        // But show the user's real account balances as the "actual" balance
+        // But show the user's real account balances as the "Actual" balance.
         endBalanceCents: centsFromAccounts,
       };
     }
 
-    // Projected mode: use the engine's ledger balances.
+    // Projected mode: use the engine's ledger balances for both.
     return { startBalanceCents: startFromLedger, endBalanceCents: endFromLedger };
   }, [ledger, activeMonthDateStr, mode, startingBalanceForHousehold]);
 
@@ -385,7 +415,7 @@ export default function Planner({
           </div>
 
           <div className="flex items-center justify-between text-[11px] text-slate-500">
-            <span>Start-of-month balance</span>
+            <span>Start of month (planner snapshot)</span>
             <span className="font-semibold text-slate-800">
               ${fromCents(startBalanceCents)}
             </span>
@@ -394,12 +424,31 @@ export default function Planner({
           <div className="flex items-center justify-between text-[11px] text-slate-500">
             <span>
               {mode === "actual"
-                ? "Actual balance (from accounts)"
-                : "Projected end-of-month"}
+                ? "Actual balance (from Accounts)"
+                : "Projected end of month"}
             </span>
             <span className="font-semibold text-slate-800">
               ${fromCents(endBalanceCents)}
             </span>
+          </div>
+
+          {/* Helper text to clarify the relationship between start, net, and end */}
+          <div className="text-[10px] text-slate-400 mt-1">
+            {mode === "actual" ? (
+              <span>
+                Note: start-of-month comes from the planner ledger, while
+                &nbsp;
+                <strong>Actual balance</strong> uses your latest account
+                balances. They may not add up exactly to this month&apos;s net
+                change.
+              </span>
+            ) : (
+              <span>
+                In projected mode: <strong>Start</strong> +{" "}
+                <strong>Net</strong> = <strong>Projected end-of-month</strong>{" "}
+                (up to rounding).
+              </span>
+            )}
           </div>
         </section>
       )}

@@ -19,14 +19,16 @@ import { Wallet, TrendingUp, AlertCircle, CheckCircle2 } from "lucide-react";
 import { auth, db } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { projectCashflow, fromCents } from "./lib/cashflowEngine";
+import { getDefaultPlannerStartDate } from "./lib/dateUtils";
+import { safeLocalStorage, makeScopedKey } from "./lib/safeLocalStorage";
 
-const LOCAL_STORAGE_KEY = "cashFlowData";
+const LOCAL_STORAGE_BASE_KEY = "cashFlowData";
 
 // Default target split for auto-assigned bills
 const TARGET_H_SHARE = 0.51;
 const TARGET_W_SHARE = 0.49;
 
-const DEFAULT_START_DATE = "2025-11-15";
+const DEFAULT_START_DATE = getDefaultPlannerStartDate();
 const DEFAULT_STARTING_BALANCE = 0;
 
 const clampNumber = (n) => (Number.isFinite(n) ? n : 0);
@@ -230,6 +232,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   // Props from App (optional)
   const {
     uid: uidProp,
+    householdId,
     paidBills: paidBillsProp,
     setPaidBills: setPaidBillsProp,
     confirmedDiscretionary: confirmedDiscretionaryProp,
@@ -381,6 +384,12 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   const fsDebounceRef = useRef(null);
   const [fsError, setFsError] = useState(null);
 
+  // Scope planner persistence by household (preferred) or user.
+  const storageKey = useMemo(
+    () => makeScopedKey(LOCAL_STORAGE_BASE_KEY, { householdId, uid }),
+    [householdId, uid]
+  );
+
   const internalMergeWrite = useCallback(
     async (payload) => {
       if (!userDocRef || !payload || typeof payload !== "object") return;
@@ -403,8 +412,10 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
   // LocalStorage bootstrap
   useEffect(() => {
+    if (!storageKey) return; // no scoped key => skip persistence to avoid bleed
     try {
-      const saved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || "{}");
+      const raw = safeLocalStorage.getItem(storageKey);
+      const saved = raw ? JSON.parse(raw) : {};
       if (saved.startDate) setStartDate(saved.startDate);
       if (typeof saved.startingBalance === "number")
         setStartingBalance(saved.startingBalance);
@@ -417,10 +428,9 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       if (saved.categoryBudgets) setCategoryBudgets(saved.categoryBudgets);
       if (saved.cashFlowMode) setInternalMode(saved.cashFlowMode);
     } catch (e) {
-      console.warn("Load localStorage failed", e);
+      console.warn("[MonthlyCashFlowInfographic] load from localStorage failed", e);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [storageKey, liveExtraIncomes]);
 
   // Firestore load
   const overlayPlanningFromFs = useCallback(
@@ -464,6 +474,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
   // Persist planning to localStorage
   useEffect(() => {
+    if (!storageKey) return; // no scoped key => keep this as in-memory only
     const toSave = {
       startDate,
       startingBalance,
@@ -477,11 +488,13 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       cashFlowMode: mode,
     };
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toSave));
+      safeLocalStorage.setItem(storageKey, JSON.stringify(toSave));
     } catch (e) {
-      console.warn("Save localStorage failed", e);
+      // JSON.stringify itself can theoretically throw; be defensive.
+      console.warn("[MonthlyCashFlowInfographic] save to localStorage failed", e);
     }
   }, [
+    storageKey,
     startDate,
     startingBalance,
     hIncome,
