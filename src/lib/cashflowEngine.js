@@ -7,7 +7,7 @@
 // cents and simulates a cash ledger across multiple months.  The primary
 // change here ensures that "actual" mode correctly filters events so
 // future transactions do not leak into today.  In particular we now build
-// a local‑midnight date string and perform an inclusive less‑than‑or‑equal
+// a date string in ISO format (YYYY‑MM‑DD) and perform an inclusive less‑than‑or‑equal
 // (<=) check when filtering income and expense events, allowing
 // transactions that occur on the current date to be included.
 
@@ -148,11 +148,10 @@ export function allocateIncome({
     return true;
   });
 
-  // Partition amount and percent rules (legacy support: if r.amount defined, treat as amount)
+  // Partition amount and percent rules
   const amountRules = [];
   const percentRules = [];
   for (const r of applicable) {
-    // Determine type
     const type = r.type || (r.amount != null ? "amount" : "percent");
     if (type === "amount") {
       amountRules.push(r);
@@ -165,7 +164,6 @@ export function allocateIncome({
   for (const r of amountRules) {
     const accId = r?.accountId;
     if (!accId || !(accId in deltasByAccount)) continue;
-    // Determine value: support legacy r.amount and new r.value
     const val = r.amount != null ? r.amount : r.value;
     const ruleCents = toCents(val);
     if (!ruleCents || ruleCents <= 0) continue;
@@ -256,19 +254,17 @@ export function projectCashflow({
       ? residualAccountId
       : safeAccounts[0].id;
 
-  // ---------- 2) Build income events ----------
+  // 2) Build income events
   const paydays = enumerateSemiMonthlyPaydays(
     startDateStr,
     projectionMonths,
     paySchedule
   );
-  // Guard against undefined or negative incomes.  Negative amounts are treated as zero.
   const safeH = Number.isFinite(+income?.husband) ? Math.max(0, +income.husband) : 0;
   const safeW = Number.isFinite(+income?.wife) ? Math.max(0, +income.wife) : 0;
   const perPayH = toCents(safeH);
   const perPayW = toCents(safeW);
   const perPayTotal = perPayH + perPayW;
-  // Determine pay index (first or second) for each payday
   const payCountsByMonth = {};
   const salaryEvents = paydays.map((p, idx) => {
     const count = (payCountsByMonth[p.monthIndex] =
@@ -306,24 +302,18 @@ export function projectCashflow({
   }
   const incomeEvents = [...salaryEvents, ...extraEvents];
 
-  // ---------- 3) Build bill events ----------
+  // 3) Build bill events
   const safeBills = Array.isArray(bills) ? bills : [];
   const safePaidBills = paidBills || {};
   const billEvents = [];
-  // Compute today's date in the user's local timezone (YYYY-MM-DD).
-  // Using toISOString() can produce a different date when the local timezone is behind UTC
-  // (e.g. Vancouver on Nov 23 may yield 2025-11-24).  Use local date parts instead.
-  const _now = new Date();
-  const localMidnight = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
-  const todayStr = `${localMidnight.getFullYear()}-${String(
-    localMidnight.getMonth() + 1
-  ).padStart(2, "0")}-${String(localMidnight.getDate()).padStart(2, "0")}`;
+  // Compute today's date in ISO format (YYYY-MM-DD).  This avoids any locale
+  // formatting issues and preserves lexicographic ordering.
+  const todayStr = new Date().toISOString().slice(0, 10);
   for (let m = 0; m < projectionMonths; m++) {
     for (const b of safeBills) {
       if (!b?.id) continue;
 
-      // SAFETY CHECK: Treat undefined status as 'active' for legacy compatibility.
-      // Skip bills that are explicitly not active (e.g. pending/archived).
+      // Skip non-active bills
       const status = b.status || "active";
       if (status !== "active") continue;
 
@@ -348,7 +338,7 @@ export function projectCashflow({
     }
   }
 
-  // ---------- 3b) Build Expense events (PHASE 4) ----------
+  // 3b) Build Expense events
   const safeExpenses = Array.isArray(expenses) ? expenses : [];
   const expenseEvents = safeExpenses.map((ex, idx) => {
     const date = ex.date || startDateStr;
@@ -364,20 +354,11 @@ export function projectCashflow({
     };
   });
 
-  // ---------- 3c) Actual-mode filtering for income & expenses ----------
-  // In "actual" mode we only keep:
-  // - income events whose date is <= today
-  // - extra income events whose date is <= today
-  // - expense events whose date is <= today
-  // Bills already have their own actual-mode behavior:
-  //   - past unpaid bills are skipped
-  //   - future bills are kept
+  // 3c) Actual-mode filtering for income & expenses.
   let filteredIncomeEvents = incomeEvents;
   let filteredExpenseEvents = expenseEvents;
 
   if (mode === "actual") {
-    // Include events up to and including today.  We allow today's transactions
-    // to be part of the ledger in actual mode because they occur on the current date.
     filteredIncomeEvents = incomeEvents.filter((ev) => {
       const d = ev.date || ev.dateStr;
       if (!d) return false;
@@ -390,7 +371,7 @@ export function projectCashflow({
     });
   }
 
-  // ---------- 4) Merge events & sort ----------
+  // 4) Merge events & sort
   const allEvents = [
     ...filteredIncomeEvents,
     ...billEvents,
@@ -404,7 +385,7 @@ export function projectCashflow({
     return (a._sequence || 0) - (b._sequence || 0);
   });
 
-  // ---------- 5) Simulate ledger ----------
+  // 5) Simulate ledger
   const ledger = [];
   const monthlyTotals = [];
   for (let i = 0; i < projectionMonths; i++) {
@@ -423,7 +404,7 @@ export function projectCashflow({
     });
   }
 
-  // Opening-balance event: anchor the ledger to the seeded balances.
+  // Opening balance
   ledger.push({
     date: startDateStr,
     kind: "opening",
