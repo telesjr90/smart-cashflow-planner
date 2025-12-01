@@ -1488,21 +1488,22 @@ const handleTabChange = useCallback(
           />
         )}
 
-        {tab === "bills" && (
-          <Bills
-            role={role}
-            startDate={startDate}
-            bills={displayedBills}
-            paidFlags={paidFlags}
-            personScope={personScope}
-            accounts={accounts}
-            residualAccountId={residualAccountId}
-            onTogglePaid={handleTogglePaid}
-            onBulkMark={handleBulkMark}
-            onChangeBillAccount={handleChangeBillAccount}
-            onUpdateBills={handleUpdateBills}
-          />
-        )}
+      {tab === "bills" && (
+              <Bills
+                householdId={householdId}
+                role={role}
+                startDate={startDate}
+                bills={displayedBills}
+                paidFlags={paidFlags}
+                personScope={personScope}
+                accounts={accounts}
+                residualAccountId={residualAccountId}
+                onTogglePaid={handleTogglePaid}
+                onBulkMark={handleBulkMark}
+                onChangeBillAccount={handleChangeBillAccount}
+                onUpdateBills={handleUpdateBills}
+              />
+            )}
 
         {tab === "settings" && (
           <Settings

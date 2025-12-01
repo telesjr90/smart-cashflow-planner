@@ -206,6 +206,12 @@ export default function Bills({
   onBulkMark,
   onChangeBillAccount,
   onUpdateBills,
+  /** Optional household identifier used to namespace localStorage keys.
+   *  When provided, the selected month will be persisted under
+   *  `billsSelectedMonth:<householdId>` instead of a global key.
+   *  This prevents cross-household interference and stale values.
+   */
+  householdId,
 }) {
   // Guard against undefined or falsy start dates.  When no startDate is
   // provided (e.g. immediately after creating a new household) the month
@@ -330,41 +336,52 @@ export default function Bills({
     }
   }, [startDate]);
 
+  // Compose a namespaced localStorage key for the selected month.
+  // If householdId is provided, prefix the key with the household ID to avoid
+  // cross-household interference and stale values. Without a householdId,
+  // persistence is skipped to prevent bleed across users.
+  const storageKey = householdId ? `billsSelectedMonth:${householdId}` : null;
+
   // Persist selected month in local storage so the user doesn't lose context on nav changes.
   const [selectedMonth, setSelectedMonth] = useState(() => {
-    const saved = window?.localStorage?.getItem("billsSelectedMonth");
-    const parsed = Number.isFinite(parseInt(saved)) ? parseInt(saved) : null;
-    const initial = parsed != null ? parsed : defaultMonth;
+    let initial = defaultMonth;
+    if (storageKey) {
+      try {
+        const saved = window?.localStorage?.getItem(storageKey);
+        const num = parseInt(saved, 10);
+        if (Number.isFinite(num)) {
+          initial = num;
+        }
+      } catch (e) {
+        // ignore storage failures
+      }
+    }
     // Clamp to valid range (0..13) to avoid selecting out-of-bounds months when saved value is invalid
     return Math.max(0, Math.min(13, initial));
   });
 
   // Save selectedMonth whenever it changes
   useEffect(() => {
+    if (!storageKey) return;
     try {
-      window?.localStorage?.setItem(
-        "billsSelectedMonth",
-        String(selectedMonth)
-      );
+      window?.localStorage?.setItem(storageKey, String(selectedMonth));
     } catch (e) {
       // ignore storage failures
     }
-  }, [selectedMonth]);
+  }, [selectedMonth, storageKey]);
 
   // Reset selectedMonth when defaultMonth (derived from startDate) changes.  This
   // ensures that when the start date is updated (e.g. new household), the
   // scroller jumps back to the current month rather than using a stale value
   useEffect(() => {
     setSelectedMonth(defaultMonth);
+    if (!storageKey) return;
     try {
-      window?.localStorage?.setItem(
-        "billsSelectedMonth",
-        String(defaultMonth)
-      );
+      window?.localStorage?.setItem(storageKey, String(defaultMonth));
     } catch (e) {
       // ignore storage failures
     }
-  }, [defaultMonth]);
+  }, [defaultMonth, storageKey]);
 
   const [status, setStatus] = useState("all"); // all | unpaid | paid | overdue
   const [owner, setOwner] = useState(
@@ -552,15 +569,17 @@ export default function Bills({
       );
     }
     onUpdateBills(nextBills);
-    // After saving a bill, reset the month scroller to the current month.  This
+        // After saving a bill, reset the month scroller to the current month.  This
     // aligns the UI with the month in which the bill was saved and prevents
     // the scroller from persisting an unrelated month.
     const idx = currentMonthIndex(startDate);
     setSelectedMonth(idx);
-    try {
-      window?.localStorage?.setItem("billsSelectedMonth", String(idx));
-    } catch (e) {
-      // ignore storage failures
+    if (storageKey) {
+      try {
+        window?.localStorage?.setItem(storageKey, String(idx));
+      } catch (e) {
+        // ignore storage failures
+      }
     }
     cancelEdit();
   };
@@ -771,21 +790,21 @@ export default function Bills({
                         accountId,
                       };
                       onUpdateBills([...(bills || []), newBill]);
-                      // After saving the first bill, reset the month scroller to the current month
-                      const idx = currentMonthIndex(startDate);
-                      setSelectedMonth(idx);
-                      try {
-                        window?.localStorage?.setItem(
-                          "billsSelectedMonth",
-                          String(idx)
-                        );
-                      } catch (e) {
-                        // ignore storage failures
-                      }
-                      setEditingId(null);
-                      setDraft(null);
-                    }}
-                  >
+                                             // After saving the first bill, reset the month scroller to the current month
+                                              const idx = currentMonthIndex(startDate);
+                                              setSelectedMonth(idx);
+                                              if (storageKey) {
+                                                try {
+                                                  window?.localStorage?.setItem(storageKey, String(idx));
+                                                } catch (e) {
+                                                  // ignore storage failures
+                                                }
+                                              }
+                                              setEditingId(null);
+                                              setDraft(null);
+                                            }}
+                                          >
+                      
                     Save
                   </button>
                 </div>
