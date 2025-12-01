@@ -330,29 +330,57 @@ export default function App() {
   const [networkError, setNetworkError] = useState(false);
 
   const [tab, setTab] = useState("home");
-const [settingsSection, setSettingsSection] = useState(null);
-// Track unsaved changes in Settings page
-const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState(null);
+  // Track unsaved changes in Settings page
+  const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
 
-const handleGoToSettingsSection = useCallback((section) => {
-  setSettingsSection(section);
-  setTab("settings");
-}, []);
+  const handleGoToSettingsSection = useCallback((section) => {
+    setSettingsSection(section);
+    setTab("settings");
+  }, []);
 
-// Guard tab changes if there are unsaved changes in Settings
-const handleTabChange = useCallback(
-  (next) => {
-    if (next === tab) return;
-    if (hasUnsavedSettings) {
-      const ok = window.confirm(
-        "You have unsaved changes in Settings. Leave without saving?"
-      );
-      if (!ok) return;
-    }
-    setTab(next);
-  },
-  [tab, hasUnsavedSettings]
-);
+  // Guard tab changes if there are unsaved changes in Settings
+  const handleTabChange = useCallback(
+    (next) => {
+      if (next === tab) return;
+      if (hasUnsavedSettings) {
+        const ok = window.confirm(
+          "You have unsaved changes in Settings. Leave without saving?"
+        );
+        if (!ok) return;
+      }
+      setTab(next);
+    },
+    [tab, hasUnsavedSettings]
+  );
+
+  /**
+   * Warn the user when closing or refreshing the browser tab if there are
+   * unsaved changes in the Settings page. Without this handler, the user
+   * could inadvertently lose their edits by reloading or closing the tab.
+   *
+   * Note: modern browsers will display a generic message and ignore any
+   * custom text set on the event. The presence of `event.returnValue` is
+   * sufficient to trigger the native confirmation dialog.
+   */
+  useEffect(() => {
+    // Only attach the beforeunload handler while there are unsaved changes.
+    if (!hasUnsavedSettings) return;
+
+    const handleBeforeUnload = (event) => {
+      // Prevent the default action and set returnValue to an empty string
+      // to signal that the user should be prompted. The exact text of
+      // the dialog is controlled by the browser and cannot be customized.
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedSettings]);
 
   const [personScope, setPersonScope] = useState("self");
   const [mode, setMode] = useState("projected");
