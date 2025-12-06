@@ -1,157 +1,177 @@
-// src/components/AddExpenseModal.jsx
-import React, { useState, useEffect } from "react";
-import { X, CheckCircle2, Calendar, Tag, CreditCard } from "lucide-react";
+import React, { useState } from 'react';
+import { X, Calendar } from 'lucide-react';
+import { CATEGORY_LIST } from '../lib/categories';
+import { Button } from './ui/Button';
+import { Input } from './ui/Input';
 
 export default function AddExpenseModal({ isOpen, onClose, onSave, accounts = [] }) {
-  const [draft, setDraft] = useState({
-    amount: "",
-    description: "",
-    category: "other",
-    date: new Date().toISOString().split("T")[0],
-    accountId: accounts[0]?.id || "",
-  });
-
-  // Reset account default when accounts load or modal opens
-  useEffect(() => {
-    if (isOpen && accounts.length > 0 && !draft.accountId) {
-      setDraft(prev => ({ ...prev, accountId: accounts[0].id }));
-    }
-  }, [isOpen, accounts]);
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [categoryId, setCategoryId] = useState('food'); 
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [accountId, setAccountId] = useState(accounts[0]?.id || '');
+  const [type, setType] = useState('expense'); // 'expense' or 'income'
 
   if (!isOpen) return null;
 
-  const handleSave = (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    const amt = parseFloat(draft.amount);
-    if (!draft.description || isNaN(amt) || amt <= 0) return;
+    if (!amount || !description) return;
 
-    onSave({
-      id: `exp-${Date.now()}`,
-      amount: amt,
-      description: draft.description,
-      category: draft.category || "other",
-      date: draft.date,
-      accountId: draft.accountId,
-      createdAt: new Date().toISOString(),
-    });
+    // --- Unified Schema Construction ---
+    const newTransaction = {
+      id: crypto.randomUUID(),
+      date,
+      amount: parseFloat(amount),
+      description,
+      category: categoryId,
+      accountId,
+      type, // 'expense' | 'income'
+      createdAt: new Date().toISOString()
+    };
 
-    // Reset fields
-    setDraft({
-      amount: "",
-      description: "",
-      category: "other",
-      date: new Date().toISOString().split("T")[0],
-      accountId: accounts[0]?.id || "",
-    });
+    onSave(newTransaction);
+    
+    // Reset & Close
+    setAmount('');
+    setDescription('');
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
+        onClick={onClose}
+      />
+
+      {/* Modal Card */}
+      <div className="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl overflow-hidden animate-in slide-in-from-bottom duration-300">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-          <h3 className="text-sm font-semibold text-slate-900">Log Expense</h3>
-          <button onClick={onClose} className="p-1 rounded-full text-slate-400 hover:bg-slate-100">
-            <X size={18} />
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-100">
+          <h2 className="text-title-l font-bold text-surface-900">Add Transaction</h2>
+          <button 
+            onClick={onClose}
+            className="p-2 text-surface-400 hover:text-surface-600 hover:bg-surface-50 rounded-full"
+          >
+            <X size={24} />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSave} className="p-4 space-y-4">
-          
-          {/* Amount */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Type Toggle */}
+          <div className="flex p-1 bg-surface-100 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setType('expense')}
+              className={`flex-1 py-2 text-caption font-bold rounded-xl transition-all ${type === 'expense' ? 'bg-white shadow-sm text-danger-500' : 'text-surface-500'}`}
+            >
+              Expense
+            </button>
+            <button
+              type="button"
+              onClick={() => setType('income')}
+              className={`flex-1 py-2 text-caption font-bold rounded-xl transition-all ${type === 'income' ? 'bg-white shadow-sm text-success-500' : 'text-surface-500'}`}
+            >
+              Income
+            </button>
+          </div>
+
+          {/* Amount Input */}
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1 uppercase tracking-wide">
-              Amount
-            </label>
+            <label className="block text-caption font-semibold text-surface-500 mb-2">Amount</label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-slate-400 font-semibold">$</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-title-l font-bold text-surface-400">$</span>
               <input
                 type="number"
                 step="0.01"
-                autoFocus
                 placeholder="0.00"
-                className="w-full pl-7 pr-3 py-2 text-lg font-bold text-slate-900 placeholder-slate-300 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                value={draft.amount}
-                onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="w-full pl-10 pr-4 py-4 text-3xl font-bold text-surface-900 bg-surface-50 rounded-2xl border-none focus:ring-2 focus:ring-primary-500 outline-none placeholder:text-surface-300"
+                autoFocus
               />
             </div>
           </div>
 
-          {/* Description */}
+          {/* Category Grid */}
           <div>
-            <label className="block text-[11px] font-medium text-slate-500 mb-1 uppercase tracking-wide">
-              Description
-            </label>
-            <input
-              type="text"
-              placeholder="What was this for?"
-              className="w-full px-3 py-2 text-sm text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              value={draft.description}
-              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+            <label className="block text-caption font-semibold text-surface-500 mb-3">Category</label>
+            <div className="grid grid-cols-4 gap-3">
+              {CATEGORY_LIST.map((cat) => {
+                const Icon = cat.icon;
+                const isSelected = categoryId === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setCategoryId(cat.id)}
+                    className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border transition-all ${
+                      isSelected 
+                        ? 'bg-primary-50 border-primary-500 ring-1 ring-primary-500' 
+                        : 'bg-white border-surface-200 hover:border-primary-200'
+                    }`}
+                  >
+                    <div className={`p-2 rounded-full ${cat.color} ${isSelected ? 'scale-110' : ''}`}>
+                      <Icon size={18} />
+                    </div>
+                    <span className={`text-[10px] font-medium truncate w-full text-center ${isSelected ? 'text-primary-700' : 'text-surface-500'}`}>
+                      {cat.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Details (Date & Note) */}
+          <div className="grid grid-cols-2 gap-4">
+            <Input 
+              label="Date" 
+              type="date" 
+              value={date} 
+              onChange={(e) => setDate(e.target.value)} 
+              icon={Calendar}
+            />
+            <Input 
+              label="Description" 
+              placeholder="For?" 
+              value={description} 
+              onChange={(e) => setDescription(e.target.value)} 
             />
           </div>
 
-          {/* Details Grid */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Account Select */}
+          {accounts.length > 0 && (
             <div>
-              <label className="block text-[10px] font-medium text-slate-500 mb-1 flex items-center gap-1">
-                <Calendar size={12} /> Date
-              </label>
-              <input
-                type="date"
-                className="w-full px-2 py-1.5 text-xs text-slate-700 border border-slate-200 rounded-lg"
-                value={draft.date}
-                onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-[10px] font-medium text-slate-500 mb-1 flex items-center gap-1">
-                <Tag size={12} /> Category
-              </label>
-              <select
-                className="w-full px-2 py-1.5 text-xs text-slate-700 border border-slate-200 rounded-lg bg-white"
-                value={draft.category}
-                onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-              >
-                <option value="other">Other</option>
-                <option value="groceries">Groceries</option>
-                <option value="dining">Dining Out</option>
-                <option value="transport">Transport</option>
-                <option value="entertainment">Entertainment</option>
-                <option value="shopping">Shopping</option>
-                <option value="health">Health</option>
-                <option value="utilities">Utilities</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-             <label className="block text-[10px] font-medium text-slate-500 mb-1 flex items-center gap-1">
-                <CreditCard size={12} /> Paid from
-              </label>
-              <select
-                className="w-full px-2 py-2 text-xs text-slate-700 border border-slate-200 rounded-lg bg-white"
-                value={draft.accountId}
-                onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
-              >
-                {accounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>{acc.name}</option>
+              <label className="block text-caption font-semibold text-surface-500 mb-2">Account</label>
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                {accounts.map((acct) => (
+                  <button
+                    key={acct.id}
+                    type="button"
+                    onClick={() => setAccountId(acct.id)}
+                    className={`flex-shrink-0 px-4 py-2 rounded-xl border text-caption font-semibold transition-all ${
+                      accountId === acct.id
+                        ? 'bg-surface-900 text-white border-surface-900'
+                        : 'bg-white text-surface-600 border-surface-200 hover:bg-surface-50'
+                    }`}
+                  >
+                    {acct.name}
+                  </button>
                 ))}
-              </select>
-          </div>
+              </div>
+            </div>
+          )}
 
-          <button
-            type="submit"
-            disabled={!draft.amount || !draft.description}
-            className="w-full flex items-center justify-center gap-2 py-2.5 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <CheckCircle2 size={16} />
-            Save Expense
-          </button>
+          {/* Submit Action */}
+          <div className="pt-2">
+            <Button type="submit" fullWidth size="lg">
+              Save Transaction
+            </Button>
+          </div>
         </form>
       </div>
     </div>

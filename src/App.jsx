@@ -582,7 +582,10 @@ export default function App() {
 
           onClose={() => setIsExpenseModalOpen(false)}
 
-          onSave={store.updateExpenses}
+          onSave={(newTransaction) => {
+            const next = [...expenses, newTransaction];
+            store.updateExpenses(next);
+          }}
 
           accounts={accounts}
 
