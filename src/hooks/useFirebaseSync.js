@@ -1,68 +1,66 @@
-import { useEffect, useRef } from 'react';
-import { useDispatch } from 'react-redux';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { setTransactions, setLoading, setError } from '../store/slices/financeSlice';
+import { useEffect, useRef } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, onSnapshot } from "firebase/firestore";
+import { auth, db } from "../firebase"; // Adjust path if needed
+import { useCashflowStore } from "../store/useCashflowStore";
 
-export const useFirebaseSync = () => {
-  const dispatch = useDispatch();
-  const snapshotUnsubscribeRef = useRef(null);
+export function useFirebaseSync() {
+  const setUserProfile = useCashflowStore((state) => state.setUserProfile);
+  const setFullPlanData = useCashflowStore((state) => state.setFullPlanData);
+  const reset = useCashflowStore((state) => state.reset);
+
+  const unsubscribeSnapshotRef = useRef(null);
 
   useEffect(() => {
-    // 1. Listen for Auth Changes
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      // Cleanup previous snapshot listener if it exists
-      if (snapshotUnsubscribeRef.current) {
-        snapshotUnsubscribeRef.current();
-        snapshotUnsubscribeRef.current = null;
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      // Cleanup previous listener
+      if (unsubscribeSnapshotRef.current) {
+        unsubscribeSnapshotRef.current();
+        unsubscribeSnapshotRef.current = null;
       }
 
       if (user) {
-        // User is signed in, start fetching data
-        dispatch(setLoading(true));
-        const q = query(
-          collection(db, "transactions"),
-          where("uid", "==", user.uid),
-          orderBy("date", "desc") // Ensure you have an index for this in Firestore if needed
-        );
+        // 1. Set basic profile immediately
+        setUserProfile({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+        });
 
-        // 2. Real-time Listener for Transactions
-        const unsubscribeSnapshot = onSnapshot(q, 
-          (snapshot) => {
-            const docs = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
-            
-            // Dispatch data to Redux
-            dispatch(setTransactions(docs));
-            dispatch(setLoading(false));
+        // 2. Subscribe to User Data in Firestore
+        const userDocRef = doc(db, "users", user.uid);
+        unsubscribeSnapshotRef.current = onSnapshot(
+          userDocRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const fullData = docSnap.data();
+              // Sync Profile details if they exist in doc
+              if (fullData.profile) {
+                setUserProfile(fullData.profile);
+              }
+              // Sync Plan Data (bills, accounts, etc.)
+              if (fullData.data) {
+                setFullPlanData(fullData.data);
+              }
+            } else {
+              console.log("No user document found. Using default state.");
+            }
           },
           (error) => {
-            console.error("Firestore Error:", error);
-            dispatch(setError(error.message));
-            dispatch(setLoading(false));
+            console.error("Firestore sync error:", error);
           }
         );
-
-        // Store the unsubscribe function
-        snapshotUnsubscribeRef.current = unsubscribeSnapshot;
       } else {
-        // User is signed out, clear data
-        dispatch(setTransactions([]));
-        dispatch(setLoading(false));
+        // User logged out
+        reset();
       }
     });
 
-    // Cleanup both auth listener and snapshot listener
     return () => {
       unsubscribeAuth();
-      if (snapshotUnsubscribeRef.current) {
-        snapshotUnsubscribeRef.current();
-        snapshotUnsubscribeRef.current = null;
+      if (unsubscribeSnapshotRef.current) {
+        unsubscribeSnapshotRef.current();
       }
     };
-  }, [dispatch]);
-};
-
+  }, [setUserProfile, setFullPlanData, reset]);
+}

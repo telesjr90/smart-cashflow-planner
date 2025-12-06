@@ -69,6 +69,8 @@ export const useCashflowStore = create(
       
       updateBudgets: (newBudgets) => set({ categoryBudgets: newBudgets }),
 
+      updateAllocationRules: (newRules) => set({ allocationRules: newRules }),
+
       setPaidStatus: (billId, dateStr, isPaid) => set((state) => {
         const key = `${dateStr}:${billId}`;
         const newMap = { ...state.paidBills };

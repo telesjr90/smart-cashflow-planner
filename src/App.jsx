@@ -1,4 +1,3 @@
-// File: src/App.jsx
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import AppShell from "./components/layout/AppShell";
@@ -11,75 +10,50 @@ import MonthlyCashFlowInfographic from "./MonthlyCashFlowInfographic";
 import Expenses from "./pages/Expenses";
 import AddExpenseModal from "./components/AddExpenseModal";
 
-// Core logic hook
-import useCashflowData from "./hooks/useCashflowData";
-
-// Libs for derived data calculation
-import { projectCashflow } from "./lib/cashflow/index.js";
-import { applyBillSharing } from "./lib/billSharing";
-import { getDefaultPlannerStartDate } from "./lib/cashflow/index.js";
+// --- New Architecture Imports ---
+import { useCashflowStore } from "./store/useCashflowStore";
+import { useFirebaseSync } from "./hooks/useFirebaseSync";
 import { loginWithGoogle, auth } from "./firebase";
+import { projectCashflow } from "./lib/cashflow/index.js";
+import { getDefaultPlannerStartDate } from "./lib/cashflow/index.js";
 
-// Date helper needed for Home summary calculation
+// --- Helper Functions ---
 function getMonthIndexFromStart(startDate, dateStr) {
   const s = new Date(startDate + "T00:00:00");
   const d = new Date(dateStr + "T00:00:00");
-  return (
-    (d.getFullYear() - s.getFullYear()) * 12 + (d.getMonth() - s.getMonth())
-  );
+  return (d.getFullYear() - s.getFullYear()) * 12 + (d.getMonth() - s.getMonth());
 }
-
-function getDateStrForMonthIndex(startDate, monthIndex) {
-  const s = new Date(startDate + "T00:00:00");
-  const d = new Date(s.getFullYear(), s.getMonth() + monthIndex, 1);
-  return d.toISOString().slice(0, 10);
-}
-
-const withIds = (arr) =>
-  arr.map((b) => ({
-    ...b,
-    id: b.id || `${b.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${b.dueDay}`,
-    accountId: b.accountId || "chequing",
-  }));
 
 export default function App() {
+  // 1. Activate the Cloud Sync Engine
+  useFirebaseSync();
+
+  // 2. Access Global Store
+  const store = useCashflowStore();
   const {
-    user,
-    me,
-    myData,
-    household,
-    loading,
-    hasCached,
-    isAgentDemo,
-    DEFAULT_STARTING_BALANCE,
-    DEFAULT_INCOME,
-    DEFAULT_PAY_SCHEDULE,
-    
-    // Handlers
-    handleUpdateBills,
-    handleChangeBillAccount,
-    handleTogglePaid,
-    handleBulkMark,
-    handleUpdateAccounts,
-    handleUpdateAllocationRules,
-    handleUpdateIncomeAndPaySchedule,
-    handleUpdateGoals,
-    handleUpdateBudgets,
-    handleUpdateStartingBalance,
-    handleUpdateExpenses,
-    handleAddExpense,
-    handleUpdateExtraIncome,
-    handleUpdateBillSharing,
-    handleUpdateProfile,
-    handleInfographicMergeWrite,
-  } = useCashflowData();
+    userProfile,
+    startDate,
+    startingBalance,
+    accounts,
+    bills,
+    expenses,
+    income,
+    paySchedule,
+    allocationRules,
+    residualAccountId,
+    goals,
+    categoryBudgets,
+    extraIncomes,
+    billSharing,
+    paidBills,
+    mode
+  } = store;
 
   // --- UI State ---
   const [tab, setTab] = useState("home");
   const [settingsSection, setSettingsSection] = useState(null);
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
   const [personScope, setPersonScope] = useState("self");
-  const [mode, setMode] = useState("projected");
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
 
   // --- Navigation & Warnings ---
@@ -88,138 +62,64 @@ export default function App() {
     setTab("settings");
   }, []);
 
-  const handleTabChange = useCallback(
-    (next) => {
-      if (next === tab) return;
-      if (hasUnsavedSettings) {
-        const ok = window.confirm(
-          "You have unsaved changes in Settings. Leave without saving?"
-        );
-        if (!ok) return;
-      }
-      setTab(next);
-    },
-    [tab, hasUnsavedSettings]
-  );
+  const handleTabChange = useCallback((next) => {
+    if (next === tab) return;
+    if (hasUnsavedSettings) {
+      if (!window.confirm("You have unsaved changes in Settings. Leave without saving?")) return;
+    }
+    setTab(next);
+  }, [tab, hasUnsavedSettings]);
 
-  useEffect(() => {
-    if (!hasUnsavedSettings) return;
-    const handleBeforeUnload = (event) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedSettings]);
+  const logout = useCallback(() => auth.signOut().catch(console.warn), []);
 
-  const logout = useCallback(() => {
-    if (isAgentDemo) return;
-    auth.signOut().catch(console.warn);
-  }, [isAgentDemo]);
+  // --- Derived Data (Compatibility Layer) ---
+  const canEnter = !!userProfile.uid;
+  const role = userProfile.role || "H";
+  const householdId = userProfile.householdId || userProfile.uid;
+  
+  // NOTE: In this simplified version, household logic is reduced to current user
+  // until we implement full household syncing in the store.
+  const householdCount = 1; 
 
-  // --- Derived Data for Views ---
-  // (Most logic below calculates 'view' state derived from the raw data in hook)
-
-  const canEnter = !!user;
-  const role = me?.profile?.role || "H";
-  const householdId = me?.profile?.householdId || user?.uid || "";
-  const householdCount = Math.max(1, household?.length || 0);
+  const safeStartDate = startDate || getDefaultPlannerStartDate();
 
   const unifiedStartingBalance = useMemo(() => {
-    const acct = myData?.accounts || [];
-    if (acct.length > 0) {
-      return acct.reduce(
-        (sum, a) => sum + (Number(a.openingBalance || 0) || 0),
-        0
-      );
+    if (accounts.length > 0) {
+      return accounts.reduce((sum, a) => sum + (Number(a.openingBalance || 0) || 0), 0);
     }
-    return Number(myData?.startingBalance || 0);
-  }, [myData?.accounts, myData?.startingBalance]);
+    return Number(startingBalance || 0);
+  }, [accounts, startingBalance]);
 
-  const balances = useMemo(() => {
-    const h = myData?.balanceSplit?.husband ?? 0;
-    const w = myData?.balanceSplit?.wife ?? 0;
-    return { total: h + w, husband: h, wife: w };
-  }, [myData]);
-
+  // Transform paidBills map to the nested flags expected by pages
   const paidFlags = useMemo(() => {
     const flags = {};
-    const startDate = myData?.startDate || getDefaultPlannerStartDate();
-    const map = myData?.paidBills || {};
-    Object.entries(map).forEach(([key, value]) => {
-      if (!value) return;
+    Object.entries(paidBills || {}).forEach(([key, isPaid]) => {
+      if (!isPaid) return;
       const [dateStr, billId] = key.split(":");
       if (!dateStr || !billId) return;
-      const monthIndex = getMonthIndexFromStart(startDate, dateStr);
+      const monthIndex = getMonthIndexFromStart(safeStartDate, dateStr);
       if (monthIndex < 0 || monthIndex > 120) return;
       if (!flags[billId]) flags[billId] = {};
       flags[billId][monthIndex] = true;
     });
     return flags;
-  }, [myData?.paidBills, myData?.startDate]);
+  }, [paidBills, safeStartDate]);
 
-  const safeStartDate = myData?.startDate || new Date().toISOString().slice(0, 10);
-  
-  const accounts = useMemo(() => {
-    const acct = myData?.accounts;
-    if (acct && acct.length > 0) return acct;
-    return [
-      {
-        id: "chequing",
-        name: "Chequing",
-        type: "deposit",
-        openingBalance: unifiedStartingBalance,
-      },
-    ];
-  }, [myData?.accounts, unifiedStartingBalance]);
-
-  const allocationRules = myData?.allocationRules || [];
-  const residualAccountId = myData?.residualAccountId || accounts[0]?.id;
-
-  const income = useMemo(
-    () => ({
-      husband: Number(myData?.income?.husband || DEFAULT_INCOME.husband),
-      wife: Number(myData?.income?.wife || DEFAULT_INCOME.wife),
-    }),
-    [myData, DEFAULT_INCOME]
-  );
-
-  const paySchedule = myData?.paySchedule || DEFAULT_PAY_SCHEDULE;
-  const extraIncomes = myData?.extraIncomes || [];
-
-  // Derived: Bills (Shared vs Displayed)
-  const householdBills = useMemo(() => {
-    if (!household || household.length === 0) return [];
-    const merged = [];
-    household.forEach((member) => {
-      const data = member?.data || {};
-      const bills = withIds(data.bills || []);
-      bills.forEach((b) => {
-        merged.push({
-          ...b,
-          ownerUid: member.uid,
-          ownerRole: member.profile?.role || "H",
-        });
-      });
-    });
-    return merged;
-  }, [household]);
-
+  // Transform bills to include ownership (temporary until store handles it)
   const displayedBills = useMemo(() => {
-    if (householdBills.length > 0) return householdBills;
-    const self = myData?.bills || [];
-    return self.map((b) => ({
+    return bills.map((b) => ({
       ...b,
-      ownerUid: user?.uid,
+      ownerUid: userProfile.uid,
       ownerRole: role,
     }));
-  }, [householdBills, myData, user, role]);
+  }, [bills, userProfile.uid, role]);
 
-  // Derived: Home Cashflow Summary
+  // Home Cashflow Summary Calculation
   const homeCashflowSummary = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const monthIndex = getMonthIndexFromStart(safeStartDate, todayStr);
     const months = Math.max(1, monthIndex + 1);
+    
     try {
       const runProjection = (m) =>
         projectCashflow({
@@ -231,102 +131,48 @@ export default function App() {
           paySchedule,
           allocationRules,
           residualAccountId,
-          paidBills: myData?.paidBills || {},
-          extraIncomes: myData?.extraIncomes || [],
-          expenses: myData?.expenses || [],
+          paidBills,
+          extraIncomes,
+          expenses,
           mode: m,
         });
+      
       const projProjected = runProjection("projected");
       const projActual = runProjection("actual");
-      const monthSummaryProjected = (projProjected.monthlySummary || [])[monthIndex] || null;
-      const monthSummaryActual = (projActual.monthlySummary || [])[monthIndex] || null;
-      return { projected: monthSummaryProjected, actual: monthSummaryActual };
+      
+      return { 
+        projected: (projProjected.monthlySummary || [])[monthIndex] || null, 
+        actual: (projActual.monthlySummary || [])[monthIndex] || null 
+      };
     } catch (e) {
       console.warn("homeCashflowSummary failed", e);
       return null;
     }
-  }, [
-    myData, safeStartDate, accounts, displayedBills, income, paySchedule,
-    allocationRules, residualAccountId
-  ]);
+  }, [safeStartDate, accounts, displayedBills, income, paySchedule, allocationRules, residualAccountId, paidBills, extraIncomes, expenses]);
 
-  // Derived: Budget List for Home
+  const savingsToDate = useMemo(
+    () => (goals || []).reduce((acc, g) => acc + (g.savedSoFar || 0), 0),
+    [goals]
+  );
+
   const budgetListForHome = useMemo(() => {
-    const raw = myData?.categoryBudgets || {};
-    const expenses = myData?.expenses || [];
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const currentMonthIndex = getMonthIndexFromStart(safeStartDate, todayStr);
-
-    const spentByCategory = {};
-    for (const exp of expenses) {
-      const dateStr = exp.date || exp.dateStr;
-      if (!dateStr) continue;
-      const mIdx = getMonthIndexFromStart(safeStartDate, dateStr);
-      if (mIdx !== currentMonthIndex) continue;
-
-      const catKey = exp.category || exp.categoryId || "uncategorized";
-      const value = Number(exp.amount || 0) || 0;
-      if (!spentByCategory[catKey]) spentByCategory[catKey] = 0;
-      spentByCategory[catKey] += value;
-    }
-
+    // Simple derivation for home screen budget list
     const list = [];
-    Object.entries(raw).forEach(([cat, cfg]) => {
-      if (cfg?.status && cfg.status !== "active") return;
-      let total = 0;
-      if (cfg?.contributions && typeof cfg.contributions === "object") {
-        total = (cfg.contributions.H || 0) + (cfg.contributions.W || 0);
-      } else {
-        total = cfg?.amount || 0;
-      }
-      if (!total) return;
-      const spent = spentByCategory[cat] || 0;
+    Object.entries(categoryBudgets || {}).forEach(([cat, cfg]) => {
       list.push({
         id: cat,
         name: cfg?.label || cat,
-        total,
-        spent,
-        remaining: total - spent,
+        total: cfg?.amount || 0,
+        spent: 0, // Simplified: Real spending calculation will be moved to a hook in Phase 5
+        remaining: cfg?.amount || 0,
       });
     });
     return list;
-  }, [myData?.categoryBudgets, myData?.expenses, safeStartDate]);
+  }, [categoryBudgets]);
 
-  const savingsToDate = useMemo(
-    () => (myData?.goals || []).reduce((acc, g) => acc + (g.savedSoFar || 0), 0),
-    [myData?.goals]
-  );
-
-  const pendingSharedGoalsForMe = useMemo(
-    () => (myData?.goals || []).filter((g) => g?.status === "pending" && g?.pendingFor === role).length,
-    [myData?.goals, role]
-  );
-
-  const pendingSharedBudgetsForMe = useMemo(() => {
-    return Object.values(myData?.categoryBudgets || {}).filter(
-      (b) => b?.status === "pending" && b?.pendingFor === role
-    ).length;
-  }, [myData?.categoryBudgets, role]);
-
-  const greetingName = me?.profile?.displayName?.split(" ")[0] || user?.displayName?.split(" ")[0] || "there";
+  const greetingName = userProfile.displayName?.split(" ")[0] || "there";
 
   // --- Rendering ---
-
-  if (loading && !hasCached) {
-    return (
-      <ErrorBoundary>
-        <div className="min-h-screen bg-slate-50 flex flex-col">
-          <div className="flex-1 max-w-md mx-auto w-full bg-white shadow-sm border-x border-slate-200 flex flex-col">
-            <div className="p-6 text-sm text-slate-600">Loading...</div>
-          </div>
-        </div>
-      </ErrorBoundary>
-    );
-  }
-
-  if (isAgentDemo && !canEnter) {
-    return <div className="p-6 text-center">Loading demo mode...</div>;
-  }
 
   if (!canEnter) {
     return (
@@ -363,7 +209,7 @@ export default function App() {
           <AddExpenseModal
             isOpen={isExpenseModalOpen}
             onClose={() => setIsExpenseModalOpen(false)}
-            onSave={handleAddExpense}
+            onSave={store.updateExpenses} // Direct store action
             accounts={accounts}
           />
         }
@@ -377,23 +223,20 @@ export default function App() {
             bills={displayedBills}
             paidFlags={paidFlags}
             mode={mode}
-            setMode={setMode}
+            setMode={store.setMode}
             income={income}
             paySchedule={paySchedule}
             accounts={accounts}
             allocationRules={allocationRules}
             residualAccountId={residualAccountId}
-            startingBalance={myData?.startingBalance ?? DEFAULT_STARTING_BALANCE}
+            startingBalance={unifiedStartingBalance}
             budgets={budgetListForHome}
             savingsToDate={savingsToDate}
             onAddExpense={() => setIsExpenseModalOpen(true)}
-            expenses={myData?.expenses || []}
+            expenses={expenses}
             onGoToSettings={() => setTab("settings")}
             onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
             onGoToBills={() => setTab("bills")}
-            pendingGoalsCount={pendingSharedGoalsForMe}
-            pendingBudgetsCount={pendingSharedBudgetsForMe}
-            onGoToReviewPending={() => handleGoToSettingsSection("goals")}
             homeCashflowSummary={homeCashflowSummary}
           />
         )}
@@ -404,22 +247,22 @@ export default function App() {
             personScope={personScope}
             startDate={safeStartDate}
             bills={displayedBills}
-            paidBills={myData?.paidBills || {}}
+            paidBills={paidBills}
             mode={mode}
-            setMode={setMode}
+            setMode={store.setMode}
             accounts={accounts}
             allocationRules={allocationRules}
             residualAccountId={residualAccountId}
             income={income}
             paySchedule={paySchedule}
             extraIncomes={extraIncomes}
-            expenses={myData?.expenses || []}
+            expenses={expenses}
           />
         )}
 
         {tab === "dashboard" && (
           <MonthlyCashFlowInfographic
-            uid={user?.uid}
+            uid={userProfile.uid}
             householdId={householdId}
             role={role}
             personScope={personScope}
@@ -430,15 +273,15 @@ export default function App() {
             liveAccounts={accounts}
             liveStartingBalance={unifiedStartingBalance}
             liveAllocationRules={allocationRules}
-            liveGoals={myData?.goals || []}
-            liveCategoryBudgets={myData?.categoryBudgets || {}}
+            liveGoals={goals}
+            liveCategoryBudgets={categoryBudgets}
             paidBills={paidFlags}
-            mergeWrite={handleInfographicMergeWrite}
+            // Note: infographic merging not fully implemented in store yet
+            mergeWrite={(data) => console.log("Infographic write:", data)} 
             liveExtraIncomes={extraIncomes}
-            onUpdateExtraIncomes={handleUpdateExtraIncome}
-            liveExpenses={myData?.expenses || []}
+            liveExpenses={expenses}
             mode={mode}
-            setMode={setMode}
+            setMode={store.setMode}
           />
         )}
 
@@ -452,42 +295,55 @@ export default function App() {
             personScope={personScope}
             accounts={accounts}
             residualAccountId={residualAccountId}
-            onTogglePaid={handleTogglePaid}
-            onBulkMark={handleBulkMark}
-            onChangeBillAccount={handleChangeBillAccount}
-            onUpdateBills={handleUpdateBills}
+            onTogglePaid={(payload) => {
+               // Map payload to store action
+               const s = new Date(safeStartDate + "T00:00:00");
+               const d = new Date(s.getFullYear(), s.getMonth() + payload.monthIndex, 1);
+               const dateStr = d.toISOString().slice(0, 10);
+               store.setPaidStatus(payload.billId, dateStr, payload.next);
+            }}
+            onChangeBillAccount={(billId, acctId) => {
+               const newBills = bills.map(b => b.id === billId ? {...b, accountId: acctId} : b);
+               store.updateBills(newBills);
+            }}
+            onUpdateBills={store.updateBills}
           />
         )}
 
         {tab === "settings" && (
           <Settings
-            uid={user?.uid}
-            email={me?.profile?.email || user.email || ""}
-            displayName={me?.profile?.displayName || user.displayName || ""}
+            uid={userProfile.uid}
+            email={userProfile.email}
+            displayName={userProfile.displayName}
             role={role}
             householdId={householdId}
             householdCount={householdCount}
-            onUpdateProfile={handleUpdateProfile}
-            balances={balances}
+            onUpdateProfile={store.setUserProfile}
+            balances={{ total: 0, husband: 0, wife: 0 }}
             startDate={safeStartDate}
-            startingBalance={myData?.startingBalance ?? DEFAULT_STARTING_BALANCE}
+            startingBalance={startingBalance}
             accounts={accounts}
-            bills={myData?.bills || []}
+            bills={bills}
             residualAccountId={residualAccountId}
             allocationRules={allocationRules}
             income={income}
             paySchedule={paySchedule}
-            onUpdateAccounts={handleUpdateAccounts}
-            onUpdateBills={handleUpdateBills}
-            onUpdateAllocationRules={handleUpdateAllocationRules}
-            onUpdateIncomeAndPaySchedule={handleUpdateIncomeAndPaySchedule}
-            goals={myData?.goals || []}
-            categoryBudgets={myData?.categoryBudgets || {}}
-            onUpdateGoals={handleUpdateGoals}
-            onUpdateBudgets={handleUpdateBudgets}
-            onUpdateStartingBalance={handleUpdateStartingBalance}
-            billSharing={myData?.billSharing}
-            onUpdateBillSharing={handleUpdateBillSharing}
+            goals={goals}
+            categoryBudgets={categoryBudgets}
+            billSharing={billSharing}
+            
+            // Wire up actions directly to store
+            onUpdateAccounts={store.updateAccounts}
+            onUpdateBills={store.updateBills}
+            onUpdateAllocationRules={store.updateAllocationRules}
+            onUpdateIncomeAndPaySchedule={(inc, sched) => {
+               store.setFullPlanData({ income: inc, paySchedule: sched });
+            }}
+            onUpdateGoals={store.updateGoals}
+            onUpdateBudgets={store.updateBudgets}
+            onUpdateStartingBalance={(sb) => store.setFullPlanData({ startingBalance: sb })}
+            onUpdateBillSharing={(bs) => store.setFullPlanData({ billSharing: bs })}
+            
             scrollToSection={settingsSection}
             onResetScrollHint={() => setSettingsSection(null)}
             onDirtyChange={setHasUnsavedSettings}
@@ -503,14 +359,12 @@ export default function App() {
             income={income}
             paySchedule={paySchedule}
             bills={displayedBills}
-            expenses={myData?.expenses || []}
-            goals={myData?.goals || []}
-            categoryBudgets={myData?.categoryBudgets || {}}
+            expenses={expenses}
+            goals={goals}
+            categoryBudgets={categoryBudgets}
             startDate={safeStartDate}
-            paidBills={myData?.paidBills || {}}
-            onUpdateAccounts={handleUpdateAccounts}
-            onUpdateAllocationRules={handleUpdateAllocationRules}
-            onUpdateIncomeAndPaySchedule={handleUpdateIncomeAndPaySchedule}
+            paidBills={paidBills}
+            onUpdateAccounts={store.updateAccounts}
             onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
             onGoToSettingsGoals={() => handleGoToSettingsSection("goals")}
           />
@@ -518,9 +372,9 @@ export default function App() {
 
         {tab === "expenses" && (
           <Expenses
-            expenses={myData?.expenses || []}
+            expenses={expenses}
             accounts={accounts}
-            onUpdateExpenses={handleUpdateExpenses}
+            onUpdateExpenses={store.updateExpenses}
           />
         )}
       </AppShell>
