@@ -12,8 +12,8 @@ import {
   projectCashflow,
   fromCents,
   getDateForMonthIndex,
-} from "../lib/cashflowEngine.js";
-import { getDefaultPlannerStartDate } from "../lib/dateUtils.js";
+} from "../lib/cashflow/index.js";
+import { getDefaultPlannerStartDate } from "../lib/cashflow/index.js";
 
 function TagPill({ children, className = "" }) {
   return (

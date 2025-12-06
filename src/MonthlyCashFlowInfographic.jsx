@@ -18,8 +18,8 @@ import React, {
 import { Wallet, TrendingUp, AlertCircle, CheckCircle2 } from "lucide-react";
 import { auth, db } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { projectCashflow, fromCents } from "./lib/cashflowEngine";
-import { getDefaultPlannerStartDate } from "./lib/dateUtils";
+import { projectCashflow, fromCents } from "./lib/cashflow/index.js";
+import { getDefaultPlannerStartDate } from "./lib/cashflow/index.js";
 import { safeLocalStorage, makeScopedKey } from "./lib/safeLocalStorage";
 
 const LOCAL_STORAGE_BASE_KEY = "cashFlowData";

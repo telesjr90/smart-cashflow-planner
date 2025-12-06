@@ -1,64 +1,13 @@
-// Updated to fix starting balance + actual mode wiring
+// src/lib/cashflow/projectCashflow.js
 
-// Updated in Step 2 – Actual mode cashflow logic
-//
-// This file is a patched copy of the upstream smart‑cashflow‑planner
-// cashflow engine.  It exposes helpers for converting amounts to and from
-// cents and simulates a cash ledger across multiple months.  The primary
-// change here ensures that "actual" mode correctly filters events so
-// future transactions do not leak into today.  In particular we now build
-// a date string in ISO format (YYYY‑MM‑DD) and perform an inclusive less‑than‑or‑equal
-// (<=) check when filtering income and expense events, allowing
-// transactions that occur on the current date to be included.
+import { toCents } from "./formatters";
+import { getDateForMonthIndex, getMonthIndexFromStart, clampDayToMonth, getTodayISODate } from "./dateUtils";
 
-export function toCents(amount) {
-  const n = Number(amount);
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n * 100);
-}
+// --- Internal Helper: Generate Paydays ---
 
-export function fromCents(cents) {
-  const n = Number(cents);
-  if (!Number.isFinite(n)) return "0.00";
-  return (n / 100).toFixed(2);
-}
-
-function clampDay(year, monthIndex0, day) {
-  const last = new Date(year, monthIndex0 + 1, 0).getDate();
-  return Math.min(Math.max(1, day), last);
-}
-
-export function getDateForMonthIndex(startDateStr, monthIndex, day) {
-  const [y, m] = (startDateStr || "2025-01-01")
-    .split("-")
-    .map((x) => parseInt(x, 10));
-  const base = new Date(y, m - 1, 1);
-  const target = new Date(base.getFullYear(), base.getMonth() + monthIndex, 1);
-
-  const safeDay = clampDay(target.getFullYear(), target.getMonth(), day);
-  const d = new Date(target.getFullYear(), target.getMonth(), safeDay);
-
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${dd}`;
-}
-
-export function getMonthIndexFromStart(startDateStr, targetDateStr) {
-  const [sy, sm] = (startDateStr || "2025-01-01")
-    .split("-")
-    .map((x) => parseInt(x, 10));
-  const [ty, tm] = (targetDateStr || "2025-01-01")
-    .split("-")
-    .map((x) => parseInt(x, 10));
-
-  return (ty - sy) * 12 + (tm - sm);
-}
-
-export function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
+function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
   const start = new Date(`${startDateStr || "2025-01-01"}T00:00:00`);
   const out = [];
-
   const type = paySchedule?.type || "semi-monthly";
   const rawDay1 = paySchedule?.day1;
   const rawDay2 = paySchedule?.day2;
@@ -68,11 +17,10 @@ export function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
     const year = monthDate.getFullYear();
     const monthIndex0 = monthDate.getMonth();
     const monthEndDay = new Date(year, monthIndex0 + 1, 0).getDate();
-
     const dates = [];
 
     if (type === "semi-monthly") {
-      const day1 = clampDay(
+      const day1 = clampDayToMonth(
         year,
         monthIndex0,
         Number.isFinite(+rawDay1) ? +rawDay1 : 15
@@ -82,7 +30,7 @@ export function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
       if (rawDay2 === "last" || rawDay2 === undefined || rawDay2 === null) {
         dates.push(new Date(year, monthIndex0, monthEndDay));
       } else {
-        const d2 = clampDay(
+        const d2 = clampDayToMonth(
           year,
           monthIndex0,
           Number.isFinite(+rawDay2) ? +rawDay2 : monthEndDay
@@ -92,7 +40,8 @@ export function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
         }
       }
     } else {
-      dates.push(new Date(year, monthIndex0, clampDay(year, monthIndex0, 15)));
+      // Default fallback
+      dates.push(new Date(year, monthIndex0, clampDayToMonth(year, monthIndex0, 15)));
     }
 
     dates
@@ -107,26 +56,12 @@ export function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
   return out;
 }
 
-/**
- * Allocate income for a single pay event. Supports both amount and percent
- * rules with frequency (each, first, second). Amount rules are applied first
- * before percentage rules. Any leftover goes into the residual account.
- * @param {Object} params
- * @param {number} params.amountCents - total pay amount in cents
- * @param {Array} params.accounts - list of user accounts
- * @param {Array} params.allocationRules - allocation rules
- * @param {string|null} params.residualAccountId - fallback account ID
- * @param {number} params.payIndex - 1 for first pay of month, 2 for second
- */
-export function allocateIncome({
-  amountCents,
-  accounts,
-  allocationRules,
-  residualAccountId,
-  payIndex,
-}) {
+// --- Internal Helper: Allocate Income ---
+
+function allocateIncome({ amountCents, accounts, allocationRules, residualAccountId, payIndex }) {
   const deltasByAccount = {};
   const safeAccounts = Array.isArray(accounts) ? accounts : [];
+
   safeAccounts.forEach((a) => {
     if (a?.id) deltasByAccount[a.id] = 0;
   });
@@ -144,13 +79,13 @@ export function allocateIncome({
     if (freq === "each") return true;
     if (freq === "first") return payIndex === 1;
     if (freq === "second") return payIndex === 2;
-    // fallback: unknown frequency treat as each
     return true;
   });
 
   // Partition amount and percent rules
   const amountRules = [];
   const percentRules = [];
+
   for (const r of applicable) {
     const type = r.type || (r.amount != null ? "amount" : "percent");
     if (type === "amount") {
@@ -201,24 +136,12 @@ export function allocateIncome({
     (sum, v) => sum + (Number.isFinite(v) ? v : 0),
     0
   );
+
   return { deltasByAccount, appliedCents };
 }
 
-export function applyOutflow(balancesByAccount, accountId, amountCents) {
-  const amt = Number(amountCents);
-  if (!Number.isFinite(amt) || amt <= 0) return;
-  if (!accountId) return;
-  if (!balancesByAccount.hasOwnProperty(accountId)) balancesByAccount[accountId] = 0;
-  balancesByAccount[accountId] -= amt;
-}
+// --- Main Engine Function ---
 
-/**
- * Core projection engine.
- *
- * Accepts arrays of bills and expenses along with pay schedule and income to
- * simulate a cash ledger across multiple months.  It returns a ledger of
- * events and a monthly summary of total income, bills and net flow.
- */
 export function projectCashflow({
   startDate,
   months,
@@ -235,10 +158,9 @@ export function projectCashflow({
 }) {
   const startDateStr = startDate || "2025-01-01";
   const projectionMonths = Math.max(1, months || 1);
-  const safeAccounts =
-    Array.isArray(accounts) && accounts.length
-      ? accounts.map((a) => ({ ...a }))
-      : [];
+  const safeAccounts = Array.isArray(accounts) && accounts.length ? accounts.map((a) => ({ ...a })) : [];
+  
+  // Initialize balances
   const balances = {};
   safeAccounts.forEach((a) => {
     if (a?.id) balances[a.id] = toCents(a.openingBalance || 0);
@@ -249,26 +171,18 @@ export function projectCashflow({
       safeAccounts.push({ id: "default", type: "checking", openingBalance: 0 });
     }
   }
-  const residualId =
-    residualAccountId && balances.hasOwnProperty(residualAccountId)
-      ? residualAccountId
-      : safeAccounts[0].id;
+  
+  const residualId = residualAccountId && balances.hasOwnProperty(residualAccountId) ? residualAccountId : safeAccounts[0].id;
 
-  // 2) Build income events
-  const paydays = enumerateSemiMonthlyPaydays(
-    startDateStr,
-    projectionMonths,
-    paySchedule
-  );
+  // 1) Build income events
+  const paydays = enumerateSemiMonthlyPaydays(startDateStr, projectionMonths, paySchedule);
   const safeH = Number.isFinite(+income?.husband) ? Math.max(0, +income.husband) : 0;
   const safeW = Number.isFinite(+income?.wife) ? Math.max(0, +income.wife) : 0;
-  const perPayH = toCents(safeH);
-  const perPayW = toCents(safeW);
-  const perPayTotal = perPayH + perPayW;
+  const perPayTotal = toCents(safeH) + toCents(safeW);
+  
   const payCountsByMonth = {};
   const salaryEvents = paydays.map((p, idx) => {
-    const count = (payCountsByMonth[p.monthIndex] =
-      (payCountsByMonth[p.monthIndex] || 0) + 1);
+    const count = (payCountsByMonth[p.monthIndex] = (payCountsByMonth[p.monthIndex] || 0) + 1);
     return {
       date: p.date,
       kind: "income",
@@ -282,6 +196,7 @@ export function projectCashflow({
 
   const safeExtraIncomes = Array.isArray(extraIncomes) ? extraIncomes : [];
   const extraEvents = [];
+  // For extra incomes, we treat them as occurring on the 1st of the month if no date provided
   for (let m = 0; m < projectionMonths; m++) {
     const dateStr = getDateForMonthIndex(startDateStr, m, 1);
     safeExtraIncomes.forEach((ex, idx) => {
@@ -302,28 +217,31 @@ export function projectCashflow({
   }
   const incomeEvents = [...salaryEvents, ...extraEvents];
 
-  // 3) Build bill events
+  // 2) Build bill events
   const safeBills = Array.isArray(bills) ? bills : [];
   const safePaidBills = paidBills || {};
   const billEvents = [];
-  // Compute today's date in ISO format (YYYY-MM-DD).  This avoids any locale
-  // formatting issues and preserves lexicographic ordering.
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getTodayISODate();
   for (let m = 0; m < projectionMonths; m++) {
     for (const b of safeBills) {
       if (!b?.id) continue;
-
       // Skip non-active bills
-      const status = b.status || "active";
-      if (status !== "active") continue;
+      if (b.status && b.status !== "active") continue;
 
       const dueDay = Number.isFinite(+b.dueDay) ? +b.dueDay : 1;
       const billDate = getDateForMonthIndex(startDateStr, m, dueDay);
       const key = `${billDate}:${b.id}`;
       const isPaid = !!safePaidBills[key];
+
+      // In actual mode, skip unpaid bills in the past? 
+      // The requirement is usually: "Actual" means "what actually happened + future projection"
+      // But typically "Actual" mode hides UNPAID bills in the past if the user wants to see "real cash now".
+      // However, for projection, we usually want to know what's pending.
+      // Logic from previous engine:
       if (mode === "actual" && billDate < todayStr && !isPaid) {
         continue;
       }
+
       billEvents.push({
         date: billDate,
         kind: "bill",
@@ -338,7 +256,7 @@ export function projectCashflow({
     }
   }
 
-  // 3b) Build Expense events
+  // 3) Build Expense events
   const safeExpenses = Array.isArray(expenses) ? expenses : [];
   const expenseEvents = safeExpenses.map((ex, idx) => {
     const date = ex.date || startDateStr;
@@ -354,57 +272,46 @@ export function projectCashflow({
     };
   });
 
-  // 3c) Actual-mode filtering for income & expenses.
-  let filteredIncomeEvents = incomeEvents;
-  let filteredExpenseEvents = expenseEvents;
-
+  // 4) Actual-mode filtering
+  let filteredIncome = incomeEvents;
+  let filteredExpenses = expenseEvents;
   if (mode === "actual") {
-    filteredIncomeEvents = incomeEvents.filter((ev) => {
-      const d = ev.date || ev.dateStr;
-      if (!d) return false;
-      return d <= todayStr;
-    });
-    filteredExpenseEvents = expenseEvents.filter((ev) => {
-      const d = ev.date || ev.dateStr;
-      if (!d) return false;
-      return d <= todayStr;
-    });
+    filteredIncome = incomeEvents.filter((ev) => ev.date <= todayStr);
+    filteredExpenses = expenseEvents.filter((ev) => ev.date <= todayStr);
   }
 
-  // 4) Merge events & sort
+  // 5) Merge and Sort
   const allEvents = [
-    ...filteredIncomeEvents,
+    ...filteredIncome,
     ...billEvents,
-    ...filteredExpenseEvents,
+    ...filteredExpenses,
   ].sort((a, b) => {
     if (a.date < b.date) return -1;
     if (a.date > b.date) return 1;
-    // Income first
+    // Income first, then bills/expenses
     if (a.kind === "income" && b.kind !== "income") return -1;
     if (a.kind !== "income" && b.kind === "income") return 1;
     return (a._sequence || 0) - (b._sequence || 0);
   });
 
-  // 5) Simulate ledger
+  // 6) Run Ledger
   const ledger = [];
   const monthlyTotals = [];
+  
+  // Init monthly summary buckets
   for (let i = 0; i < projectionMonths; i++) {
     const dateForLabel = getDateForMonthIndex(startDateStr, i, 1);
     const d = new Date(`${dateForLabel}T00:00:00`);
-    const monthLabel = d.toLocaleString("default", {
-      month: "long",
-      year: "numeric",
-    });
     monthlyTotals.push({
       monthIndex: i,
-      monthLabel,
+      monthLabel: d.toLocaleString("default", { month: "long", year: "numeric" }),
       totalIncome: 0,
       totalBills: 0,
       net: 0,
     });
   }
 
-  // Opening balance
+  // Opening entry
   ledger.push({
     date: startDateStr,
     kind: "opening",
@@ -415,10 +322,9 @@ export function projectCashflow({
   });
 
   for (const ev of allEvents) {
-    const monthIndex =
-      typeof ev.monthIndex === "number"
-        ? ev.monthIndex
-        : getMonthIndexFromStart(startDateStr, ev.date);
+    const monthIndex = typeof ev.monthIndex === "number" ? ev.monthIndex : getMonthIndexFromStart(startDateStr, ev.date);
+    
+    // Skip events outside projection range
     if (monthIndex < 0 || monthIndex >= projectionMonths) continue;
 
     if (ev.kind === "income") {
@@ -451,7 +357,11 @@ export function projectCashflow({
       // Deduct if it's an expense OR an unpaid bill
       if (ev.kind === "expense" || !ev.isPaid) {
         delta = amt;
-        applyOutflow(balances, ev.accountId || residualId, delta);
+        const accId = ev.accountId || residualId;
+        if (accId) {
+            if (!balances.hasOwnProperty(accId)) balances[accId] = 0;
+            balances[accId] -= delta;
+        }
         monthlyTotals[monthIndex].totalBills += delta;
         monthlyTotals[monthIndex].net -= delta;
       }
@@ -462,8 +372,11 @@ export function projectCashflow({
         balances: { ...balances },
         monthIndex,
         description: ev.kind === "bill" ? ev.billName : ev.description,
+        isPaid: ev.isPaid
       });
     }
   }
-  return { ledger, monthlySummary: monthlyTotals };
+
+  return { ledger, monthlySummary: monthlyTotals, finalBalancesByAccount: balances };
 }
+

@@ -8,8 +8,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-import { projectCashflow, fromCents } from "../lib/cashflowEngine.js";
-import { getDefaultPlannerStartDate } from "../lib/dateUtils";
+import { projectCashflow, fromCents } from "../lib/cashflow/index.js";
+import { getDefaultPlannerStartDate } from "../lib/cashflow/index.js";
 
 /**
  * EXPECTED PROPS:

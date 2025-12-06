@@ -9,7 +9,7 @@ import {
   ArrowRightLeft,
   Info,
 } from "lucide-react";
-import { projectCashflow, fromCents } from "../lib/cashflowEngine.js";
+import { projectCashflow, fromCents } from "../lib/cashflow/index.js";
 
 function formatMoney(n) {
   const v = Number.isFinite(+n) ? +n : 0;
