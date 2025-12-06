@@ -3,7 +3,7 @@ import { Search } from 'lucide-react';
 
 // Hooks & Libs
 import { useCashflowStore } from '../store/useCashflowStore';
-import { useCashflowData } from '../hooks/useCashflowData'; // For actions like updateExpenses
+import useCashflowData from '../hooks/useCashflowData'; // FIXED: Removed curly braces
 import { getCategory } from '../lib/categories';
 
 // Components
