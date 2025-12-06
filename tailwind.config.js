@@ -4,7 +4,7 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
-  darkMode: 'class', // Enables manual toggling via the 'dark' class
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -21,42 +21,33 @@ export default {
           100: 'rgb(var(--surface-100))',
           200: 'rgb(var(--surface-200))',
           300: 'rgb(var(--surface-300))',
-          400: 'rgb(var(--surface-400))',
           500: 'rgb(var(--surface-500))',
           900: 'rgb(var(--surface-900))',
         },
-        success: {
-          50: 'rgb(var(--success-50))',
-          500: 'rgb(var(--success-500))',
-          700: 'rgb(var(--success-700))',
-        },
-        danger: {
-          50: 'rgb(var(--danger-50))',
-          500: 'rgb(var(--danger-500))',
-          700: 'rgb(var(--danger-700))',
-        },
-        warning: {
-          50: 'rgb(var(--warning-50))',
-          500: 'rgb(var(--warning-500))',
-          700: 'rgb(var(--warning-700))',
-        }
+        success: { 500: 'rgb(var(--success-500))' },
+        danger: { 500: 'rgb(var(--danger-500))' },
+        warning: { 500: 'rgb(var(--warning-500))' }
       },
-      // 2. Typography System
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
       },
       fontSize: {
-        'title-xl': ['1.5rem', { lineHeight: '2rem', letterSpacing: '-0.02em', fontWeight: '700' }], // 24px
-        'title-l': ['1.125rem', { lineHeight: '1.75rem', letterSpacing: '-0.01em', fontWeight: '600' }], // 18px
-        'body': ['0.875rem', { lineHeight: '1.25rem', fontWeight: '400' }], // 14px
-        'caption': ['0.75rem', { lineHeight: '1rem', fontWeight: '500' }], // 12px
-        'tiny': ['0.625rem', { lineHeight: '0.75rem', fontWeight: '500', textTransform: 'uppercase' }], // 10px caps
+        'title-2xl': ['2rem', { lineHeight: '2.5rem', fontWeight: '700', letterSpacing: '-0.02em' }], 
+        'title-xl': ['1.5rem', { lineHeight: '2rem', fontWeight: '700', letterSpacing: '-0.01em' }], 
+        'title-l': ['1.125rem', { lineHeight: '1.5rem', fontWeight: '600' }], 
+        'body': ['0.9375rem', { lineHeight: '1.5rem', fontWeight: '400' }], 
+        'caption': ['0.75rem', { lineHeight: '1rem', fontWeight: '500' }],
+        'tiny': ['0.625rem', { lineHeight: '0.875rem', fontWeight: '600', textTransform: 'uppercase' }],
       },
-      // 3. Spacing / Layout
       borderRadius: {
         'xl': '1rem',
         '2xl': '1.25rem',
-        '3xl': '1.5rem',
+        '3xl': '1.75rem', 
+        'pill': '9999px',
+      },
+      boxShadow: {
+        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)', 
+        'glow': '0 4px 20px -2px rgba(124, 58, 237, 0.25)', 
       }
     },
   },

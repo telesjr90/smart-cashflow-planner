@@ -3,7 +3,7 @@ import React from 'react';
 export function Card({ children, className = '', ...props }) {
   return (
     <div 
-      className={`bg-white rounded-2xl border border-surface-200 shadow-sm ${className}`} 
+      className={`bg-surface-100 rounded-3xl shadow-soft border border-surface-200/50 ${className}`} 
       {...props}
     >
       {children}
@@ -11,10 +11,13 @@ export function Card({ children, className = '', ...props }) {
   );
 }
 
-export function CardHeader({ title, action, className = '' }) {
+export function CardHeader({ title, subtitle, action, className = '' }) {
   return (
-    <div className={`flex items-center justify-between px-6 py-4 border-b border-surface-100 ${className}`}>
-      <h3 className="text-title-l text-surface-900">{title}</h3>
+    <div className={`flex items-center justify-between px-5 pt-5 pb-2 ${className}`}>
+      <div>
+        <h3 className="text-title-l text-surface-900">{title}</h3>
+        {subtitle && <p className="text-caption text-surface-500 mt-0.5">{subtitle}</p>}
+      </div>
       {action && <div>{action}</div>}
     </div>
   );
@@ -22,7 +25,7 @@ export function CardHeader({ title, action, className = '' }) {
 
 export function CardBody({ children, className = '' }) {
   return (
-    <div className={`p-6 ${className}`}>
+    <div className={`p-5 ${className}`}>
       {children}
     </div>
   );

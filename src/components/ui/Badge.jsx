@@ -2,15 +2,15 @@ import React from 'react';
 
 export function Badge({ children, variant = 'neutral', className = '' }) {
   const variants = {
-    neutral: "bg-surface-100 text-surface-900",
-    success: "bg-success-50 text-success-700",
-    warning: "bg-warning-50 text-warning-700",
-    danger: "bg-danger-50 text-danger-700",
-    primary: "bg-primary-50 text-primary-700",
+    neutral: "bg-surface-100 text-surface-500",
+    success: "bg-success-500/10 text-success-500",
+    warning: "bg-warning-500/10 text-warning-500",
+    danger: "bg-danger-500/10 text-danger-500",
+    primary: "bg-primary-500/10 text-primary-600",
   };
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-tiny font-semibold ${variants[variant]} ${className}`}>
+    <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-tiny font-bold uppercase tracking-wide ${variants[variant]} ${className}`}>
       {children}
     </span>
   );
