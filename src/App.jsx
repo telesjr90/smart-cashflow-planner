@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
-import AppShell from "./components/layout/AppShell";
+import { Layout } from "./components/layout/Layout";
 import Home from "./pages/Home";
 import Bills from "./pages/Bills";
 import Planner from "./pages/Planner";
@@ -246,19 +246,11 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <AppShell
-        tab={tab}
+      <Layout
+        currentTab={tab}
         onTabChange={handleTabChange}
-        greetingName={greetingName}
-        onLogout={logout}
-        footer={
-          <AddExpenseModal
-            isOpen={isExpenseModalOpen}
-            onClose={() => setIsExpenseModalOpen(false)}
-            onSave={store.updateExpenses}
-            accounts={accounts}
-          />
-        }
+        onAddPress={() => setIsExpenseModalOpen(true)}
+        user={userProfile}
       >
         {tab === "home" && (
           <Home
@@ -439,7 +431,15 @@ export default function App() {
             onUpdateExpenses={store.updateExpenses}
           />
         )}
-      </AppShell>
+      </Layout>
+      
+      {/* Add Expense Modal - rendered outside Layout */}
+      <AddExpenseModal
+        isOpen={isExpenseModalOpen}
+        onClose={() => setIsExpenseModalOpen(false)}
+        onSave={store.updateExpenses}
+        accounts={accounts}
+      />
     </ErrorBoundary>
   );
 }
