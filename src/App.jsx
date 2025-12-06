@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import AppShell from "./components/layout/AppShell";
 import Home from "./pages/Home";
@@ -29,24 +29,47 @@ export default function App() {
   useFirebaseSync();
 
   // 2. Access Global Store
+
   const store = useCashflowStore();
+
+  
+
+  // Destructure state for easier usage
+
   const {
+
     userProfile,
+
     startDate,
+
     startingBalance,
+
     accounts,
+
     bills,
+
     expenses,
+
     income,
+
     paySchedule,
+
     allocationRules,
+
     residualAccountId,
+
     goals,
+
     categoryBudgets,
+
     extraIncomes,
+
     billSharing,
+
     paidBills,
+
     mode
+
   } = store;
 
   // --- UI State ---
@@ -73,13 +96,14 @@ export default function App() {
   const logout = useCallback(() => auth.signOut().catch(console.warn), []);
 
   // --- Derived Data (Compatibility Layer) ---
+
   const canEnter = !!userProfile.uid;
+
   const role = userProfile.role || "H";
+
   const householdId = userProfile.householdId || userProfile.uid;
-  
-  // NOTE: In this simplified version, household logic is reduced to current user
-  // until we implement full household syncing in the store.
-  const householdCount = 1; 
+
+  const householdCount = 1; // Simplified until household sync is fully implemented 
 
   const safeStartDate = startDate || getDefaultPlannerStartDate();
 
@@ -105,13 +129,20 @@ export default function App() {
     return flags;
   }, [paidBills, safeStartDate]);
 
-  // Transform bills to include ownership (temporary until store handles it)
+  // Transform bills to include ownership
+
   const displayedBills = useMemo(() => {
+
     return bills.map((b) => ({
+
       ...b,
+
       ownerUid: userProfile.uid,
+
       ownerRole: role,
+
     }));
+
   }, [bills, userProfile.uid, role]);
 
   // Home Cashflow Summary Calculation
@@ -156,18 +187,29 @@ export default function App() {
   );
 
   const budgetListForHome = useMemo(() => {
-    // Simple derivation for home screen budget list
+
     const list = [];
+
     Object.entries(categoryBudgets || {}).forEach(([cat, cfg]) => {
+
       list.push({
+
         id: cat,
+
         name: cfg?.label || cat,
+
         total: cfg?.amount || 0,
-        spent: 0, // Simplified: Real spending calculation will be moved to a hook in Phase 5
+
+        spent: 0, // Simplified for now
+
         remaining: cfg?.amount || 0,
+
       });
+
     });
+
     return list;
+
   }, [categoryBudgets]);
 
   const greetingName = userProfile.displayName?.split(" ")[0] || "there";
@@ -209,7 +251,7 @@ export default function App() {
           <AddExpenseModal
             isOpen={isExpenseModalOpen}
             onClose={() => setIsExpenseModalOpen(false)}
-            onSave={store.updateExpenses} // Direct store action
+            onSave={store.updateExpenses}
             accounts={accounts}
           />
         }
@@ -276,8 +318,8 @@ export default function App() {
             liveGoals={goals}
             liveCategoryBudgets={categoryBudgets}
             paidBills={paidFlags}
-            // Note: infographic merging not fully implemented in store yet
-            mergeWrite={(data) => console.log("Infographic write:", data)} 
+
+            mergeWrite={(data) => console.log("Infographic write (disabled in refactor)", data)} 
             liveExtraIncomes={extraIncomes}
             liveExpenses={expenses}
             mode={mode}
@@ -332,20 +374,36 @@ export default function App() {
             categoryBudgets={categoryBudgets}
             billSharing={billSharing}
             
-            // Wire up actions directly to store
             onUpdateAccounts={store.updateAccounts}
+
             onUpdateBills={store.updateBills}
-            onUpdateAllocationRules={store.updateAllocationRules}
-            onUpdateIncomeAndPaySchedule={(inc, sched) => {
-               store.setFullPlanData({ income: inc, paySchedule: sched });
+
+            onUpdateAllocationRules={(rules) => { 
+
+               // Future: Add dedicated updateAllocationRules action if needed
+
+               console.log("Update allocations triggered");
+
             }}
+
+            onUpdateIncomeAndPaySchedule={(inc, sched) => {
+
+               store.setFullPlanData({ income: inc, paySchedule: sched });
+
+            }}
+
             onUpdateGoals={store.updateGoals}
+
             onUpdateBudgets={store.updateBudgets}
+
             onUpdateStartingBalance={(sb) => store.setFullPlanData({ startingBalance: sb })}
+
             onUpdateBillSharing={(bs) => store.setFullPlanData({ billSharing: bs })}
-            
+
             scrollToSection={settingsSection}
+
             onResetScrollHint={() => setSettingsSection(null)}
+
             onDirtyChange={setHasUnsavedSettings}
           />
         )}
