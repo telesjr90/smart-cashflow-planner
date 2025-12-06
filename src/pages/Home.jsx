@@ -1,10 +1,9 @@
-import React, { useMemo } from "react";
-import { TrendingUp, TrendingDown, Wallet, ArrowRight } from "lucide-react";
-import { StatCard } from "../components/ui/StatCard";
-import { Card, CardHeader, CardBody } from "../components/ui/Card";
-import { CashflowChart } from "../components/charts/CashflowChart";
-import { formatCurrency } from "../lib/cashflow/formatters";
-
+import React, { useMemo } from 'react';
+import { TrendingUp, TrendingDown, Wallet, ArrowRight } from 'lucide-react';
+import { StatCard } from '../components/ui/StatCard';
+import { Card, CardHeader, CardBody } from '../components/ui/Card';
+import { CashflowChart } from '../components/charts/CashflowChart';
+import { formatCurrency } from '../lib/cashflow/formatters';
 
 export default function Home({ 
   homeCashflowSummary, 
@@ -21,23 +20,19 @@ export default function Home({
     const exp = (projected.totalBills || 0) / 100; // Engine calls outflows 'totalBills'
     const net = (projected.net || 0) / 100;
     
-    // Generate weekly data for the chart (simplified: divide monthly net by 4 weeks)
-    // In a real implementation, you'd want to get actual weekly breakdowns from the engine
-    const weeklyNet = net / 4;
-    const weeks = Array.from({ length: 4 }, (_, i) => ({
+    // Map weekly data for the chart
+    const weeks = (projected.weeks || []).map((w, i) => ({
       label: `W${i + 1}`,
-      balance: weeklyNet * (i + 1) // Cumulative balance over weeks
+      balance: w.net / 100 // Simplified: showing net change per week for now
     }));
 
     return { income: inc, expense: exp, balance: net, projectedWeeks: weeks };
   }, [homeCashflowSummary]);
 
-  // 2. Filter Upcoming Bills (first 3 bills sorted by due day)
+  // 2. Filter Upcoming Bills (Next 7 days)
   const upcomingBills = useMemo(() => {
-    // Sort by due day and take first 3 for display
-    return [...bills]
-      .sort((a, b) => (a.dueDay || 0) - (b.dueDay || 0))
-      .slice(0, 3);
+    // Simple filter: take the first 3 unpaid bills for display
+    return bills.filter(b => !b.paid).slice(0, 3);
   }, [bills]);
 
   return (

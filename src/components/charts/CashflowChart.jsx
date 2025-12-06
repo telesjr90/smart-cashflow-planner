@@ -72,4 +72,3 @@ export function CashflowChart({ data = [] }) {
     </div>
   );
 }
-

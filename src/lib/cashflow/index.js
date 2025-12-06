@@ -1,6 +1,4 @@
 // src/lib/cashflow/index.js
-// Re-export all functions for backward compatibility
-
 export { toCents, fromCents, formatCurrency } from './formatters';
 export { 
   getTodayISODate, 
@@ -10,4 +8,5 @@ export {
   getMonthIndexFromStart 
 } from './dateUtils';
 export { projectCashflow } from './projectCashflow';
-
+export { enumeratePaydays, getNextDueDate } from './recurring';
+export { calculateGoalProjection } from './calculateGoals';
