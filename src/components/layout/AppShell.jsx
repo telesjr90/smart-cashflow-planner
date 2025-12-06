@@ -11,6 +11,7 @@ import {
   CalendarDays,
   ArrowRightLeft,
 } from "lucide-react";
+import { ThemeToggle } from "../ui/ThemeToggle";
 
 /**
  * Thin wrapper that centers the app and gives it a card-like frame.
@@ -18,8 +19,8 @@ import {
  */
 function Wrapper({ children }) {
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <div className="flex-1 max-w-md mx-auto w-full bg-white shadow-sm border-x border-slate-200 flex flex-col">
+    <div className="min-h-screen bg-surface-50 flex flex-col">
+      <div className="flex-1 max-w-md mx-auto w-full bg-surface-100 shadow-sm border-x border-surface-200 flex flex-col">
         {children}
       </div>
     </div>
@@ -51,7 +52,7 @@ function Tabs({ current, onChange }) {
   );
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 pointer-events-auto">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-surface-100 border-t border-surface-200 pointer-events-auto">
       <div className="max-w-md mx-auto flex items-stretch justify-between px-1 py-1">
         {items.map((item) => {
           const Icon = item.icon;
@@ -62,7 +63,7 @@ function Tabs({ current, onChange }) {
               key={item.key}
               onClick={() => handleTabClick(item.key)}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl transition-colors ${
-                active ? "bg-indigo-50 text-indigo-600" : "text-slate-500"
+                active ? "bg-primary-50 text-primary-600" : "text-surface-500"
               }`}
             >
               <Icon size={18} />
@@ -102,23 +103,26 @@ export default function AppShell({
       {/* Header */}
       <div className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Wallet className="text-indigo-600" size={18} />
+          <Wallet className="text-primary-600" size={18} />
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">
+            <div className="text-[11px] uppercase tracking-wide text-surface-500">
               Smart Cash Flow Planner
             </div>
-            <div className="text-xs font-semibold text-slate-900">
+            <div className="text-xs font-semibold text-surface-900">
               Hi {displayName}
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onLogout}
-          className="text-xs text-slate-600 hover:text-slate-900"
-        >
-          <LogOut size={16} />
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={onLogout}
+            className="text-xs text-surface-500 hover:text-surface-900"
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Page body from parent */}

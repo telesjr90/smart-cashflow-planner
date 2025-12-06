@@ -4,41 +4,41 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class', // Enables manual toggling via the 'dark' class
   theme: {
     extend: {
-      // 1. Finzo Color Palette
       colors: {
-        // Primary Brand (Indigo-ish)
         primary: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          500: '#6366f1',
-          600: '#4f46e5', // Main action color
-          700: '#4338ca',
-          900: '#312e81',
+          50: 'rgb(var(--primary-50))',
+          100: 'rgb(var(--primary-100))',
+          500: 'rgb(var(--primary-500))',
+          600: 'rgb(var(--primary-600))',
+          700: 'rgb(var(--primary-700))',
+          900: 'rgb(var(--primary-900))',
         },
-        // Surface / Backgrounds (Slate-ish)
         surface: {
-          50: '#f8fafc', // App background
-          100: '#f1f5f9', // Card background / hover
-          200: '#e2e8f0', // Borders
-          900: '#0f172a', // Dark text
+          50: 'rgb(var(--surface-50))',
+          100: 'rgb(var(--surface-100))',
+          200: 'rgb(var(--surface-200))',
+          300: 'rgb(var(--surface-300))',
+          400: 'rgb(var(--surface-400))',
+          500: 'rgb(var(--surface-500))',
+          900: 'rgb(var(--surface-900))',
         },
-        // Semantic Colors
         success: {
-          50: '#f0fdf4',
-          500: '#22c55e',
-          700: '#15803d',
+          50: 'rgb(var(--success-50))',
+          500: 'rgb(var(--success-500))',
+          700: 'rgb(var(--success-700))',
         },
         danger: {
-          50: '#fef2f2',
-          500: '#ef4444',
-          700: '#b91c1c',
+          50: 'rgb(var(--danger-50))',
+          500: 'rgb(var(--danger-500))',
+          700: 'rgb(var(--danger-700))',
         },
         warning: {
-          50: '#fffbeb',
-          500: '#f59e0b',
-          700: '#b45309',
+          50: 'rgb(var(--warning-50))',
+          500: 'rgb(var(--warning-500))',
+          700: 'rgb(var(--warning-700))',
         }
       },
       // 2. Typography System

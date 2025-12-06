@@ -13,6 +13,7 @@ import AddExpenseModal from "./components/AddExpenseModal";
 // --- New Architecture Imports ---
 import { useCashflowStore } from "./store/useCashflowStore";
 import { useFirebaseSync } from "./hooks/useFirebaseSync";
+import { useTheme } from "./hooks/useTheme";
 import { loginWithGoogle, auth } from "./firebase";
 import { projectCashflow } from "./lib/cashflow/index.js";
 import { getDefaultPlannerStartDate } from "./lib/cashflow/index.js";
@@ -25,7 +26,10 @@ function getMonthIndexFromStart(startDate, dateStr) {
 }
 
 export default function App() {
-  // 1. Activate the Cloud Sync Engine
+  // 1. Initialize theme (applies dark/light mode on mount)
+  useTheme();
+  
+  // 2. Activate the Cloud Sync Engine
   useFirebaseSync();
 
   // 2. Access Global Store
