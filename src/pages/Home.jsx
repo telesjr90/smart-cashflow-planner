@@ -1,39 +1,45 @@
 import React, { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Wallet, ArrowRight } from 'lucide-react';
+
+// Hooks
+import { useCashflowSummary } from '../hooks/useCashflowSummary';
+import { useUpcomingBills } from '../hooks/useUpcomingBills';
+
+// Components
 import { StatCard } from '../components/ui/StatCard';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { CashflowChart } from '../components/charts/CashflowChart';
 import { formatCurrency } from '../lib/cashflow/formatters';
 
-export default function Home({ 
-  homeCashflowSummary, 
-  bills = [], 
-  onGoToBills 
-}) {
+export default function Home({ onGoToBills }) {
   
-  // 1. Extract Summary Data
+  // 1. Data Hooks (Connected to Global Store)
+  const homeCashflowSummary = useCashflowSummary();
+  const upcomingBillsFull = useUpcomingBills(14); // Look ahead 14 days
+
+  // 2. Extract Summary Data
   const { income, expense, balance, projectedWeeks } = useMemo(() => {
     const projected = homeCashflowSummary?.projected || {};
     
     // Convert cents to dollars for display
     const inc = (projected.totalIncome || 0) / 100;
-    const exp = (projected.totalBills || 0) / 100; // Engine calls outflows 'totalBills'
+    const exp = (projected.totalBills || 0) / 100; 
     const net = (projected.net || 0) / 100;
     
     // Map weekly data for the chart
     const weeks = (projected.weeks || []).map((w, i) => ({
       label: `W${i + 1}`,
-      balance: w.net / 100 // Simplified: showing net change per week for now
+      balance: w.net / 100 
     }));
 
     return { income: inc, expense: exp, balance: net, projectedWeeks: weeks };
   }, [homeCashflowSummary]);
 
-  // 2. Filter Upcoming Bills (Next 7 days)
-  const upcomingBills = useMemo(() => {
-    // Simple filter: take the first 3 unpaid bills for display
-    return bills.filter(b => !b.paid).slice(0, 3);
-  }, [bills]);
+  // 3. Filter Upcoming Bills for Display (Limit to 3)
+  const displayBills = useMemo(() => {
+    // Already sorted by useUpcomingBills, just slice
+    return upcomingBillsFull.slice(0, 3);
+  }, [upcomingBillsFull]);
 
   return (
     <div className="space-y-6">
@@ -100,16 +106,18 @@ export default function Home({
         </div>
 
         <div className="space-y-3">
-          {upcomingBills.length > 0 ? (
-            upcomingBills.map(bill => (
+          {displayBills.length > 0 ? (
+            displayBills.map(bill => (
               <Card key={bill.id} className="flex items-center justify-between p-4 shadow-sm border-none bg-white">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-2xl bg-surface-100 flex items-center justify-center text-surface-500">
+                  <div className={`h-10 w-10 rounded-2xl flex items-center justify-center ${bill.status === 'overdue' ? 'bg-danger-50 text-danger-500' : 'bg-surface-100 text-surface-500'}`}>
                     <Wallet size={20} />
                   </div>
                   <div>
                     <p className="text-body font-bold text-surface-900">{bill.name}</p>
-                    <p className="text-tiny text-surface-500 font-medium">Due Day {bill.dueDay}</p>
+                    <p className={`text-tiny font-medium ${bill.status === 'overdue' ? 'text-danger-500' : 'text-surface-500'}`}>
+                      {bill.status === 'overdue' ? 'Overdue' : `Due ${new Date(bill.nextDueDate).toLocaleDateString(undefined, {month:'short', day:'numeric'})}`}
+                    </p>
                   </div>
                 </div>
                 <span className="text-body font-bold text-surface-900">

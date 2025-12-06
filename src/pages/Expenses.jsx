@@ -1,14 +1,23 @@
 import React, { useMemo } from 'react';
-import { Trash2, Search } from 'lucide-react';
-import { getCategory } from '../lib/categories';
-import { Card } from '../components/ui/Card';
+import { Search } from 'lucide-react';
 
-export default function Expenses({ expenses = [], onUpdateExpenses }) {
+// Hooks & Libs
+import { useCashflowStore } from '../store/useCashflowStore';
+import { useCashflowData } from '../hooks/useCashflowData'; // For actions like updateExpenses
+import { getCategory } from '../lib/categories';
+
+// Components
+import { TransactionRow } from '../components/ui/TransactionRow';
+
+export default function Expenses() {
   
-  // 1. Group expenses by Date (YYYY-MM-DD)
+  // 1. Connect to Store
+  const expenses = useCashflowStore((state) => state.expenses || []);
+  const { handleUpdateExpenses } = useCashflowData();
+
+  // 2. Group expenses by Date
   const groupedExpenses = useMemo(() => {
     return expenses.reduce((acc, expense) => {
-      // Fallback for missing dates
       const date = expense.date || 'Unknown Date';
       if (!acc[date]) acc[date] = [];
       acc[date].push(expense);
@@ -16,7 +25,7 @@ export default function Expenses({ expenses = [], onUpdateExpenses }) {
     }, {});
   }, [expenses]);
 
-  // 2. Sort dates descending (Newest first)
+  // 3. Sort dates descending
   const sortedDates = useMemo(() => {
     return Object.keys(groupedExpenses).sort((a, b) => {
       if (a === 'Unknown Date') return 1;
@@ -25,25 +34,17 @@ export default function Expenses({ expenses = [], onUpdateExpenses }) {
     });
   }, [groupedExpenses]);
 
+  // Actions
   const handleDelete = (id) => {
     if (window.confirm('Are you sure you want to delete this transaction?')) {
       const next = expenses.filter((e) => e.id !== id);
-      onUpdateExpenses(next);
+      handleUpdateExpenses(next);
     }
   };
 
-  // Helper to format currency
-  const formatMoney = (amount) => {
-    return new Intl.NumberFormat('en-CA', {
-      style: 'currency',
-      currency: 'CAD',
-    }).format(amount);
-  };
-
-  // Helper to format date header
   const formatDateHeader = (dateStr) => {
     if (dateStr === 'Unknown Date') return dateStr;
-    const date = new Date(dateStr + 'T00:00:00'); // Fix timezone offset issues
+    const date = new Date(dateStr + 'T00:00:00'); 
     return date.toLocaleDateString('en-US', { 
       weekday: 'long', 
       month: 'short', 
@@ -61,7 +62,6 @@ export default function Expenses({ expenses = [], onUpdateExpenses }) {
             {expenses.length} Total items
           </p>
         </div>
-        {/* Placeholder for future search/filter */}
         <button className="p-2 bg-white border border-surface-200 text-surface-400 rounded-xl shadow-sm">
           <Search size={20} />
         </button>
@@ -83,59 +83,27 @@ export default function Expenses({ expenses = [], onUpdateExpenses }) {
         <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {sortedDates.map((date) => (
             <div key={date} className="space-y-2">
-              {/* Date Header */}
               <h3 className="text-tiny font-bold text-surface-400 uppercase tracking-wider pl-1">
                 {formatDateHeader(date)}
               </h3>
               
-              {/* Card Group */}
               <div className="bg-white rounded-3xl shadow-soft border border-surface-100 overflow-hidden">
                 {groupedExpenses[date].map((expense, index) => {
                   const category = getCategory(expense.category);
-                  const Icon = category.icon;
-                  const isIncome = expense.type === 'income';
+                  const isIncome = expense.type === 'income'; // Assuming unified schema eventually, but current data is just expenses
 
                   return (
-                    <div 
-                      key={expense.id}
-                      className={`
-                        group flex items-center justify-between p-4 transition-colors hover:bg-surface-50
-                        ${index !== groupedExpenses[date].length - 1 ? 'border-b border-surface-100' : ''}
-                      `}
-                    >
-                      {/* Left: Icon & Details */}
-                      <div className="flex items-center gap-4 overflow-hidden">
-                        <div className={`h-12 w-12 flex-shrink-0 rounded-2xl flex items-center justify-center ${category.color}`}>
-                          <Icon size={20} weight="fill" />
-                        </div>
-                        
-                        <div className="flex flex-col overflow-hidden">
-                          <span className="text-body font-bold text-surface-900 truncate">
-                            {category.label}
-                          </span>
-                          {expense.description && (
-                            <span className="text-caption font-medium text-surface-400 truncate">
-                              {expense.description}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right: Amount & Delete */}
-                      <div className="flex items-center gap-3 pl-2 flex-shrink-0">
-                        <span className={`text-body font-bold whitespace-nowrap ${isIncome ? 'text-success-500' : 'text-surface-900'}`}>
-                          {isIncome ? '+' : '-'}{formatMoney(expense.amount)}
-                        </span>
-                        
-                        {/* Delete Button (Visible on hover on desktop, always there but subtle) */}
-                        <button 
-                          onClick={() => handleDelete(expense.id)}
-                          className="p-2 text-surface-300 hover:text-danger-500 hover:bg-danger-50 rounded-full transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                          aria-label="Delete transaction"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                    <div key={expense.id} className={index !== groupedExpenses[date].length - 1 ? 'border-b border-surface-100' : ''}>
+                      <TransactionRow 
+                        title={category.label}
+                        subtitle={expense.description}
+                        amount={expense.amount}
+                        category={category}
+                        icon={category.icon}
+                        variant={isIncome ? 'income' : 'expense'}
+                        className="shadow-none rounded-none border-none hover:bg-surface-50"
+                        onDelete={() => handleDelete(expense.id)}
+                      />
                     </div>
                   );
                 })}
