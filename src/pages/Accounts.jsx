@@ -1,4 +1,3 @@
-// src/pages/Accounts.jsx
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import {
   Wallet,
@@ -9,42 +8,39 @@ import {
   ArrowRightLeft,
   Info,
 } from "lucide-react";
-import { projectCashflow, fromCents } from "../lib/cashflow/index.js";
 
-function formatMoney(n) {
-  const v = Number.isFinite(+n) ? +n : 0;
-  return v.toLocaleString("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    maximumFractionDigits: 2,
-  });
-}
+// Hooks
+import { useCashflowStore } from "../store/useCashflowStore";
+import useCashflowData from "../hooks/useCashflowData";
 
-// ✅ FIXED: rest/spread arg list
+// Lib
+import { projectCashflow, fromCents, formatCurrency } from "../lib/cashflow/index.js";
+
 function classNames(...xs) {
   return xs.filter(Boolean).join(" ");
 }
 
 export default function Accounts({
-  accounts,
-  residualAccountId,
-  balances,
-  allocationRules,
-  income,
-  paySchedule,
-  bills,
-  expenses,
-  goals,
-  categoryBudgets,
-  startDate,
-  paidBills = {},
-  onUpdateAccounts,
-  onUpdateAllocationRules,
-  onUpdateIncomeAndPaySchedule,
-  // Navigation callbacks to settings for budgets and goals
+  // Keep navigation callbacks as props since routing is handled by parent
   onGoToSettingsBudgets,
   onGoToSettingsGoals,
 }) {
+  // 1. Fetch Data from Store
+  const accounts = useCashflowStore((state) => state.accounts);
+  const residualAccountId = useCashflowStore((state) => state.residualAccountId);
+  const income = useCashflowStore((state) => state.income);
+  const paySchedule = useCashflowStore((state) => state.paySchedule);
+  const bills = useCashflowStore((state) => state.bills);
+  const expenses = useCashflowStore((state) => state.expenses);
+  const goals = useCashflowStore((state) => state.goals);
+  const categoryBudgets = useCashflowStore((state) => state.categoryBudgets);
+  const startDate = useCashflowStore((state) => state.startDate);
+  const paidBills = useCashflowStore((state) => state.paidBills);
+  const allocationRules = useCashflowStore((state) => state.allocationRules);
+
+  // 2. Fetch Actions
+  const { handleUpdateAccounts } = useCashflowData();
+
   const safeAccounts = accounts || [];
   const [selectedId, setSelectedId] = useState(safeAccounts[0]?.id || null);
 
@@ -63,8 +59,7 @@ export default function Accounts({
   const incomeSafe = income || {};
   const payScheduleSafe = paySchedule || {};
   const rulesSafe = allocationRules || [];
-  const startDateSafe =
-    startDate && startDate.length >= 10 ? startDate : "2025-01-01";
+  const startDateSafe = startDate && startDate.length >= 10 ? startDate : "2025-01-01";
 
   // Compute projected balances per account via cashflow engine
   const engineBalances = useMemo(() => {
@@ -73,7 +68,7 @@ export default function Accounts({
     try {
       const { finalBalancesByAccount } = projectCashflow({
         startDate: startDateSafe,
-        months: 6, // project 6 months ahead (tweak if needed)
+        months: 6, // project 6 months ahead
         accounts: safeAccounts,
         bills: bills || [],
         income: incomeSafe,
@@ -86,7 +81,6 @@ export default function Accounts({
       const out = {};
       Object.entries(finalBalancesByAccount || {}).forEach(
         ([id, cents]) => {
-          // fromCents returns a string, convert to Number
           out[id] = Number(fromCents(cents));
         }
       );
@@ -97,52 +91,44 @@ export default function Accounts({
     }
   }, [
     startDateSafe,
-    JSON.stringify(safeAccounts),
-    JSON.stringify(bills),
-    JSON.stringify(incomeSafe),
-    JSON.stringify(payScheduleSafe),
-    JSON.stringify(rulesSafe),
+    safeAccounts,
+    bills,
+    incomeSafe,
+    payScheduleSafe,
+    rulesSafe,
     residualAccountId,
-    JSON.stringify(paidBills),
+    paidBills,
   ]);
 
-  // If explicit balances prop is provided and non-empty, it wins.
-  // Otherwise fall back to engine-derived balances.
-  const balanceMap =
-    balances && Object.keys(balances).length > 0 ? balances : engineBalances;
+  // Use engine balances
+  const balanceMap = engineBalances;
 
   // --- helpers to persist changes ---
 
   const handleNameChange = useCallback(
     (id, newName) => {
-      if (!onUpdateAccounts) return;
       const next = safeAccounts.map((a) =>
-        a.id === id ? { ...a, name: newName } : a // ✅ FIXED: spread `a`
+        a.id === id ? { ...a, name: newName } : a
       );
-      onUpdateAccounts(next, residualAccountId);
+      // Pass the existing residual ID to ensure it isn't lost
+      handleUpdateAccounts(next, residualAccountId);
     },
-    [safeAccounts, residualAccountId, onUpdateAccounts]
+    [safeAccounts, residualAccountId, handleUpdateAccounts]
   );
 
   const handleSetResidual = useCallback(
     (id) => {
-      if (!onUpdateAccounts) return;
       // accounts unchanged, only residual id moves
-      onUpdateAccounts(safeAccounts, id);
+      handleUpdateAccounts(safeAccounts, id);
     },
-    [safeAccounts, onUpdateAccounts]
+    [safeAccounts, handleUpdateAccounts]
   );
 
   // --- derived "attachments" for the selected account ---
 
   const attached = useMemo(() => {
     if (!selected) {
-      return {
-        bills: [],
-        expenses: [],
-        goals: [],
-        budgets: [],
-      };
+      return { bills: [], expenses: [], goals: [], budgets: [] };
     }
 
     const selId = selected.id;
@@ -155,12 +141,8 @@ export default function Accounts({
     };
 
     const billsArr = (bills || []).filter((b) => isForAccount(b.accountId));
-    const expensesArr = (expenses || []).filter((e) =>
-      isForAccount(e.accountId)
-    );
-    const goalsArr = (goals || []).filter((g) =>
-      isForAccount(g.accountId)
-    );
+    const expensesArr = (expenses || []).filter((e) => isForAccount(e.accountId));
+    const goalsArr = (goals || []).filter((g) => isForAccount(g.accountId));
 
     const budgetsArr = Object.entries(categoryBudgets || {}).map(
       ([category, cfg]) => ({
@@ -177,7 +159,7 @@ export default function Accounts({
     };
   }, [selected, residualAccountId, bills, expenses, goals, categoryBudgets]);
 
-  // --- summary for the selected account (balance + attached totals) ---
+  // --- summary for the selected account ---
 
   const summary = useMemo(() => {
     if (!selected) {
@@ -190,25 +172,12 @@ export default function Accounts({
       };
     }
 
-    const currentBalance =
-      balanceMap[selected.id] ?? selected.openingBalance ?? 0;
+    const currentBalance = balanceMap[selected.id] ?? selected.openingBalance ?? 0;
 
-    const billTotal = attached.bills.reduce(
-      (sum, b) => sum + (b.amount || 0),
-      0
-    );
-    const expenseTotal = attached.expenses.reduce(
-      (sum, e) => sum + (e.amount || 0),
-      0
-    );
-    const goalMonthly = attached.goals.reduce(
-      (sum, g) => sum + (g.perMonth || g.monthlyAmount || 0),
-      0
-    );
-    const budgetMonthly = attached.budgets.reduce(
-      (sum, b) => sum + (b.amount || 0),
-      0
-    );
+    const billTotal = attached.bills.reduce((sum, b) => sum + (b.amount || 0), 0);
+    const expenseTotal = attached.expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const goalMonthly = attached.goals.reduce((sum, g) => sum + (g.perMonth || g.monthlyAmount || 0), 0);
+    const budgetMonthly = attached.budgets.reduce((sum, b) => sum + (b.amount || 0), 0);
 
     return {
       balance: currentBalance,
@@ -219,7 +188,6 @@ export default function Accounts({
     };
   }, [selected, attached, balanceMap]);
 
-  // tiny labels for pay schedule
   const payScheduleLabel = useMemo(() => {
     if (!payScheduleSafe?.type) return "Semi-monthly (default)";
     if (payScheduleSafe.type === "semi-monthly") {
@@ -230,8 +198,7 @@ export default function Accounts({
     return payScheduleSafe.type;
   }, [payScheduleSafe]);
 
-  const totalMonthlyIncome =
-    (incomeSafe.husband || 0) + (incomeSafe.wife || 0);
+  const totalMonthlyIncome = (incomeSafe.husband || 0) + (incomeSafe.wife || 0);
 
   return (
     <main className="px-4 pb-24">
@@ -251,7 +218,7 @@ export default function Accounts({
         </p>
       </header>
 
-      {/* layout: list of accounts on the left, detail on the right (stacked on mobile) */}
+      {/* layout: list on left, detail on right (stacked on mobile) */}
       <section className="flex flex-col gap-3">
         {/* Accounts list */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
@@ -270,7 +237,6 @@ export default function Accounts({
               <button
                 type="button"
                 onClick={() => {
-                  if (!onUpdateAccounts) return;
                   const newId = `acct-${Date.now()}`;
                   const newAccount = {
                     id: newId,
@@ -278,7 +244,7 @@ export default function Accounts({
                     type: "deposit",
                     openingBalance: 0,
                   };
-                  onUpdateAccounts([newAccount], newId);
+                  handleUpdateAccounts([newAccount], newId);
                 }}
                 className="inline-flex items-center justify-center rounded-full bg-indigo-600 text-white px-3 py-1 mt-1"
               >
@@ -290,8 +256,7 @@ export default function Accounts({
               {safeAccounts.map((acc) => {
                 const active = acc.id === selectedId;
                 const isResidual = acc.id === residualAccountId;
-                const bal =
-                  balanceMap[acc.id] ?? acc.openingBalance ?? 0;
+                const bal = balanceMap[acc.id] ?? acc.openingBalance ?? 0;
 
                 return (
                   <div
@@ -309,14 +274,10 @@ export default function Accounts({
                         <input
                           className={classNames(
                             "text-xs font-semibold bg-transparent border-none outline-none p-0 m-0",
-                            active
-                              ? "text-slate-900"
-                              : "text-slate-800"
+                            active ? "text-slate-900" : "text-slate-800"
                           )}
                           value={acc.name || ""}
-                          onChange={(e) =>
-                            handleNameChange(acc.id, e.target.value)
-                          }
+                          onChange={(e) => handleNameChange(acc.id, e.target.value)}
                           onClick={(e) => e.stopPropagation()}
                         />
                         {isResidual && (
@@ -327,7 +288,7 @@ export default function Accounts({
                       </div>
                       <div className="text-[10px] text-slate-500 mt-0.5">
                         Type: {acc.type || "deposit"} · Balance:{" "}
-                        {formatMoney(bal)}
+                        {formatCurrency(bal)}
                       </div>
                     </div>
                     <div
@@ -380,7 +341,7 @@ export default function Accounts({
                     Projected balance
                   </div>
                   <div className="text-sm font-semibold text-slate-900">
-                    {formatMoney(summary.balance)}
+                    {formatCurrency(summary.balance)}
                   </div>
                   <div className="text-[10px] text-slate-400 mt-0.5 inline-flex items-center gap-1">
                     <Info size={10} />
@@ -396,7 +357,7 @@ export default function Accounts({
                     Monthly bills
                   </div>
                   <div className="text-xs font-semibold text-slate-900">
-                    {formatMoney(summary.billTotal)}
+                    {formatCurrency(summary.billTotal)}
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50 px-2 py-1.5">
@@ -404,7 +365,7 @@ export default function Accounts({
                     Tracked expenses
                   </div>
                   <div className="text-xs font-semibold text-slate-900">
-                    {formatMoney(summary.expenseTotal)}
+                    {formatCurrency(summary.expenseTotal)}
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50 px-2 py-1.5">
@@ -412,7 +373,7 @@ export default function Accounts({
                     Goals / month
                   </div>
                   <div className="text-xs font-semibold text-slate-900">
-                    {formatMoney(summary.goalMonthly)}
+                    {formatCurrency(summary.goalMonthly)}
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50 px-2 py-1.5">
@@ -420,7 +381,7 @@ export default function Accounts({
                     Budgets / month
                   </div>
                   <div className="text-xs font-semibold text-slate-900">
-                    {formatMoney(summary.budgetMonthly)}
+                    {formatCurrency(summary.budgetMonthly)}
                   </div>
                 </div>
               </div>
@@ -435,7 +396,7 @@ export default function Accounts({
                     <div className="text-[10px] text-slate-500">
                       Household income:{" "}
                       <span className="font-semibold">
-                        {formatMoney(totalMonthlyIncome)}
+                        {formatCurrency(totalMonthlyIncome)}
                       </span>{" "}
                       · Pay schedule: {payScheduleLabel}
                     </div>
@@ -476,7 +437,7 @@ export default function Accounts({
                             {b.name} · due day {b.dueDay}
                           </span>
                           <span className="ml-2 font-medium">
-                            {formatMoney(b.amount)}
+                            {formatCurrency(b.amount)}
                           </span>
                         </li>
                       ))}
@@ -516,7 +477,7 @@ export default function Accounts({
                         >
                           <span className="truncate">{b.category}</span>
                           <span className="ml-2 font-medium">
-                            {formatMoney(b.amount)}
+                            {formatCurrency(b.amount)}
                           </span>
                         </li>
                       ))}
@@ -556,7 +517,7 @@ export default function Accounts({
                         >
                           <span className="truncate">{g.name}</span>
                           <span className="ml-2 font-medium">
-                            {formatMoney(g.perMonth || 0)}
+                            {formatCurrency(g.perMonth || 0)}
                           </span>
                         </li>
                       ))}
@@ -587,7 +548,7 @@ export default function Accounts({
                             {e.description || e.category || "Expense"}
                           </span>
                           <span className="ml-2 font-medium">
-                            {formatMoney(e.amount)}
+                            {formatCurrency(e.amount)}
                           </span>
                         </li>
                       ))}
