@@ -3,6 +3,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import "./index.css";
+import { ToastProvider } from "./components/ui/toast/ToastProvider";
 
 // IMPORTANT: No service worker registration for this recovery deploy.
 // If you had something like `import "../dist/registerSW.js"` or
@@ -15,6 +16,8 @@ if (!rootEl) {
 
 createRoot(rootEl).render(
   <React.StrictMode>
-    <App />
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   </React.StrictMode>
 );
