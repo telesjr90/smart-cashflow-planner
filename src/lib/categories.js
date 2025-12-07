@@ -102,7 +102,49 @@ export const CATEGORIES = {
 
 export const CATEGORY_LIST = Object.values(CATEGORIES);
 
+/**
+ * Returns the full category object for a given ID (key).
+ * Falls back to 'other' if not found.
+ */
 export function getCategory(id) {
   return CATEGORIES[id] || CATEGORIES.other;
 }
 
+/**
+ * Alias for getCategory to strictly return details object {id, label, icon, color}
+ */
+export function getCategoryDetails(id) {
+  return getCategory(id);
+}
+
+/**
+ * Returns the human-readable label for a category ID.
+ */
+export function getCategoryLabel(id) {
+  return getCategory(id).label;
+}
+
+/**
+ * Smart resolver that handles both keys ("groceries") and legacy labels ("Groceries").
+ * Useful for mapping bill data that might be inconsistent.
+ * Returns the canonical category object.
+ */
+export function resolveCategory(input) {
+  if (!input) return CATEGORIES.other;
+
+  // 1. Try exact key match
+  if (CATEGORIES[input]) return CATEGORIES[input];
+
+  // 2. Try label match (case-insensitive)
+  const lower = String(input).toLowerCase();
+  const found = CATEGORY_LIST.find(c => c.label.toLowerCase() === lower);
+  
+  return found || CATEGORIES.other;
+}
+
+/**
+ * Returns the canonical key for a given input (key or label).
+ */
+export function resolveCategoryKey(input) {
+  return resolveCategory(input).id;
+}
