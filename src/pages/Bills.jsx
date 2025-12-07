@@ -10,6 +10,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { safeLocalStorage, makeScopedKey } from "../lib/safeLocalStorage";
+import { useConfirm } from "../hooks/useConfirm";
 
 /**
  * Patched Bills page for Smart Cash‑Flow Planner
@@ -208,12 +209,14 @@ export default function Bills({
   onChangeBillAccount,
   onUpdateBills,
   /** Optional household identifier used to namespace localStorage keys.
-   *  When provided, the selected month will be persisted under
-   *  `billsSelectedMonth:<householdId>` instead of a global key.
-   *  This prevents cross-household interference and stale values.
+   * When provided, the selected month will be persisted under
+   * `billsSelectedMonth:<householdId>` instead of a global key.
+   * This prevents cross-household interference and stale values.
    */
   householdId,
 }) {
+  const confirm = useConfirm();
+
   // Guard against undefined or falsy start dates.  When no startDate is
   // provided (e.g. immediately after creating a new household) the month
   // helper functions will throw. Render a friendly message instructing the
@@ -571,10 +574,18 @@ export default function Bills({
     cancelEdit();
   };
 
-  const handleDelete = (billId) => {
+  const handleDelete = async (billId) => {
     if (!onUpdateBills) return;
-    const confirmed = window.confirm("Delete this bill from all future months?");
+    
+    const confirmed = await confirm({
+      title: "Delete Bill",
+      message: "Delete this bill from all future months?",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+    });
+    
     if (!confirmed) return;
+    
     const nextBills = bills.filter((b) => b.id !== billId);
     onUpdateBills(nextBills);
     if (editingId === billId) cancelEdit();

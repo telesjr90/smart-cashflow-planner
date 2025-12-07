@@ -5,6 +5,7 @@ import { Search } from 'lucide-react';
 import { useCashflowStore } from '../store/useCashflowStore';
 import useCashflowData from '../hooks/useCashflowData'; // FIXED: Removed curly braces
 import { getCategory } from '../lib/categories';
+import { useConfirm } from '../hooks/useConfirm';
 
 // Components
 import { TransactionRow } from '../components/ui/TransactionRow';
@@ -14,6 +15,7 @@ export default function Expenses() {
   // 1. Connect to Store
   const expenses = useCashflowStore((state) => state.expenses || []);
   const { handleUpdateExpenses } = useCashflowData();
+  const confirm = useConfirm();
 
   // 2. Group expenses by Date
   const groupedExpenses = useMemo(() => {
@@ -35,8 +37,15 @@ export default function Expenses() {
   }, [groupedExpenses]);
 
   // Actions
-  const handleDelete = (id) => {
-    if (window.confirm('Are you sure you want to delete this transaction?')) {
+  const handleDelete = async (id) => {
+    const ok = await confirm({
+        title: "Delete Transaction",
+        message: "Are you sure you want to delete this transaction?",
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+    });
+
+    if (ok) {
       const next = expenses.filter((e) => e.id !== id);
       handleUpdateExpenses(next);
     }
