@@ -13,12 +13,9 @@ import { safeLocalStorage, makeScopedKey } from "../lib/safeLocalStorage";
 import { useConfirm } from "../hooks/useConfirm";
 import BillFormSheet from "../components/bills/BillFormSheet";
 
-/**
- * Patched Bills page for Smart Cash‑Flow Planner
- *
- * This file integrates the new BillFormSheet component to replace the inline editor.
- * It maintains the existing logic for managing bills, filtering, and month scrolling.
- */
+// Store & Hooks
+import { useCashflowStore } from "../store/useCashflowStore";
+import useCashflowData from "../hooks/useCashflowData";
 
 const fmt = (v) =>
   `$${Number(v ?? 0).toLocaleString("en-CA", {
@@ -51,6 +48,12 @@ function currentMonthIndex(startDate) {
     (today.getFullYear() - start.getFullYear()) * 12 +
     (today.getMonth() - start.getMonth());
   return Math.max(0, Math.min(13, months)); // clamp 0..13
+}
+
+function getMonthIndexFromStart(startDate, dateStr) {
+  const s = new Date(startDate + "T00:00:00");
+  const d = new Date(dateStr + "T00:00:00");
+  return (d.getFullYear() - s.getFullYear()) * 12 + (d.getMonth() - s.getMonth());
 }
 
 // ---------- small UI blocks ----------
@@ -185,34 +188,59 @@ function BulkActions({ disabled, onMarkAllPaid, onMarkAllUnpaid }) {
 }
 
 // ---------- main component ----------
-export default function Bills({
-  role = "H",
-  startDate = "2025-11-15",
-  bills = [],
-  paidFlags = {},
-  personScope = "self",
-  memberNames = { H: "Partner H", W: "Partner W" },
-  accounts = [],
-  residualAccountId,
-  categoryBudgets = {},
-  onTogglePaid,
-  onBulkMark,
-  onChangeBillAccount,
-  onUpdateBills,
-  householdId,
-}) {
+export default function Bills({ personScope = "self" }) {
+  // 1. Data from Store
+  const {
+    userProfile,
+    startDate,
+    bills,
+    accounts,
+    residualAccountId,
+    categoryBudgets,
+    paidBills, // Map { "YYYY-MM-DD:billId": true }
+  } = useCashflowStore();
+
+  const role = userProfile?.role || "H";
+  const householdId = userProfile?.householdId || "";
+  const memberNames = { H: "Partner H", W: "Partner W" }; // Could come from profile/settings later
+
+  // 2. Actions from Hook
+  const {
+    handleUpdateBills,
+    handleTogglePaid,
+    handleBulkMark,
+    handleChangeBillAccount,
+  } = useCashflowData();
+
   const confirm = useConfirm();
 
   // Guard against undefined or falsy start dates.
   if (!startDate) {
     return (
       <div className="p-4 text-sm text-slate-700">
-        Start date is not defined. Please set a start date in Settings to
-        begin managing your bills.
+        Start date is not defined. Please set a start date in Settings.
       </div>
     );
   }
+
+  const safeStartDate = startDate;
   const billsArr = Array.isArray(bills) ? bills : [];
+
+  // --- Derived: Paid Flags (Transform Store Map -> Page Format) ---
+  const paidFlags = useMemo(() => {
+    const flags = {};
+    Object.entries(paidBills || {}).forEach(([key, isPaid]) => {
+      if (!isPaid) return;
+      const [dateStr, billId] = key.split(":");
+      if (!dateStr || !billId) return;
+      const monthIndex = getMonthIndexFromStart(safeStartDate, dateStr);
+      // Reasonable bounds for checking paid status (past/future)
+      if (monthIndex < -120 || monthIndex > 240) return;
+      if (!flags[billId]) flags[billId] = {};
+      flags[billId][monthIndex] = true;
+    });
+    return flags;
+  }, [paidBills, safeStartDate]);
 
   // --- Bill Form / Sheet State ---
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -306,13 +334,9 @@ export default function Bills({
   };
 
   const handleSaveBill = async (billDraft) => {
-    if (!onUpdateBills) return;
     setIsSaving(true);
 
     try {
-      // Simulate minimal async delay if desired, or just proceed
-      // await new Promise(r => setTimeout(r, 300));
-
       const cleanAmount = Number.isFinite(+billDraft.amount) ? +billDraft.amount : 0;
       const cleanDueDay = Math.min(31, Math.max(1, parseInt(billDraft.dueDay || 1, 10)));
       const accountId = resolveAccountId({ ...billDraft, dueDay: cleanDueDay });
@@ -352,13 +376,13 @@ export default function Bills({
                 dueDay: cleanDueDay,
                 payer: billDraft.payer || b.payer,
                 category: categoryKey || b.category,
-                accountId, // or keep b.accountId if user didn't change? (Sheet passes back form state)
+                accountId, 
               }
             : b
         );
       }
 
-      onUpdateBills(nextBills);
+      await handleUpdateBills(nextBills);
 
       // Reset month scroller to current month to align context
       const idx = currentMonthIndex(startDate);
@@ -433,6 +457,17 @@ export default function Bills({
       : "other"
   );
 
+  // Sync owner filter if personScope prop changes (e.g. tab switch)
+  useEffect(() => {
+    setOwner(
+      personScope === "combined"
+        ? "both"
+        : personScope === "self"
+        ? "mine"
+        : "other"
+    );
+  }, [personScope]);
+
   // Flatten bills for the selected month
   const monthItems = useMemo(() => {
     if (!startDate) return [];
@@ -452,7 +487,6 @@ export default function Bills({
     return (bills || [])
       .map((b) => {
         const safeDueDay = clampDueDayToMonth(year, monthIndex0, b.dueDay);
-        // const dueDate = new Date(year, monthIndex0, safeDueDay); // unused
         const paid = !!paidFlags?.[b.id]?.[selectedMonth];
         const overdue =
           !paid &&
@@ -513,8 +547,7 @@ export default function Bills({
   );
 
   const handleToggle = (item) => {
-    if (!onTogglePaid) return;
-    onTogglePaid({
+    handleTogglePaid({
       billId: item.id,
       monthIndex: item.monthIndex,
       next: !item.paid,
@@ -522,14 +555,11 @@ export default function Bills({
   };
 
   const handleBulk = (value) => {
-    if (!onBulkMark) return;
     const ids = filtered.map((it) => it.id);
-    onBulkMark({ billIds: ids, monthIndex: selectedMonth, value });
+    handleBulkMark({ billIds: ids, monthIndex: selectedMonth, value });
   };
 
   const handleDelete = async (billId) => {
-    if (!onUpdateBills) return;
-    
     const confirmed = await confirm({
       title: "Delete Bill",
       message: "Delete this bill from all future months?",
@@ -540,7 +570,7 @@ export default function Bills({
     if (!confirmed) return;
     
     const nextBills = bills.filter((b) => b.id !== billId);
-    onUpdateBills(nextBills);
+    handleUpdateBills(nextBills);
     
     // If deleting the currently edited bill, close sheet
     if (editingBill && editingBill.id === billId) {
@@ -667,11 +697,11 @@ export default function Bills({
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1">
                           <span className="text-[10px] uppercase tracking-wide text-slate-400">Account</span>
-                          {hasAccounts && onChangeBillAccount ? (
+                          {hasAccounts && handleChangeBillAccount ? (
                             <select
                               className="text-[11px] border border-slate-200 rounded-full px-2 py-0.5 bg-slate-50 text-slate-700"
                               value={acctId}
-                              onChange={(e) => onChangeBillAccount(item.id, e.target.value)}
+                              onChange={(e) => handleChangeBillAccount(item.id, e.target.value)}
                             >
                               {accounts.map((a) => (
                                 <option key={a.id} value={a.id}>
@@ -683,7 +713,7 @@ export default function Bills({
                             <span className="text-[11px] text-slate-600">{accountLabel}</span>
                           )}
                         </div>
-                        {onUpdateBills && (
+                        {handleUpdateBills && (
                           <div className="flex items-center gap-1">
                             <button
                               type="button"
@@ -710,7 +740,7 @@ export default function Bills({
           </div>
           {/* Bulk actions */}
           <BulkActions
-            disabled={!filtered.length || !onBulkMark}
+            disabled={!filtered.length || !handleBulkMark}
             onMarkAllPaid={() => handleBulk(true)}
             onMarkAllUnpaid={() => handleBulk(false)}
           />

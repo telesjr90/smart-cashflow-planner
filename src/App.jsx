@@ -247,7 +247,7 @@ export default function App() {
 
             <div className="h-16 w-16 bg-primary-50 text-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
 
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 256 256"><path d="M216,72H180.92c.39-.33.79-.65,1.17-1A29.53,29.53,0,0,0,192,49.57V48a24,24,0,0,0-24-24H136a24,24,0,0,0-24,24v1.57a29.53,29.53,0,0,0,9.91,21.41c.38.33.78.65,1.17,1H56A16,16,0,0,0,40,88v48a8,8,0,0,0,16,0V88H200v48a8,8,0,0,0,16,0V88A16,16,0,0,0,216,72ZM136,40h32a8,8,0,0,1,8,8v.83a13.93,13.93,0,0,1-4.65,10.38L168,62.14l-3.35-2.93A13.93,13.93,0,0,1,160,48.83V48A8,8,0,0,1,168,40h-8V56H144V40h-8a8,8,0,0,1,8-8Zm88,136V152a8,8,0,0,0-16,0v24a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V152a8,8,0,0,0-16,0v24a24,24,0,0,0,24,24H200A24,24,0,0,0,224,176Zm-48-8a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,168Z"></path></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 256 256"><path d="M216,72H180.92c.39-.33.79-.65,1.17-1A29.53,29.53,0,0,0,192,49.57V48a24,24,0,0,0-24-24H136a24,24,0,0,0-24-24v1.57a29.53,29.53,0,0,0,9.91,21.41c.38.33.78.65,1.17,1H56A16,16,0,0,0,40,88v48a8,8,0,0,0,16,0V88H200v48a8,8,0,0,0,16,0V88A16,16,0,0,0,216,72ZM136,40h32a8,8,0,0,1,8,8v.83a13.93,13.93,0,0,1-4.65,10.38L168,62.14l-3.35-2.93A13.93,13.93,0,0,1,160,48.83V48A8,8,0,0,1,168,40h-8V56H144V40h-8a8,8,0,0,1,8-8Zm88,136V152a8,8,0,0,0-16,0v24a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V152a8,8,0,0,0-16,0v24a24,24,0,0,0,24,24H200A24,24,0,0,0,224,176Zm-48-8a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,168Z"></path></svg>
 
             </div>
 
@@ -440,47 +440,7 @@ export default function App() {
 
         {tab === "bills" && (
 
-          <Bills
-
-            householdId={householdId}
-
-            role={role}
-
-            startDate={safeStartDate}
-
-            bills={displayedBills}
-
-            paidFlags={paidFlags}
-
-            personScope={personScope}
-
-            accounts={accounts}
-
-            residualAccountId={residualAccountId}
-
-            onTogglePaid={(payload) => {
-
-               const s = new Date(safeStartDate + "T00:00:00");
-
-               const d = new Date(s.getFullYear(), s.getMonth() + payload.monthIndex, 1);
-
-               const dateStr = d.toISOString().slice(0, 10);
-
-               store.setPaidStatus(payload.billId, dateStr, payload.next);
-
-            }}
-
-            onChangeBillAccount={(billId, acctId) => {
-
-               const newBills = bills.map(b => b.id === billId ? {...b, accountId: acctId} : b);
-
-               store.updateBills(newBills);
-
-            }}
-
-            onUpdateBills={store.updateBills}
-
-          />
+          <Bills personScope={personScope} />
 
         )}
 
