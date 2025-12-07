@@ -1,34 +1,48 @@
 import React from 'react';
 
-export function Input({ label, error, icon: Icon, className = '', ...props }) {
+export function Input({ 
+  label, 
+  icon: Icon, 
+  prefix, 
+  rightElement, 
+  className = "", 
+  containerClassName = "",
+  ...props 
+}) {
   return (
-    <div className={`flex flex-col gap-2 ${className}`}>
+    <label className={`block w-full ${containerClassName}`}>
       {label && (
-        <label className="text-caption font-semibold text-surface-900 ml-1">
+        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
           {label}
-        </label>
+        </span>
       )}
       <div className="relative">
-        {Icon && (
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-surface-400">
-            <Icon size={20} />
+        {(Icon || prefix) && (
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex items-center">
+            {Icon && <Icon size={18} />}
+            {prefix && <span className="text-sm font-medium">{prefix}</span>}
           </div>
         )}
+        
         <input
           className={`
-            flex w-full rounded-2xl border bg-surface-50 px-4 py-3.5 text-body text-surface-900
-            transition-all duration-200
-            placeholder:text-surface-400 
-            focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500
-            disabled:cursor-not-allowed disabled:bg-surface-100
-            ${Icon ? 'pl-11' : ''}
-            ${error ? 'border-danger-500 focus:ring-danger-500/20' : 'border-surface-200'}
+            w-full border border-slate-200 rounded-xl py-2 text-sm text-slate-900 
+            placeholder:text-slate-300 
+            focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 
+            transition-all disabled:opacity-50 disabled:cursor-not-allowed
+            ${(Icon || prefix) ? 'pl-9' : 'px-3'}
+            ${rightElement ? 'pr-20' : 'pr-3'}
+            ${className}
           `}
           {...props}
         />
+
+        {rightElement && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">
+            {rightElement}
+          </div>
+        )}
       </div>
-      {error && <span className="text-tiny text-danger-500 ml-1">{error}</span>}
-    </div>
+    </label>
   );
 }
-
