@@ -13,6 +13,7 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { getDefaultPlannerStartDate } from "../lib/cashflow/index.js";
+import { useToast } from "../components/ui/toast/useToast";
 
 // --- Constants & Defaults ---
 const USERS = "users";
@@ -183,6 +184,7 @@ export default function useCashflowData() {
     DEFAULT_SECTION_VERSIONS
   );
 
+  const { showToast } = useToast();
   const userUnsubRef = useRef(null);
   const seededOnce = useRef(false);
 
@@ -332,10 +334,13 @@ export default function useCashflowData() {
     } catch (err) {
       console.warn("Failed to save bills", err);
       if (err.message === "section-version-conflict" && err.section === "bills") {
-        alert("Conflict detected: Bills updated by partner. Reloading...");
+        showToast({
+          type: 'error',
+          message: "Conflict detected: Bills updated by partner. Reloading..."
+        });
       }
     }
-  }, [myData, mySectionVersions, isAgentDemo]);
+  }, [myData, mySectionVersions, isAgentDemo, showToast]);
 
   const handleChangeBillAccount = useCallback(async (billId, accountId) => {
     const base = myData || emptyUserData;
@@ -458,7 +463,10 @@ export default function useCashflowData() {
     } catch (err) {
       console.warn(`Failed to update ${sectionName}`, err);
       if (err.message === "section-version-conflict" && err.section === sectionName) {
-        alert(`Conflict: ${sectionName} updated by partner. Reloading...`);
+        showToast({
+          type: 'error',
+          message: `Conflict: ${sectionName} updated by partner. Reloading...`
+        });
       }
     }
   };
