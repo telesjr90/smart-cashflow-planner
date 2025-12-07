@@ -24,8 +24,8 @@ function getMonthIndexFromStart(startDate, dateStr) {
   return (d.getFullYear() - s.getFullYear()) * 12 + (d.getMonth() - s.getMonth());
 }
 
-// --- NEW: Helper Component for Conditional Hook Execution ---
-// This prevents useFirebaseSync from clearing the mock user in demo mode
+// --- Helper Component to Conditionally Run Hooks ---
+// This ensures the sync hook NEVER runs when we are in demo mode
 function FirebaseSyncHelper() {
   useFirebaseSync();
   return null;
@@ -66,8 +66,9 @@ export default function App() {
 
   // --- Demo Seeding Effect ---
   useEffect(() => {
-    // Only run if we are in demo mode and no user is currently set
-    if (isDemo && !userProfile.uid) {
+    // IMPORTANT: Check userProfile.uid specifically to avoid loop.
+    // If we are in demo mode AND the user is not yet the demo user, seed it.
+    if (isDemo && userProfile?.uid !== "demo-user") {
       console.log("Agent Demo detected: Seeding mock user.");
       
       store.setUserProfile({
@@ -90,7 +91,9 @@ export default function App() {
         paySchedule: { type: "semi-monthly", day1: 15, day2: "last" }
       });
     }
-  }, [isDemo, userProfile.uid, store]); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemo, userProfile?.uid]); 
+  // ^^^ Removed 'store' from dependencies to prevent infinite update loop
 
   // --- Navigation & Warnings ---
   const handleGoToSettingsSection = useCallback((section) => {
@@ -201,7 +204,7 @@ export default function App() {
 
   // --- Render ---
 
-  // 1. Login Screen
+  // 1. Login Screen (Only shown if NOT logged in)
   if (!canEnter) {
     return (
       <ErrorBoundary>
