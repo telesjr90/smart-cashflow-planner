@@ -12,6 +12,7 @@ import {
 import { safeLocalStorage, makeScopedKey } from "../lib/safeLocalStorage";
 import { useConfirm } from "../hooks/useConfirm";
 import BillFormSheet from "../components/bills/BillFormSheet";
+import { getCategoryLabel } from "../lib/categories";
 
 // Store & Hooks
 import { useCashflowStore } from "../store/useCashflowStore";
@@ -197,12 +198,12 @@ export default function Bills({ personScope = "self" }) {
     accounts,
     residualAccountId,
     categoryBudgets,
-    paidBills, // Map { "YYYY-MM-DD:billId": true }
+    paidBills,
   } = useCashflowStore();
 
   const role = userProfile?.role || "H";
   const householdId = userProfile?.householdId || "";
-  const memberNames = { H: "Partner H", W: "Partner W" }; // Could come from profile/settings later
+  const memberNames = { H: "Partner H", W: "Partner W" };
 
   // 2. Actions from Hook
   const {
@@ -226,7 +227,7 @@ export default function Bills({ personScope = "self" }) {
   const safeStartDate = startDate;
   const billsArr = Array.isArray(bills) ? bills : [];
 
-  // --- Derived: Paid Flags (Transform Store Map -> Page Format) ---
+  // --- Derived: Paid Flags ---
   const paidFlags = useMemo(() => {
     const flags = {};
     Object.entries(paidBills || {}).forEach(([key, isPaid]) => {
@@ -234,7 +235,6 @@ export default function Bills({ personScope = "self" }) {
       const [dateStr, billId] = key.split(":");
       if (!dateStr || !billId) return;
       const monthIndex = getMonthIndexFromStart(safeStartDate, dateStr);
-      // Reasonable bounds for checking paid status (past/future)
       if (monthIndex < -120 || monthIndex > 240) return;
       if (!flags[billId]) flags[billId] = {};
       flags[billId][monthIndex] = true;
@@ -244,13 +244,12 @@ export default function Bills({ personScope = "self" }) {
 
   // --- Bill Form / Sheet State ---
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [editingBill, setEditingBill] = useState(null); // null for new, object for edit
+  const [editingBill, setEditingBill] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Determine whether any accounts exist.
   const hasAccounts = accounts && accounts.length > 0;
 
-  // ---------- budget category options (from categoryBudgets + visibility rules) ----------
+  // ---------- budget category options ----------
   const budgetOptions = useMemo(() => {
     const raw = categoryBudgets || {};
     const arr = Object.entries(raw).map(([key, cfg]) => ({
@@ -271,33 +270,20 @@ export default function Bills({ personScope = "self" }) {
   const defaultCategoryKey = budgetOptions.length ? budgetOptions[0].key : "";
 
   // Helper used for display mapping in the list
-  const categoryLabelForKey = useCallback(
-    (key) => {
-      if (!key) return "";
-      const found = budgetOptions.find((b) => b.key === key);
-      return found?.label || "";
-    },
-    [budgetOptions]
-  );
-
-  const categoryKeyForBill = useCallback(
-    (bill) => {
-      const current = bill?.category || "";
-      if (!current) return "";
-      if (budgetOptions.some((b) => b.key === current)) return current;
-      const byLabel = budgetOptions.find((b) => b.label === current);
-      return byLabel ? byLabel.key : "";
-    },
-    [budgetOptions]
-  );
-
   const categoryLabelForBill = useCallback(
     (bill) => {
-      const key = categoryKeyForBill(bill);
-      const label = categoryLabelForKey(key);
-      return label || bill?.category || "";
+      // First try to find label by key match
+      if (bill?.category && budgetOptions.some((b) => b.key === bill.category)) {
+        const found = budgetOptions.find((b) => b.key === bill.category);
+        return found?.label || "";
+      }
+      // If no match in budgets, try generic categories or fallback to raw
+      if (bill?.category) {
+        return getCategoryLabel(bill.category) || bill.category;
+      }
+      return "";
     },
-    [categoryKeyForBill, categoryLabelForKey]
+    [budgetOptions]
   );
 
   // Account helper
@@ -335,7 +321,6 @@ export default function Bills({ personScope = "self" }) {
 
   const handleSaveBill = async (billDraft) => {
     setIsSaving(true);
-
     try {
       const cleanAmount = Number.isFinite(+billDraft.amount) ? +billDraft.amount : 0;
       const cleanDueDay = Math.min(31, Math.max(1, parseInt(billDraft.dueDay || 1, 10)));
@@ -344,7 +329,6 @@ export default function Bills({ personScope = "self" }) {
 
       let nextBills;
       
-      // Check if we are editing an existing bill (based on editingBill state) or creating new
       if (!editingBill) {
         // Create New
         const id =
@@ -384,7 +368,7 @@ export default function Bills({ personScope = "self" }) {
 
       await handleUpdateBills(nextBills);
 
-      // Reset month scroller to current month to align context
+      // Reset month scroller to current month
       const idx = currentMonthIndex(startDate);
       setSelectedMonth(idx);
       if (storageKey) {
@@ -397,7 +381,6 @@ export default function Bills({ personScope = "self" }) {
     }
   };
 
-  // Determine if list is empty
   const isEmpty = billsArr.length === 0;
 
   // Month navigation logic
@@ -457,7 +440,6 @@ export default function Bills({ personScope = "self" }) {
       : "other"
   );
 
-  // Sync owner filter if personScope prop changes (e.g. tab switch)
   useEffect(() => {
     setOwner(
       personScope === "combined"
@@ -572,16 +554,13 @@ export default function Bills({ personScope = "self" }) {
     const nextBills = bills.filter((b) => b.id !== billId);
     handleUpdateBills(nextBills);
     
-    // If deleting the currently edited bill, close sheet
     if (editingBill && editingBill.id === billId) {
       handleSheetClose();
     }
   };
 
-  // -------- render --------
   return (
     <div className="pb-24">
-      {/* Header shared across empty and normal views */}
       <header className="flex items-center justify-between px-4 pt-4">
         <div className="flex items-center gap-2">
           <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
@@ -625,9 +604,8 @@ export default function Bills({ personScope = "self" }) {
         </div>
       ) : (
         <>
-          {/* Month scroller */}
           <MonthScroller months={months} selected={selectedMonth} onChange={setSelectedMonth} />
-          {/* Filters */}
+          
           <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-2">
             <Segmented
               value={status}
@@ -649,16 +627,15 @@ export default function Bills({ personScope = "self" }) {
               ]}
             />
           </div>
-          {/* Summary tiles */}
+
           <div className="mx-4 mt-3 grid grid-cols-3 gap-2">
             <SummaryTile label="Total" value={fmt(totals.all)} />
             <SummaryTile label="Unpaid" value={fmt(totals.unpaid)} danger />
             <SummaryTile label="Overdue" value={fmt(totals.overdue)} danger />
           </div>
-          {/* Past due banner */}
+
           <PastDueBanner items={overdueItems} memberNames={memberNames} />
           
-          {/* List */}
           <div className="mt-3 space-y-1">
             {filtered.length === 0 && (
               <div className="mx-4 mt-4 rounded-2xl bg-slate-50 px-3 py-3 text-xs text-slate-500">
@@ -738,7 +715,6 @@ export default function Bills({ personScope = "self" }) {
               );
             })}
           </div>
-          {/* Bulk actions */}
           <BulkActions
             disabled={!filtered.length || !handleBulkMark}
             onMarkAllPaid={() => handleBulk(true)}
@@ -748,7 +724,6 @@ export default function Bills({ personScope = "self" }) {
         </>
       )}
 
-      {/* Bill Editor Sheet */}
       <BillFormSheet
         open={sheetOpen}
         bill={editingBill}

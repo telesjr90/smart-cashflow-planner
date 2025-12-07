@@ -13,23 +13,23 @@ import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { CashflowChart } from '../components/charts/CashflowChart';
 import { formatCurrency } from '../lib/cashflow/formatters';
 
+// Skeleton
+import DashboardSkeleton from '../components/ui/skeleton/DashboardSkeleton';
+
 export default function Home({ onGoToBills, onAddExpense }) {
   
   // 1. Fetch Optimized Data
-  // This hook uses the selector + shallow comparison internally
   const summary = useCashflowSummary();
-  
-  // Select upcoming bills directly from store with shallow comparison
   const upcomingBills = useCashflowStore(selectUpcomingBills, shallow);
+  const isLoading = useCashflowStore((state) => state.loading);
 
-  // 2. Prepare View Data (Formatting)
+  // 2. Prepare View Data
   const { income, expense, balance, chartData } = useMemo(() => {
-    // Summary values are in cents from the engine/selector
+    // Summary values are in cents
     const inc = (summary.totalIncome || 0) / 100;
     const exp = (summary.totalBills || 0) / 100; 
     const net = (summary.net || 0) / 100;
     
-    // Map weekly data for the chart
     const weeks = (summary.weeks || []).map((w, i) => ({
       label: `W${i + 1}`,
       balance: w.net / 100 
@@ -37,6 +37,10 @@ export default function Home({ onGoToBills, onAddExpense }) {
 
     return { income: inc, expense: exp, balance: net, chartData: weeks };
   }, [summary]);
+
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
 
   return (
     <div className="space-y-6 pb-24">
@@ -130,7 +134,7 @@ export default function Home({ onGoToBills, onAddExpense }) {
         </div>
       </section>
 
-      {/* Floating Action Button (if not covered by global layout) */}
+      {/* Floating Action Button */}
       <button 
         onClick={onAddExpense}
         className="fixed bottom-24 right-4 h-14 w-14 bg-indigo-600 text-white rounded-full shadow-lg shadow-indigo-600/30 flex items-center justify-center hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all z-40"
