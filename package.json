@@ -7,8 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:cashflow": "node tests/cashflowEngine.test.mjs",
-    "test:visual": "playwright test --project=chromium"
+    "test": "vitest run tests/unit",
+    "test:e2e": "playwright test tests/e2e",
+    "test:visual": "playwright test tests/e2e/visual",
+    "test:emulator": "playwright test tests/e2e-emulator",
+    "test:e2e:remote": "playwright test --config=playwright.remote.config.js tests/e2e"
   },
   "dependencies": {
     "firebase": "^12.5.0",
@@ -28,6 +31,7 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.18",
     "vite": "^5.4.8",
-    "vite-plugin-pwa": "^0.20.5"
+    "vite-plugin-pwa": "^0.20.5",
+    "vitest": "^1.0.0"
   }
 }
