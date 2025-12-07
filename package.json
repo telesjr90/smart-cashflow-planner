@@ -14,8 +14,10 @@
     "test:e2e:remote": "playwright test --config=playwright.remote.config.js tests/e2e"
   },
   "dependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.53.3",
     "firebase": "^12.5.0",
     "framer-motion": "^12.23.24",
+    "idb-keyval": "^6.2.2",
     "lucide-react": "^0.460.0",
     "papaparse": "^5.5.3",
     "react": "^18.3.1",
