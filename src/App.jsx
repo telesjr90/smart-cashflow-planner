@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react"; // Added useEffect
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Layout } from "./components/layout/Layout";
 import Home from "./pages/Home";
@@ -14,7 +14,7 @@ import AddExpenseModal from "./components/AddExpenseModal";
 import { useCashflowStore } from "./store/useCashflowStore";
 import { useFirebaseSync } from "./hooks/useFirebaseSync";
 import { loginWithGoogle, auth } from "./firebase";
-import { projectCashflow, fromCents } from "./lib/cashflow/index.js";
+import { projectCashflow } from "./lib/cashflow/index.js";
 import { getDefaultPlannerStartDate } from "./lib/cashflow/index.js";
 
 // --- Helper Functions ---
@@ -24,14 +24,20 @@ function getMonthIndexFromStart(startDate, dateStr) {
   return (d.getFullYear() - s.getFullYear()) * 12 + (d.getMonth() - s.getMonth());
 }
 
-export default function App() {
-  // 1. Activate Cloud Sync
+// --- NEW: Helper Component for Conditional Hook Execution ---
+// This prevents useFirebaseSync from clearing the mock user in demo mode
+function FirebaseSyncHelper() {
   useFirebaseSync();
+  return null;
+}
+
+export default function App() {
+  // 1. Determine Mode
+  const isDemo = typeof window !== "undefined" && window.location.search.includes("agentDemo=1");
 
   // 2. Access Global Store
   const store = useCashflowStore();
-  
-  // Destructure state for easier usage
+
   const {
     userProfile,
     startDate,
@@ -58,11 +64,9 @@ export default function App() {
   const [personScope, setPersonScope] = useState("self");
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
 
-  // --- NEW: Bypass Login for Agent Demo ---
+  // --- Demo Seeding Effect ---
   useEffect(() => {
-    const isDemo = typeof window !== "undefined" && window.location.search.includes("agentDemo=1");
-    
-    // If we are in demo mode but the store thinks we are logged out, force a mock user
+    // Only run if we are in demo mode and no user is currently set
     if (isDemo && !userProfile.uid) {
       console.log("Agent Demo detected: Seeding mock user.");
       
@@ -74,18 +78,19 @@ export default function App() {
         householdId: "demo-household"
       });
 
-      // Optionally seed default plan data so the dashboard isn't empty
       store.setFullPlanData({
         startDate: new Date().toISOString().slice(0, 10),
-        startingBalance: 0,
-        accounts: [],
+        startingBalance: 5000,
+        accounts: [
+            { id: 'acc1', name: 'Checking', type: 'checking', openingBalance: 5000 }
+        ],
         bills: [],
         expenses: [],
-        income: { husband: 0, wife: 0 },
+        income: { husband: 4000, wife: 0 },
         paySchedule: { type: "semi-monthly", day1: 15, day2: "last" }
       });
     }
-  }, [userProfile.uid, store]);
+  }, [isDemo, userProfile.uid, store]); 
 
   // --- Navigation & Warnings ---
   const handleGoToSettingsSection = useCallback((section) => {
@@ -103,11 +108,11 @@ export default function App() {
 
   const logout = useCallback(() => auth.signOut().catch(console.warn), []);
 
-  // --- Derived Data (Compatibility Layer) ---
+  // --- Derived Data ---
   const canEnter = !!userProfile.uid;
   const role = userProfile.role || "H";
   const householdId = userProfile.householdId || userProfile.uid;
-  const householdCount = 1; 
+  const householdCount = 1;
 
   const safeStartDate = startDate || getDefaultPlannerStartDate();
 
@@ -118,7 +123,6 @@ export default function App() {
     return Number(startingBalance || 0);
   }, [accounts, startingBalance]);
 
-  // Transform paidBills map
   const paidFlags = useMemo(() => {
     const flags = {};
     Object.entries(paidBills || {}).forEach(([key, isPaid]) => {
@@ -141,7 +145,6 @@ export default function App() {
     }));
   }, [bills, userProfile.uid, role]);
 
-  // Home Cashflow Summary Calculation
   const homeCashflowSummary = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const monthIndex = getMonthIndexFromStart(safeStartDate, todayStr);
@@ -196,10 +199,15 @@ export default function App() {
     return list;
   }, [categoryBudgets]);
 
-  // --- Login Screen ---
+  // --- Render ---
+
+  // 1. Login Screen
   if (!canEnter) {
     return (
       <ErrorBoundary>
+        {/* IMPORTANT: Only run Cloud Sync if NOT in demo mode */}
+        {!isDemo && <FirebaseSyncHelper />}
+
         <div className="min-h-screen bg-surface-50 flex flex-col items-center justify-center p-6">
           <div className="max-w-sm w-full bg-white rounded-3xl shadow-soft p-8 text-center border border-surface-100">
             <div className="h-16 w-16 bg-primary-50 text-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
@@ -220,16 +228,18 @@ export default function App() {
     );
   }
 
-  // --- Main App Layout ---
+  // 2. Main App
   return (
     <ErrorBoundary>
+      {/* IMPORTANT: Only run Cloud Sync if NOT in demo mode */}
+      {!isDemo && <FirebaseSyncHelper />}
+
       <Layout
         currentTab={tab}
         onTabChange={handleTabChange}
         onAddPress={() => setIsExpenseModalOpen(true)}
         user={userProfile}
       >
-        {/* 1. Home Dashboard */}
         {tab === "home" && (
           <Home
             role={role}
@@ -257,7 +267,6 @@ export default function App() {
           />
         )}
 
-        {/* 2. Planner (Analysis) */}
         {tab === "planner" && (
           <Planner
             role={role}
@@ -277,7 +286,6 @@ export default function App() {
           />
         )}
 
-        {/* 3. Dashboard (Infographic - optional view) */}
         {tab === "dashboard" && (
           <MonthlyCashFlowInfographic
             uid={userProfile.uid}
@@ -302,12 +310,10 @@ export default function App() {
           />
         )}
 
-        {/* 4. Bills (Wallet) */}
         {tab === "bills" && (
           <Bills personScope={personScope} />
         )}
 
-        {/* 5. Settings (Profile) */}
         {tab === "settings" && (
           <Settings
             uid={userProfile.uid}
@@ -344,7 +350,6 @@ export default function App() {
           />
         )}
 
-        {/* 6. Expenses (Direct List View) */}
         {tab === "expenses" && (
           <Expenses
             expenses={expenses}
@@ -353,7 +358,6 @@ export default function App() {
           />
         )}
 
-        {/* Global Modal for Adding Expenses */}
         <AddExpenseModal
           isOpen={isExpenseModalOpen}
           onClose={() => setIsExpenseModalOpen(false)}
