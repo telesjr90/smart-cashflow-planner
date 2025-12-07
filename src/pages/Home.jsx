@@ -3,29 +3,38 @@ import { TrendingUp, TrendingDown, Wallet, ArrowRight, Plus } from 'lucide-react
 import { useCashflowStore } from '../store/useCashflowStore';
 import { shallow } from 'zustand/shallow';
 
-// Hooks & Selectors
+// Hooks & Logic
 import { useCashflowSummary } from '../hooks/useCashflowSummary';
 import { selectUpcomingBills } from '../store/selectors/billsSelectors';
+import { formatCurrency } from '../lib/cashflow/formatters';
 
 // Components
 import { StatCard } from '../components/ui/StatCard';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { CashflowChart } from '../components/charts/CashflowChart';
-import { formatCurrency } from '../lib/cashflow/formatters';
-
-// Skeleton
 import DashboardSkeleton from '../components/ui/skeleton/DashboardSkeleton';
 
 export default function Home({ onGoToBills, onAddExpense }) {
   
-  // 1. Fetch Optimized Data
+  // 1. Fetch Summary (Safe via new hook)
   const summary = useCashflowSummary();
-  const upcomingBills = useCashflowStore(selectUpcomingBills, shallow);
   const isLoading = useCashflowStore((state) => state.loading);
 
-  // 2. Prepare View Data
+  // 2. Fetch Raw Data for Bills (Safe Pattern)
+  const billsData = useCashflowStore(state => ({
+    bills: state.bills,
+    paidBills: state.paidBills,
+    startDate: state.startDate
+  }), shallow);
+
+  // 3. Compute Upcoming Bills locally
+  // This prevents the "getSnapshot" infinite loop by avoiding complex selectors
+  const upcomingBills = useMemo(() => {
+    return selectUpcomingBills(billsData);
+  }, [billsData]);
+
+  // 4. Prepare View Data
   const { income, expense, balance, chartData } = useMemo(() => {
-    // Summary values are in cents
     const inc = (summary.totalIncome || 0) / 100;
     const exp = (summary.totalBills || 0) / 100; 
     const net = (summary.net || 0) / 100;
