@@ -7,7 +7,6 @@ import {
 } from "../lib/cashflow/index";
 
 export function useCashflowSummary() {
-  // ✅ Each selector returns a direct slice from the store, not a new object literal
   const startDate = useCashflowStore((state) => state.startDate);
   const accounts = useCashflowStore((state) => state.accounts || []);
   const bills = useCashflowStore((state) => state.bills || []);
@@ -24,33 +23,56 @@ export function useCashflowSummary() {
   const expenses = useCashflowStore((state) => state.expenses || []);
   const mode = useCashflowStore((state) => state.mode);
 
-  // ✅ All derived work happens in a memo that depends on stable slices
   const summary = useMemo(() => {
-    const effectiveStartDate =
-      startDate || getDefaultPlannerStartDate({ paySchedule, mode });
+    try {
+      const effectiveStartDate =
+        startDate || getDefaultPlannerStartDate({ paySchedule, mode });
 
-    const projection = projectCashflow({
-      startDate: effectiveStartDate,
-      accounts,
-      bills,
-      income,
-      paySchedule,
-      allocationRules,
-      residualAccountId,
-      paidBills,
-      extraIncomes,
-      expenses,
-      mode,
-    });
+      const today = new Date();
+      const start = new Date(effectiveStartDate + "T00:00:00");
 
-    // Whatever your previous return shape was:
-    // e.g. return { projected, actual, upcoming, ... }
-    return {
-      // ...your calculated summary fields from `projection`...
-      // projectedCashLeft: projection.projectedCashLeft,
-      // actualCashLeft: projection.actualCashLeft,
-      // ...
-    };
+      const monthIndex =
+        (today.getFullYear() - start.getFullYear()) * 12 +
+        (today.getMonth() - start.getMonth());
+
+      const monthsToProject = Math.max(monthIndex + 1, 1);
+
+      const projection = projectCashflow({
+        startDate: effectiveStartDate,
+        accounts,
+        bills,
+        income,
+        paySchedule,
+        allocationRules,
+        residualAccountId,
+        paidBills,
+        extraIncomes,
+        expenses,
+        mode,
+        months: monthsToProject,
+      });
+
+      const monthlySummaries = projection.monthlySummaries || [];
+      const currentSummary =
+        monthlySummaries[monthIndex] || monthlySummaries[0] || {};
+
+      return {
+        totalIncome: currentSummary.totalIncome || 0,
+        totalBills: currentSummary.totalBills || 0,
+        net: currentSummary.net || 0,
+        weeks: currentSummary.weeks || [],
+        finalBalances: projection.finalBalancesByAccount || {},
+      };
+    } catch (e) {
+      console.warn("Summary projection failed", e);
+      return {
+        totalIncome: 0,
+        totalBills: 0,
+        net: 0,
+        weeks: [],
+        finalBalances: {},
+      };
+    }
   }, [
     startDate,
     accounts,
