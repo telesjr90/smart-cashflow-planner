@@ -13,6 +13,7 @@ import AddExpenseModal from "./components/AddExpenseModal";
 // --- Architecture Imports ---
 import { useCashflowStore } from "./store/useCashflowStore";
 import { useFirebaseSync } from "./hooks/useFirebaseSync";
+import { useNetworkStatus } from "./hooks/useNetworkStatus";
 import { loginWithGoogle, auth } from "./firebase";
 import { projectCashflow } from "./lib/cashflow/index.js";
 import { getDefaultPlannerStartDate } from "./lib/cashflow/index.js";
@@ -34,6 +35,7 @@ function FirebaseSyncHelper() {
 export default function App() {
   // 1. Determine Mode
   const isDemo = typeof window !== "undefined" && window.location.search.includes("agentDemo=1");
+  const { isOnline } = useNetworkStatus();
 
   // 2. Access Global Store
   const store = useCashflowStore();
@@ -42,19 +44,20 @@ export default function App() {
     userProfile,
     startDate,
     startingBalance,
-    accounts,
-    bills,
-    expenses,
-    income,
-    paySchedule,
-    allocationRules,
+    accounts = [],
+    bills = [],
+    expenses = [],
+    income = {},
+    paySchedule = {},
+    allocationRules = [],
     residualAccountId,
     goals,
     categoryBudgets,
-    extraIncomes,
+    extraIncomes = [],
     billSharing,
-    paidBills,
-    mode
+    paidBills = {},
+    mode,
+    loading
   } = store;
 
   // --- UI State ---
@@ -118,6 +121,22 @@ export default function App() {
   const householdCount = 1;
 
   const safeStartDate = startDate || getDefaultPlannerStartDate();
+  const plannerMonths = 6;
+
+  // Memoize expensive inputs to keep projectCashflow stable between renders
+  const memoizedAccounts = useMemo(() => accounts.map((a) => ({ ...a })), [accounts]);
+  const memoizedBills = useMemo(() => bills.map((b) => ({ ...b })), [bills]);
+  const memoizedExpenses = useMemo(() => expenses.map((e) => ({ ...e })), [expenses]);
+  const memoizedIncome = useMemo(() => ({ ...income }), [income]);
+  const memoizedPaySchedule = useMemo(() => ({ ...paySchedule }), [paySchedule]);
+  const memoizedAllocationRules = useMemo(
+    () => (Array.isArray(allocationRules) ? allocationRules.map((r) => ({ ...r })) : []),
+    [allocationRules]
+  );
+  const memoizedExtraIncomes = useMemo(
+    () => (Array.isArray(extraIncomes) ? extraIncomes.map((ex) => ({ ...ex })) : []),
+    [extraIncomes]
+  );
 
   const unifiedStartingBalance = useMemo(() => {
     if (accounts.length > 0) {
@@ -141,47 +160,65 @@ export default function App() {
   }, [paidBills, safeStartDate]);
 
   const displayedBills = useMemo(() => {
-    return bills.map((b) => ({
+    return memoizedBills.map((b) => ({
       ...b,
       ownerUid: userProfile.uid,
       ownerRole: role,
     }));
-  }, [bills, userProfile.uid, role]);
+  }, [memoizedBills, userProfile.uid, role]);
 
-  const homeCashflowSummary = useMemo(() => {
+  const cashflowInputs = useMemo(
+    () => ({
+      startDate: safeStartDate,
+      accounts: memoizedAccounts,
+      bills: displayedBills,
+      income: memoizedIncome,
+      paySchedule: memoizedPaySchedule,
+      allocationRules: memoizedAllocationRules,
+      residualAccountId,
+      paidBills,
+      extraIncomes: memoizedExtraIncomes,
+      expenses: memoizedExpenses,
+    }),
+    [
+      safeStartDate,
+      memoizedAccounts,
+      displayedBills,
+      memoizedIncome,
+      memoizedPaySchedule,
+      memoizedAllocationRules,
+      residualAccountId,
+      paidBills,
+      memoizedExtraIncomes,
+      memoizedExpenses,
+    ]
+  );
+
+  const projectionMonths = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const monthIndex = getMonthIndexFromStart(safeStartDate, todayStr);
-    const months = Math.max(1, monthIndex + 1);
-    
-    try {
-      const runProjection = (m) =>
-        projectCashflow({
-          startDate: safeStartDate,
-          months,
-          accounts,
-          bills: displayedBills,
-          income,
-          paySchedule,
-          allocationRules,
-          residualAccountId,
-          paidBills,
-          extraIncomes,
-          expenses,
-          mode: m,
-        });
-      
-      const projProjected = runProjection("projected");
-      const projActual = runProjection("actual");
-      
-      return { 
-        projected: (projProjected.monthlySummary || [])[monthIndex] || null, 
-        actual: (projActual.monthlySummary || [])[monthIndex] || null 
-      };
-    } catch (e) {
-      console.warn("homeCashflowSummary failed", e);
-      return null;
-    }
-  }, [safeStartDate, accounts, displayedBills, income, paySchedule, allocationRules, residualAccountId, paidBills, extraIncomes, expenses]);
+    return Math.max(plannerMonths, monthIndex + 1);
+  }, [safeStartDate, plannerMonths]);
+
+  const cashflowInputsWithMonths = useMemo(
+    () => ({
+      ...cashflowInputs,
+      months: projectionMonths,
+    }),
+    [cashflowInputs, projectionMonths]
+  );
+
+  const projectedCashflow = useMemo(
+    () => projectCashflow({ ...cashflowInputsWithMonths, mode: "projected" }),
+    [cashflowInputsWithMonths]
+  );
+
+  const actualCashflow = useMemo(
+    () => projectCashflow({ ...cashflowInputsWithMonths, mode: "actual" }),
+    [cashflowInputsWithMonths]
+  );
+
+  const activeCashflow = mode === "actual" ? actualCashflow : projectedCashflow;
 
   const savingsToDate = useMemo(
     () => (goals || []).reduce((acc, g) => acc + (g.savedSoFar || 0), 0),
@@ -201,6 +238,11 @@ export default function App() {
     });
     return list;
   }, [categoryBudgets]);
+
+  const handleOpenExpenseModal = useCallback(() => {
+    if (!isOnline) return;
+    setIsExpenseModalOpen(true);
+  }, [isOnline]);
 
   // --- Render ---
 
@@ -240,52 +282,30 @@ export default function App() {
       <Layout
         currentTab={tab}
         onTabChange={handleTabChange}
-        onAddPress={() => setIsExpenseModalOpen(true)}
+        onAddPress={handleOpenExpenseModal}
         user={userProfile}
+        isOnline={isOnline}
       >
         {tab === "home" && (
           <Home
-            role={role}
-            personScope={personScope}
-            setPersonScope={setPersonScope}
             startDate={safeStartDate}
             bills={displayedBills}
-            paidFlags={paidFlags}
-            mode={mode}
-            setMode={store.setMode}
-            income={income}
-            paySchedule={paySchedule}
-            accounts={accounts}
-            allocationRules={allocationRules}
-            residualAccountId={residualAccountId}
-            startingBalance={unifiedStartingBalance}
+            paidBills={paidBills}
+            cashflow={activeCashflow}
             budgets={budgetListForHome}
             savingsToDate={savingsToDate}
-            expenses={expenses}
-            onAddExpense={() => setIsExpenseModalOpen(true)}
+            isLoading={loading}
+            onAddExpense={handleOpenExpenseModal}
             onGoToSettings={() => setTab("settings")}
             onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
             onGoToBills={() => setTab("bills")}
-            homeCashflowSummary={homeCashflowSummary}
           />
         )}
 
         {tab === "planner" && (
           <Planner
-            role={role}
-            personScope={personScope}
-            startDate={safeStartDate}
-            bills={displayedBills}
-            paidBills={paidBills}
-            mode={mode}
-            setMode={store.setMode}
-            accounts={accounts}
-            allocationRules={allocationRules}
-            residualAccountId={residualAccountId}
-            income={income}
-            paySchedule={paySchedule}
-            extraIncomes={extraIncomes}
-            expenses={expenses}
+            cashflow={activeCashflow}
+            months={plannerMonths}
           />
         )}
 
@@ -314,7 +334,7 @@ export default function App() {
         )}
 
         {tab === "bills" && (
-          <Bills personScope={personScope} />
+          <Bills personScope={personScope} isOnline={isOnline} />
         )}
 
         {tab === "settings" && (
@@ -338,6 +358,7 @@ export default function App() {
             goals={goals}
             categoryBudgets={categoryBudgets}
             billSharing={billSharing}
+            isOnline={isOnline}
             onUpdateAccounts={store.updateAccounts}
             onUpdateBills={store.updateBills}
             onUpdateAllocationRules={(rules) => console.log("Update allocations not yet in store")}
@@ -369,6 +390,7 @@ export default function App() {
             store.updateExpenses(next);
           }}
           accounts={accounts}
+          isOnline={isOnline}
         />
       </Layout>
     </ErrorBoundary>

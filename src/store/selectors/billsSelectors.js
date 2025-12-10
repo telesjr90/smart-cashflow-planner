@@ -1,4 +1,5 @@
 import { getDefaultPlannerStartDate } from "../../lib/cashflow/index";
+import { formatDateISO } from "../../utils/dateFormat";
 
 // Basic Selectors
 export const selectBills = (state) => state.bills || [];
@@ -42,8 +43,7 @@ export const getBillsForMonth = (state, monthIndex = 0) => {
     
     // Construct Key: YYYY-MM-DD:billId
     const dueDate = new Date(year, monthIndex0, safeDueDay);
-    // Use local time YYYY-MM-DD
-    const dateStr = dueDate.toLocaleDateString("en-CA"); 
+    const dateStr = formatDateISO(dueDate);
     const paidKey = `${dateStr}:${b.id}`;
     
     const isPaid = !!paidBills[paidKey];

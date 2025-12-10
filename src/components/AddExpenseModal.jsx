@@ -4,7 +4,7 @@ import { CATEGORY_LIST } from '../lib/categories';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 
-export default function AddExpenseModal({ isOpen, onClose, onSave, accounts = [] }) {
+export default function AddExpenseModal({ isOpen, onClose, onSave, accounts = [], isOnline = true }) {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState('food'); 
@@ -16,7 +16,7 @@ export default function AddExpenseModal({ isOpen, onClose, onSave, accounts = []
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!amount || !description) return;
+    if (!amount || !description || !isOnline) return;
 
     // --- Unified Schema Construction ---
     const newTransaction = {
@@ -168,8 +168,8 @@ export default function AddExpenseModal({ isOpen, onClose, onSave, accounts = []
 
           {/* Submit Action */}
           <div className="pt-2">
-            <Button type="submit" fullWidth size="lg">
-              Save Transaction
+            <Button type="submit" fullWidth size="lg" disabled={!isOnline}>
+              {isOnline ? "Save Transaction" : "Offline: resume to save"}
             </Button>
           </div>
         </form>

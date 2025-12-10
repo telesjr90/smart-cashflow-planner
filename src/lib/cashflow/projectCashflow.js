@@ -142,7 +142,35 @@ function allocateIncome({ amountCents, accounts, allocationRules, residualAccoun
 
 // --- Main Engine Function ---
 
-export function projectCashflow({
+const stableStringify = (value) => {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`)
+    .join(",")}}`;
+};
+
+const buildCacheKey = (params = {}) => {
+  const normalized = {
+    startDate: params.startDate || "2025-01-01",
+    months: Math.max(1, params.months || 1),
+    accounts: Array.isArray(params.accounts) ? params.accounts : [],
+    bills: Array.isArray(params.bills) ? params.bills : [],
+    income: params.income || {},
+    extraIncomes: Array.isArray(params.extraIncomes) ? params.extraIncomes : [],
+    expenses: Array.isArray(params.expenses) ? params.expenses : [],
+    paySchedule: params.paySchedule || {},
+    allocationRules: Array.isArray(params.allocationRules) ? params.allocationRules : [],
+    residualAccountId: params.residualAccountId || null,
+    paidBills: params.paidBills || {},
+    mode: params.mode || "projected",
+  };
+  return stableStringify(normalized);
+};
+
+const computeProjectCashflow = ({
   startDate,
   months,
   accounts,
@@ -155,7 +183,7 @@ export function projectCashflow({
   residualAccountId,
   paidBills = {},
   mode = "projected",
-}) {
+}) => {
   const startDateStr = startDate || "2025-01-01";
   const projectionMonths = Math.max(1, months || 1);
   const safeAccounts = Array.isArray(accounts) && accounts.length ? accounts.map((a) => ({ ...a })) : [];
@@ -369,6 +397,7 @@ export function projectCashflow({
         date: ev.date,
         kind: ev.kind,
         delta: -delta,
+        id: ev.billId || ev.id || null,
         balances: { ...balances },
         monthIndex,
         description: ev.kind === "bill" ? ev.billName : ev.description,
@@ -378,5 +407,19 @@ export function projectCashflow({
   }
 
   return { ledger, monthlySummary: monthlyTotals, finalBalancesByAccount: balances };
+};
+
+let lastCacheKey = null;
+let lastResult = null;
+
+export function projectCashflow(params) {
+  const cacheKey = buildCacheKey(params);
+  if (cacheKey && cacheKey === lastCacheKey && lastResult) {
+    return lastResult;
+  }
+  const result = computeProjectCashflow(params);
+  lastCacheKey = cacheKey;
+  lastResult = result;
+  return result;
 }
 

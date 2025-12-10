@@ -1,9 +1,6 @@
 import React, { useMemo } from 'react';
 import { TrendingUp, Calendar, Target } from 'lucide-react';
-
-// Hooks
-import { useCashflowSummary } from '../hooks/useCashflowSummary';
-import { useCashflowTimeline } from '../hooks/useCashflowTimeline';
+import { formatDateShort } from '../utils/dateFormat';
 
 // Components
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
@@ -11,12 +8,29 @@ import { StatCard } from '../components/ui/StatCard';
 import { CashflowChart } from '../components/charts/CashflowChart';
 import { Button } from '../components/ui/Button';
 
-export default function Planner() {
-  // 1. Fetch Data
-  const summary = useCashflowSummary();
-  const timeline = useCashflowTimeline(6); // 6 Month Projection
+export default function Planner({ cashflow, months = 6 }) {
+  const timeline = useMemo(() => {
+    const ledger = cashflow?.ledger || [];
+    const scopedLedger = ledger.filter(
+      (entry) => typeof entry.monthIndex !== "number" || entry.monthIndex < months
+    );
+    const dailyMap = new Map();
 
-  // 2. Calculate Insight Metrics
+    scopedLedger.forEach((entry) => {
+      const totalBal = Object.values(entry.balances || {}).reduce((sum, val) => sum + val, 0);
+      dailyMap.set(entry.date, totalBal);
+    });
+
+    return Array.from(dailyMap.keys())
+      .sort()
+      .map((date) => ({
+        date,
+        balance: (dailyMap.get(date) || 0) / 100,
+        label: formatDateShort(date),
+      }));
+  }, [cashflow, months]);
+
+  // 1. Calculate Insight Metrics
   const { lowestBalance, highestBalance, runwayDays } = useMemo(() => {
     if (!timeline.length) return { lowestBalance: 0, highestBalance: 0, runwayDays: 0 };
     

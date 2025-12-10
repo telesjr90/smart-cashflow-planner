@@ -12,6 +12,7 @@ export default function BillFormSheet({
   memberNames = { H: "Partner H", W: "Partner W" },
   userRole = "H",
   isSaving = false,
+  isOnline = true,
   onSave,
   onCancel,
 }) {
@@ -51,6 +52,7 @@ export default function BillFormSheet({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!isOnline) return;
     const cleanAmount = Number.isFinite(parseFloat(draft.amount)) ? parseFloat(draft.amount) : 0;
     const cleanDueDay = Math.min(31, Math.max(1, parseInt(draft.dueDay || 1, 10)));
     
@@ -176,11 +178,11 @@ export default function BillFormSheet({
             </button>
             <button
               type="submit"
-              disabled={isSaving || !draft.name}
+              disabled={isSaving || !draft.name || !isOnline}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-70 disabled:cursor-not-allowed transition-all"
             >
               {isSaving && <Loader2 size={16} className="animate-spin" />}
-              {isSaving ? "Saving..." : "Save Bill"}
+              {isSaving ? "Saving..." : isOnline ? "Save Bill" : "Offline"}
             </button>
           </div>
         </form>

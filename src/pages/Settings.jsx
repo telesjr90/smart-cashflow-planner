@@ -40,7 +40,9 @@ export default function Settings({
   scrollToSection = null,
   onResetScrollHint = () => {},
   onDirtyChange, 
+  isOnline = true,
 }) {
+  const actionsDisabled = !isOnline;
   // 1. Fetch Data from Global Store
   const userProfile = useCashflowStore((state) => state.userProfile || {});
   const accounts = useCashflowStore((state) => state.accounts || []);
@@ -487,7 +489,13 @@ export default function Settings({
         </div>
       </header>
 
-      <section className="px-4 pt-3 pb-20 space-y-4 max-w-md mx-auto">
+      {!isOnline && (
+        <div className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Offline mode: settings changes are disabled until you reconnect.
+        </div>
+      )}
+
+      <section className={`px-4 pt-3 pb-20 space-y-4 max-w-md mx-auto ${actionsDisabled ? "pointer-events-none opacity-60" : ""}`}>
         <ProfileForm
           uid={userProfile.uid}
           localHouseholdId={localHouseholdId}

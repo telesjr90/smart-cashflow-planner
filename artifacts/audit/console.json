@@ -1,0 +1,14 @@
+[
+  {
+    "type": "warning",
+    "text": "[2025-12-08T04:59:45.881Z]  @firebase/firestore: Firestore (12.5.0): enableIndexedDbPersistence() will be deprecated in the future, you can use `FirestoreSettings.cache` instead."
+  },
+  {
+    "type": "log",
+    "text": "Offline persistence enabled"
+  },
+  {
+    "type": "log",
+    "text": "Agent Demo detected: Seeding mock user."
+  }
+]

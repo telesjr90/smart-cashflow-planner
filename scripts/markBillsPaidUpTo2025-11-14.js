@@ -1,24 +1,24 @@
 // scripts/markBillsPaidUpTo2025-11-14.js
 // ES module version (works with "type": "module" in package.json)
 
-import admin from "firebase-admin";
+import { getDb } from "./adminClient.js";
 
 /**
  * One-off script to mark all bills with dueDay <= 14 in November 2025
  * as paid for both users (husband + wife).
  *
  * Usage:
- *   1) Ensure firebase-admin is installed:
- *        npm install firebase-admin --save-dev
- *   2) Set GOOGLE_APPLICATION_CREDENTIALS to your service account JSON
- *      or change initializeApp() below to admin.credential.cert('path/to/key.json').
- *   3) Set PROJECT_ID below to your actual Firebase project id.
- *   4) Run:
+ *   1) Ensure firebase-admin is installed (dev dependency already present).
+ *   2) Provide credentials via one of:
+ *        - FIREBASE_SERVICE_ACCOUNT_BASE64 (base64-encoded JSON)
+ *        - FIREBASE_SERVICE_ACCOUNT_JSON (raw JSON string)
+ *        - GOOGLE_APPLICATION_CREDENTIALS (path to JSON file)
+ *      Optionally set FIREBASE_PROJECT_ID to override project id.
+ *   3) Run:
  *        node scripts/markBillsPaidUpTo2025-11-14.js
  */
 
 // ---------- CONFIGURE THIS SECTION ----------
-const PROJECT_ID = "cashflow-a1c11"; // e.g. "cashflow-a1c11"
 const TARGET_EMAILS = [
   "teles.santos.junior@gmail.com",
   "nicolekatr@gmail.com",
@@ -31,17 +31,6 @@ const CUTOFF_DAY = 14;   // up to and including this day
 
 function pad2(n) {
   return String(n).padStart(2, "0");
-}
-
-// Initialize admin SDK
-function initFirebase() {
-  // If you have GOOGLE_APPLICATION_CREDENTIALS set, this will just work.
-  // Otherwise, replace credential: applicationDefault() with credential: cert("path/to/key.json")
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    projectId: PROJECT_ID,
-  });
-  return admin.firestore();
 }
 
 async function findUsersByEmail(db) {
@@ -121,7 +110,7 @@ async function markBillsPaidForUser(db, userDoc) {
 }
 
 async function main() {
-  const db = initFirebase();
+  const db = getDb();
 
   console.log("Looking up users by email:", TARGET_EMAILS);
   const users = await findUsersByEmail(db);

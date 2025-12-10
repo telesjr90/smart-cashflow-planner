@@ -1,65 +1,35 @@
 // File: firestore.rules
 rules_version = '2';
+
 // Firestore security rules for Smart Cash Flow Planner
-//
-// These rules implement robust access controls for the `/users/{userId}`
-// collection. They ensure the following:
-//
-//  1. The owner (the authenticated user whose UID matches `{userId}`) always
-//     has full read/write access to their own document. This remains true even
-//     if the document or auth token does not contain a `profile.householdId`
-//     field. Owners should never be locked out of their own profile.
-//  2. Same‑household sharing is allowed only when *all* of the following
-//     conditions are satisfied:
-//        • The target document exists.
-//        • The document’s `profile.householdId` field is present (not null).
-//        • The authenticated user’s JWT contains a `householdId` custom claim
-//          (not null).
-//        • These two `householdId` values are strictly equal.
-//     By explicitly checking for the existence of both values before comparing
-//     them, we avoid unintended truthy comparisons (such as `null == undefined`)
-//     that could otherwise grant access to unauthorized users.
-//
-// Migration note:
-// All user documents should include a `profile.householdId` when household
-// sharing is intended. Likewise, the authentication pipeline should populate
-// `householdId` as a custom claim on the auth token. If either side is
-// missing, household sharing will not work, but owners will still be able to
-// access their own data. This allows for a gradual rollout of household
-// functionality without breaking existing users.
+// - Owners can always read/write their own document.
+// - Household members can read each other when householdId matches on both the document and the auth token.
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    /*
-     * Rules for the `/users/{userId}` document.
-     *
-     * Each user should be able to read and write their own profile. Household
-     * members may also access each other’s profiles when both the stored
-     * profile and the requesting user’s token contain matching `householdId`s.
-     */
-    match /users/{userId} {
-      allow read, write: if request.auth != null && (
-        // Owner can always access their own document
-        request.auth.uid == userId ||
-        // Household sharing: both sides must have a non‑null householdId and match
-        (
-          // The target document exists and contains a householdId
-          exists(/databases/$(database)/documents/users/$(userId)) &&
-          get(/databases/$(database)/documents/users/$(userId)).data.profile.householdId != null &&
-          // The requesting user’s token contains a householdId custom claim
-          request.auth.token.householdId != null &&
-          // Both householdId values match
-          get(/databases/$(database)/documents/users/$(userId)).data.profile.householdId
-            == request.auth.token.householdId
-        )
-      );
-    }
-
-    /**
-     * Helper to check if the user is signed in. Kept for possible future use.
-     */
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isHouseholdShared() {
+      return isSignedIn()
+        && request.auth.token.householdId != null
+        && resource.data.profile.householdId != null
+        && request.auth.token.householdId == resource.data.profile.householdId;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isHouseholdShared();
+      allow write: if isOwner(userId);
+    }
+
+    // Deny any other collection access by default
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

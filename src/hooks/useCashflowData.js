@@ -5,6 +5,8 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
+  where,
   onSnapshot,
   serverTimestamp,
   setDoc,
@@ -59,6 +61,18 @@ export const DEFAULT_SECTION_VERSIONS = {
   expenses: 0,
 };
 
+const SECTION_LABELS = {
+  core: "Core settings",
+  bills: "Bills",
+  goals: "Goals",
+  budgets: "Budgets",
+  accounts: "Accounts",
+  allocations: "Allocation rules",
+  income: "Income & pay schedule",
+  billSharing: "Bill sharing",
+  expenses: "Expenses",
+};
+
 // --- Helper Functions ---
 
 async function ensureUserDoc(user) {
@@ -103,12 +117,7 @@ async function saveUserPartial(uid, partialData) {
   );
 }
 
-async function saveUserSectionsWithVersion(
-  uid,
-  sections,
-  localSectionVersions,
-  updateFn
-) {
+async function saveUserSectionsWithVersion(uid, sections, localSectionVersions, updateFn) {
   const ref = doc(db, USERS, uid);
 
   return runTransaction(db, async (tx) => {
@@ -154,14 +163,16 @@ async function saveUserSectionsWithVersion(
 
 async function loadHouseholdMembers(currentUserUid) {
   try {
-    const res = await getDocs(collection(db, USERS));
-    const all = [];
-    res.forEach((d) => all.push({ id: d.id, ...d.data() }));
-    const mine = all.find((u) => u.id === currentUserUid);
-    const householdId = mine?.profile?.householdId || currentUserUid;
-    return all
-      .filter((u) => u.profile?.householdId === householdId)
-      .map((u) => ({ ...u, uid: u.id }));
+    const meSnap = await getDoc(doc(db, USERS, currentUserUid));
+    const meData = meSnap.exists() ? meSnap.data() : null;
+    const householdId = meData?.profile?.householdId || currentUserUid;
+    if (!householdId) return [];
+
+    const q = query(collection(db, USERS), where("profile.householdId", "==", householdId));
+    const res = await getDocs(q);
+    const members = [];
+    res.forEach((d) => members.push({ id: d.id, ...d.data(), uid: d.id }));
+    return members;
   } catch (e) {
     console.warn("loadHouseholdMembers failed", e);
     return [];
@@ -179,10 +190,8 @@ export default function useCashflowData() {
   const [loading, setLoading] = useState(true);
   const [hasCached, setHasCached] = useState(false);
   const [networkError, setNetworkError] = useState(false);
-  
-  const [mySectionVersions, setMySectionVersions] = useState(
-    DEFAULT_SECTION_VERSIONS
-  );
+
+  const [mySectionVersions, setMySectionVersions] = useState(DEFAULT_SECTION_VERSIONS);
 
   const { showToast } = useToast();
   const userUnsubRef = useRef(null);
@@ -190,8 +199,7 @@ export default function useCashflowData() {
 
   // Check for Agent Demo mode
   const isAgentDemo =
-    typeof window !== "undefined" &&
-    window.location.search.includes("agentDemo=1");
+    typeof window !== "undefined" && window.location.search.includes("agentDemo=1");
 
   if (typeof window !== "undefined" && isAgentDemo) {
     // eslint-disable-next-line no-undef
@@ -315,129 +323,176 @@ export default function useCashflowData() {
 
   // --- Handlers ---
 
-  const handleUpdateBills = useCallback(async (nextBills) => {
-    const base = myData || emptyUserData;
-    setMyData({ ...base, bills: nextBills });
-    if (isAgentDemo || !auth.currentUser) return;
+  const showVersionConflictToast = useCallback(
+    ({ section, serverVersion, localVersion, retry }) => {
+      const label = SECTION_LABELS[section] || section || "Data";
+      const versionInfo =
+        serverVersion !== undefined && localVersion !== undefined
+          ? ` (server v${serverVersion}, local v${localVersion})`
+          : "";
+      showToast({
+        type: "error",
+        message: `${label} changed elsewhere${versionInfo}. Please refresh or retry.`,
+        actionLabel: retry ? "Retry" : undefined,
+        onAction: retry || undefined,
+      });
+    },
+    [showToast]
+  );
 
-    try {
-      const newVersions = await saveUserSectionsWithVersion(
-        auth.currentUser.uid,
-        ["bills"],
-        mySectionVersions,
-        (serverData) => ({
-          nextData: { ...serverData, bills: nextBills },
-          touchedSections: ["bills"],
-        })
-      );
-      setMySectionVersions(newVersions);
-    } catch (err) {
-      console.warn("Failed to save bills", err);
-      if (err.message === "section-version-conflict" && err.section === "bills") {
-        showToast({
-          type: 'error',
-          message: "Conflict detected: Bills updated by partner. Reloading..."
-        });
-      }
-    }
-  }, [myData, mySectionVersions, isAgentDemo, showToast]);
+  const handleUpdateBills = useCallback(
+    async (nextBills) => {
+      const base = myData || emptyUserData;
+      setMyData({ ...base, bills: nextBills });
+      if (isAgentDemo || !auth.currentUser) return;
 
-  const handleChangeBillAccount = useCallback(async (billId, accountId) => {
-    const base = myData || emptyUserData;
-    const updatedBills = (base.bills || []).map((b) =>
-      b.id === billId ? { ...b, accountId } : b
-    );
-    // Reuse handleUpdateBills logic
-    await handleUpdateBills(updatedBills);
-  }, [myData, handleUpdateBills]);
-
-  const handleTogglePaid = useCallback(async ({ billId, monthIndex, next }) => {
-    const base = myData || emptyUserData;
-    const startDate = base.startDate || DEFAULT_START_DATE;
-    
-    // Helper to calc date string from index (duplicated from App.jsx/engine to keep hook self-contained)
-    const s = new Date(startDate + "T00:00:00");
-    const d = new Date(s.getFullYear(), s.getMonth() + monthIndex, 1);
-    const dateStr = d.toISOString().slice(0, 10);
-
-    const key = `${dateStr}:${billId}`;
-    const map = { ...(base.paidBills || {}) };
-    if (next) map[key] = true;
-    else delete map[key];
-    
-    setMyData({ ...base, paidBills: map });
-    if (isAgentDemo || !auth.currentUser) return;
-
-    try {
-      const newVersions = await saveUserSectionsWithVersion(
-        auth.currentUser.uid,
-        ["bills"],
-        mySectionVersions,
-        (serverData) => {
-          const current = { ...(serverData.paidBills || {}) };
-          if (next) current[key] = true;
-          else delete current[key];
-          return {
-            nextData: { ...serverData, paidBills: current },
+      try {
+        const newVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["bills"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, bills: nextBills },
             touchedSections: ["bills"],
-          };
-        }
-      );
-      setMySectionVersions(newVersions);
-    } catch (err) {
-      console.warn("Failed to toggle paid", err);
-    }
-  }, [myData, mySectionVersions, isAgentDemo]);
-
-  const handleBulkMark = useCallback(async ({ billIds, monthIndex, value }) => {
-    const base = myData || emptyUserData;
-    const startDate = base.startDate || DEFAULT_START_DATE;
-    
-    const s = new Date(startDate + "T00:00:00");
-    const d = new Date(s.getFullYear(), s.getMonth() + monthIndex, 1);
-    const dateStr = d.toISOString().slice(0, 10);
-
-    const optimisticMap = { ...(base.paidBills || {}) };
-    billIds.forEach((billId) => {
-      const key = `${dateStr}:${billId}`;
-      if (value) optimisticMap[key] = true;
-      else delete optimisticMap[key];
-    });
-
-    setMyData({ ...base, paidBills: optimisticMap });
-    if (isAgentDemo || !auth.currentUser) return;
-
-    try {
-      const newVersions = await saveUserSectionsWithVersion(
-        auth.currentUser.uid,
-        ["bills"],
-        mySectionVersions,
-        (serverData) => {
-          const current = { ...(serverData.paidBills || {}) };
-          billIds.forEach((billId) => {
-            const key = `${dateStr}:${billId}`;
-            if (value) current[key] = true;
-            else delete current[key];
+          })
+        );
+        setMySectionVersions(newVersions);
+      } catch (err) {
+        console.warn("Failed to save bills", err);
+        if (err.message === "section-version-conflict" && err.section === "bills") {
+          showVersionConflictToast({
+            section: err.section,
+            serverVersion: err.serverVersion,
+            localVersion: err.localVersion,
+            retry: () => handleUpdateBills(nextBills),
           });
-          return {
-            nextData: { ...serverData, paidBills: current },
-            touchedSections: ["bills"],
-          };
         }
+      }
+    },
+    [myData, mySectionVersions, isAgentDemo, showVersionConflictToast]
+  );
+
+  const handleChangeBillAccount = useCallback(
+    async (billId, accountId) => {
+      const base = myData || emptyUserData;
+      const updatedBills = (base.bills || []).map((b) =>
+        b.id === billId ? { ...b, accountId } : b
       );
-      setMySectionVersions(newVersions);
-    } catch (err) {
-      console.warn("Failed bulk mark", err);
-    }
-  }, [myData, mySectionVersions, isAgentDemo]);
+      // Reuse handleUpdateBills logic
+      await handleUpdateBills(updatedBills);
+    },
+    [myData, handleUpdateBills]
+  );
+
+  const handleTogglePaid = useCallback(
+    async ({ billId, monthIndex, next }) => {
+      const base = myData || emptyUserData;
+      const startDate = base.startDate || DEFAULT_START_DATE;
+
+      // Helper to calc date string from index (duplicated from App.jsx/engine to keep hook self-contained)
+      const s = new Date(startDate + "T00:00:00");
+      const d = new Date(s.getFullYear(), s.getMonth() + monthIndex, 1);
+      const dateStr = d.toISOString().slice(0, 10);
+
+      const key = `${dateStr}:${billId}`;
+      const map = { ...(base.paidBills || {}) };
+      if (next) map[key] = true;
+      else delete map[key];
+
+      setMyData({ ...base, paidBills: map });
+      if (isAgentDemo || !auth.currentUser) return;
+
+      try {
+        const newVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["bills"],
+          mySectionVersions,
+          (serverData) => {
+            const current = { ...(serverData.paidBills || {}) };
+            if (next) current[key] = true;
+            else delete current[key];
+            return {
+              nextData: { ...serverData, paidBills: current },
+              touchedSections: ["bills"],
+            };
+          }
+        );
+        setMySectionVersions(newVersions);
+      } catch (err) {
+        console.warn("Failed to toggle paid", err);
+        if (err.message === "section-version-conflict") {
+          showVersionConflictToast({
+            section: err.section || "bills",
+            serverVersion: err.serverVersion,
+            localVersion: err.localVersion,
+            retry: () => handleTogglePaid({ billId, monthIndex, next }),
+          });
+        }
+      }
+    },
+    [myData, mySectionVersions, isAgentDemo, showVersionConflictToast]
+  );
+
+  const handleBulkMark = useCallback(
+    async ({ billIds, monthIndex, value }) => {
+      const base = myData || emptyUserData;
+      const startDate = base.startDate || DEFAULT_START_DATE;
+
+      const s = new Date(startDate + "T00:00:00");
+      const d = new Date(s.getFullYear(), s.getMonth() + monthIndex, 1);
+      const dateStr = d.toISOString().slice(0, 10);
+
+      const optimisticMap = { ...(base.paidBills || {}) };
+      billIds.forEach((billId) => {
+        const key = `${dateStr}:${billId}`;
+        if (value) optimisticMap[key] = true;
+        else delete optimisticMap[key];
+      });
+
+      setMyData({ ...base, paidBills: optimisticMap });
+      if (isAgentDemo || !auth.currentUser) return;
+
+      try {
+        const newVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["bills"],
+          mySectionVersions,
+          (serverData) => {
+            const current = { ...(serverData.paidBills || {}) };
+            billIds.forEach((billId) => {
+              const key = `${dateStr}:${billId}`;
+              if (value) current[key] = true;
+              else delete current[key];
+            });
+            return {
+              nextData: { ...serverData, paidBills: current },
+              touchedSections: ["bills"],
+            };
+          }
+        );
+        setMySectionVersions(newVersions);
+      } catch (err) {
+        console.warn("Failed bulk mark", err);
+        if (err.message === "section-version-conflict") {
+          showVersionConflictToast({
+            section: err.section || "bills",
+            serverVersion: err.serverVersion,
+            localVersion: err.localVersion,
+            retry: () => handleBulkMark({ billIds, monthIndex, value }),
+          });
+        }
+      }
+    },
+    [myData, mySectionVersions, isAgentDemo, showVersionConflictToast]
+  );
 
   // Generic handler creator for simple section updates
   const createUpdateHandler = (sectionName, keyInState) => async (newValue, extraArg) => {
     const base = myData || emptyUserData;
     const optimistic = { ...base, [keyInState]: newValue };
     // Handle special case for accounts residual ID
-    if (keyInState === 'accounts' && extraArg !== undefined) {
-       optimistic.residualAccountId = extraArg || base.residualAccountId || (newValue[0]?.id) || null;
+    if (keyInState === "accounts" && extraArg !== undefined) {
+      optimistic.residualAccountId = extraArg || base.residualAccountId || newValue[0]?.id || null;
     }
     setMyData(optimistic);
 
@@ -450,8 +505,8 @@ export default function useCashflowData() {
         mySectionVersions,
         (serverData) => {
           const update = { [keyInState]: newValue };
-          if (keyInState === 'accounts') {
-             update.residualAccountId = optimistic.residualAccountId;
+          if (keyInState === "accounts") {
+            update.residualAccountId = optimistic.residualAccountId;
           }
           return {
             nextData: { ...serverData, ...update },
@@ -463,9 +518,11 @@ export default function useCashflowData() {
     } catch (err) {
       console.warn(`Failed to update ${sectionName}`, err);
       if (err.message === "section-version-conflict" && err.section === sectionName) {
-        showToast({
-          type: 'error',
-          message: `Conflict: ${sectionName} updated by partner. Reloading...`
+        showVersionConflictToast({
+          section: sectionName,
+          serverVersion: err.serverVersion,
+          localVersion: err.localVersion,
+          retry: () => createUpdateHandler(sectionName, keyInState)(newValue, extraArg),
         });
       }
     }
@@ -480,80 +537,112 @@ export default function useCashflowData() {
   const handleUpdateBillSharing = createUpdateHandler("billSharing", "billSharing");
   const handleUpdateExtraIncome = createUpdateHandler("income", "extraIncomes");
 
-  const handleAddExpense = useCallback((newExpense) => {
-    const current = myData?.expenses || [];
-    handleUpdateExpenses([...current, newExpense]);
-  }, [myData, handleUpdateExpenses]);
+  const handleAddExpense = useCallback(
+    (newExpense) => {
+      const current = myData?.expenses || [];
+      handleUpdateExpenses([...current, newExpense]);
+    },
+    [myData, handleUpdateExpenses]
+  );
 
-  const handleUpdateIncomeAndPaySchedule = useCallback(async (nextIncome, nextPaySchedule) => {
-    const base = myData || emptyUserData;
-    setMyData({ ...base, income: nextIncome, paySchedule: nextPaySchedule });
-    if (isAgentDemo || !auth.currentUser) return;
+  const handleUpdateIncomeAndPaySchedule = useCallback(
+    async (nextIncome, nextPaySchedule) => {
+      const base = myData || emptyUserData;
+      setMyData({ ...base, income: nextIncome, paySchedule: nextPaySchedule });
+      if (isAgentDemo || !auth.currentUser) return;
 
-    try {
-      await saveUserSectionsWithVersion(
-        auth.currentUser.uid,
-        ["income"],
-        mySectionVersions,
-        (serverData) => ({
-          nextData: { ...serverData, income: nextIncome, paySchedule: nextPaySchedule },
-          touchedSections: ["income"],
-        })
-      );
-    } catch (err) { console.warn("Income update failed", err); }
-  }, [myData, mySectionVersions, isAgentDemo]);
+      try {
+        await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          ["income"],
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, income: nextIncome, paySchedule: nextPaySchedule },
+            touchedSections: ["income"],
+          })
+        );
+      } catch (err) {
+        console.warn("Income update failed", err);
+        if (err.message === "section-version-conflict") {
+          showVersionConflictToast({
+            section: err.section || "income",
+            serverVersion: err.serverVersion,
+            localVersion: err.localVersion,
+            retry: () => handleUpdateIncomeAndPaySchedule(nextIncome, nextPaySchedule),
+          });
+        }
+      }
+    },
+    [myData, mySectionVersions, isAgentDemo, showVersionConflictToast]
+  );
 
-  const handleUpdateProfile = useCallback((updates) => {
-    if (isAgentDemo) {
-      setMe((prev) => ({
-        ...(prev || {}),
-        profile: { ...(prev?.profile || {}), ...updates },
-      }));
-      return;
-    }
-    if (!auth.currentUser) return;
-    saveUserProfile(auth.currentUser.uid, updates).catch(console.warn);
-  }, [isAgentDemo]);
+  const handleUpdateProfile = useCallback(
+    (updates) => {
+      if (isAgentDemo) {
+        setMe((prev) => ({
+          ...(prev || {}),
+          profile: { ...(prev?.profile || {}), ...updates },
+        }));
+        return;
+      }
+      if (!auth.currentUser) return;
+      saveUserProfile(auth.currentUser.uid, updates).catch(console.warn);
+    },
+    [isAgentDemo]
+  );
 
-  const handleInfographicMergeWrite = useCallback(async (payload) => {
-    const base = myData || emptyUserData;
-    const optimistic = { ...base, ...payload };
-    setMyData(optimistic);
+  const handleInfographicMergeWrite = useCallback(
+    async (payload) => {
+      const base = myData || emptyUserData;
+      const optimistic = { ...base, ...payload };
+      setMyData(optimistic);
 
-    if (isAgentDemo || !auth.currentUser) return;
+      if (isAgentDemo || !auth.currentUser) return;
 
-    // Determine touched sections
-    const sections = new Set();
-    if ("goals" in payload) sections.add("goals");
-    if ("categoryBudgets" in payload) sections.add("budgets");
-    if ("accounts" in payload || "residualAccountId" in payload) sections.add("accounts");
-    if ("allocationRules" in payload) sections.add("allocations");
-    if ("income" in payload || "paySchedule" in payload || "extraIncomes" in payload) sections.add("income");
-    if ("expenses" in payload) sections.add("expenses");
-    if ("billSharing" in payload) sections.add("billSharing");
-    if ("startingBalance" in payload || "startDate" in payload || "balanceSplit" in payload) sections.add("core");
+      // Determine touched sections
+      const sections = new Set();
+      if ("goals" in payload) sections.add("goals");
+      if ("categoryBudgets" in payload) sections.add("budgets");
+      if ("accounts" in payload || "residualAccountId" in payload) sections.add("accounts");
+      if ("allocationRules" in payload) sections.add("allocations");
+      if ("income" in payload || "paySchedule" in payload || "extraIncomes" in payload)
+        sections.add("income");
+      if ("expenses" in payload) sections.add("expenses");
+      if ("billSharing" in payload) sections.add("billSharing");
+      if ("startingBalance" in payload || "startDate" in payload || "balanceSplit" in payload)
+        sections.add("core");
 
-    const sectionList = Array.from(sections);
-    if (sectionList.length === 0) {
-      await saveUserPartial(auth.currentUser.uid, optimistic);
-      return;
-    }
+      const sectionList = Array.from(sections);
+      if (sectionList.length === 0) {
+        await saveUserPartial(auth.currentUser.uid, optimistic);
+        return;
+      }
 
-    try {
-      const newVersions = await saveUserSectionsWithVersion(
-        auth.currentUser.uid,
-        sectionList,
-        mySectionVersions,
-        (serverData) => ({
-          nextData: { ...serverData, ...payload },
-          touchedSections: sectionList,
-        })
-      );
-      setMySectionVersions(newVersions);
-    } catch (e) {
-      console.warn("Merge write failed", e);
-    }
-  }, [myData, mySectionVersions, isAgentDemo]);
+      try {
+        const newVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          sectionList,
+          mySectionVersions,
+          (serverData) => ({
+            nextData: { ...serverData, ...payload },
+            touchedSections: sectionList,
+          })
+        );
+        setMySectionVersions(newVersions);
+      } catch (e) {
+        console.warn("Merge write failed", e);
+        if (e.message === "section-version-conflict") {
+          showVersionConflictToast({
+            section: e.section,
+            serverVersion: e.serverVersion,
+            localVersion: e.localVersion,
+            retry: () => handleInfographicMergeWrite(payload),
+          });
+        }
+      }
+    },
+    [myData, mySectionVersions, isAgentDemo, showVersionConflictToast]
+  );
 
   return {
     user,
@@ -567,7 +656,7 @@ export default function useCashflowData() {
     DEFAULT_STARTING_BALANCE,
     DEFAULT_INCOME,
     DEFAULT_PAY_SCHEDULE,
-    
+
     // Actions
     handleUpdateBills,
     handleChangeBillAccount,

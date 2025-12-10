@@ -1,16 +1,45 @@
-// seedBills.js
+// seedBills.cjs
 // One-time script to seed bills + initial paidBills into Firestore
-// Run with: node seedBills.js
+// Run with: node seedBills.cjs
+//
+// Credentials (choose one):
+//  - FIREBASE_SERVICE_ACCOUNT_BASE64 (base64-encoded JSON)
+//  - FIREBASE_SERVICE_ACCOUNT_JSON (raw JSON string)
+//  - GOOGLE_APPLICATION_CREDENTIALS (path to JSON file; handled by applicationDefault)
+// Optionally set FIREBASE_PROJECT_ID to override the project id.
 
 const admin = require("firebase-admin");
-const path = require("path");
 
-// 1. Point this to your downloaded service account key JSON
-const serviceAccount = require("./serviceAccountKey.json");
+function parseServiceAccount() {
+  const base64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+  const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 
-// 2. Initialize Firebase Admin
+  if (base64) {
+    const decoded = Buffer.from(base64, "base64").toString("utf8");
+    return JSON.parse(decoded);
+  }
+
+  if (json) {
+    return JSON.parse(json);
+  }
+
+  return null;
+}
+
+function resolveCredential() {
+  const serviceAccount = parseServiceAccount();
+  if (serviceAccount) {
+    return admin.credential.cert(serviceAccount);
+  }
+  return admin.credential.applicationDefault();
+}
+
+const serviceAccount = parseServiceAccount();
+const projectId = process.env.FIREBASE_PROJECT_ID || serviceAccount?.project_id;
+
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: resolveCredential(),
+  projectId,
 });
 
 const db = admin.firestore();

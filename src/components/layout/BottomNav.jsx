@@ -51,6 +51,7 @@ export function BottomNav({ currentTab, onTabChange, onAddPress }) {
                       ? 'text-primary-600 dark:text-primary-500' 
                       : 'text-surface-300 hover:text-surface-500 dark:text-surface-500 dark:hover:text-surface-300'
                   }`}
+                  aria-current={isActive ? "page" : undefined}
                 >
                   <item.icon 
                     size={24} 

@@ -2,7 +2,7 @@ import React from 'react';
 import { TopBar } from './TopBar';
 import { BottomNav } from './BottomNav';
 
-export function Layout({ children, currentTab, onTabChange, onAddPress, user }) {
+export function Layout({ children, currentTab, onTabChange, onAddPress, user, isOnline = true }) {
   // Determine title based on tab (for TopBar when profile isn't shown)
   const getTitle = () => {
     switch(currentTab) {
@@ -16,6 +16,11 @@ export function Layout({ children, currentTab, onTabChange, onAddPress, user }) 
 
   return (
     <div className="min-h-screen bg-surface-50 text-surface-900 font-sans transition-colors duration-200 selection:bg-primary-100 selection:text-primary-900">
+      {!isOnline && (
+        <div className="w-full bg-amber-100 text-amber-900 text-xs font-semibold px-4 py-2 text-center border-b border-amber-200">
+          Offline mode: changes are paused until connection returns.
+        </div>
+      )}
       
       {/* Top Bar - Shows Profile on Home, Title elsewhere */}
       <TopBar 

@@ -6,6 +6,7 @@ import { useCashflowStore } from '../store/useCashflowStore';
 import useCashflowData from '../hooks/useCashflowData';
 import { getCategory } from '../lib/categories';
 import { useConfirm } from '../hooks/useConfirm';
+import { formatDateLong } from '../utils/dateFormat';
 
 // Components
 import { TransactionRow } from '../components/ui/TransactionRow';
@@ -108,12 +109,7 @@ export default function Expenses() {
 
   const formatDateHeader = (dateStr) => {
     if (dateStr === 'Unknown Date') return dateStr;
-    const date = new Date(dateStr + 'T00:00:00'); 
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      month: 'short', 
-      day: 'numeric' 
-    });
+    return formatDateLong(dateStr);
   };
 
   return (

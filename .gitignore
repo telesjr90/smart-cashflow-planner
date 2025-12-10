@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets / credentials
+serviceAccountKey.json
+cashflow-a1c11-firebase-adminsdk-fbsvc-*.json
+.env
+.env.*

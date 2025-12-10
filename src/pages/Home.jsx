@@ -1,11 +1,10 @@
 import React, { useMemo } from "react";
 import { TrendingUp, TrendingDown, Wallet, ArrowRight, Plus } from "lucide-react";
-import { useCashflowStore } from "../store/useCashflowStore";
 
 // Hooks & Logic
-import { useCashflowSummary } from "../hooks/useCashflowSummary";
 import { selectUpcomingBills } from "../store/selectors/billsSelectors";
 import { formatCurrency } from "../lib/cashflow/formatters";
+import { formatDateShort } from "../utils/dateFormat";
 
 // Components
 import { StatCard } from "../components/ui/StatCard";
@@ -13,19 +12,23 @@ import { Card, CardHeader, CardBody } from "../components/ui/Card";
 import { CashflowChart } from "../components/charts/CashflowChart";
 import DashboardSkeleton from "../components/ui/skeleton/DashboardSkeleton";
 
-export default function Home({ onGoToBills, onAddExpense }) {
-  // 1. Summary derived via stable hook
-  const summary = useCashflowSummary();
-  const isLoading = useCashflowStore((state) => state.loading);
+const getMonthIndexFromStart = (startDate, dateStr) => {
+  const s = new Date(startDate + "T00:00:00");
+  const d = new Date(dateStr + "T00:00:00");
+  return (d.getFullYear() - s.getFullYear()) * 12 + (d.getMonth() - s.getMonth());
+};
 
-  // 2. Select raw slices for bills (NO object-literal selector here)
-  const bills = useCashflowStore((state) => state.bills || []);
-  const paidBills = useCashflowStore((state) => state.paidBills || {});
-  const startDate = useCashflowStore((state) => state.startDate);
-
-  // 3. Compute upcoming bills using a memo + pure selector
+export default function Home({
+  cashflow,
+  bills = [],
+  paidBills = {},
+  startDate,
+  onGoToBills,
+  onAddExpense,
+  isLoading,
+}) {
+  // 1. Compute upcoming bills using a memo + pure selector
   const upcomingBills = useMemo(() => {
-    // billsSelectors expect a "state-like" object with bills, paidBills, startDate
     return selectUpcomingBills(
       {
         bills,
@@ -36,24 +39,30 @@ export default function Home({ onGoToBills, onAddExpense }) {
     );
   }, [bills, paidBills, startDate]);
 
-  // 4. Prepare view-level derived data from summary
-  const { income, expense, balance, chartData } = useMemo(() => {
-    const inc = (summary?.totalIncome || 0) / 100;
-    const exp = (summary?.totalBills || 0) / 100;
-    const net = (summary?.net || 0) / 100;
+  // 2. Derive summary from provided projection (already memoized upstream)
+  const cashflowSummary = useMemo(() => {
+    if (!cashflow) return { income: 0, expense: 0, balance: 0, chartData: [] };
 
-    const weeks = (summary?.weeks || []).map((w, i) => ({
-      label: `W${i + 1}`,
-      balance: (w.net || 0) / 100,
-    }));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const monthIndex = getMonthIndexFromStart(startDate, todayStr);
+    const summary = cashflow.monthlySummary?.[monthIndex] || { totalIncome: 0, totalBills: 0, net: 0 };
+
+    const chartData = (cashflow.monthlySummary || [])
+      .slice(0, 6)
+      .map((m, i) => ({
+        label: `M${i + 1}`,
+        balance: (m.net || 0) / 100,
+      }));
 
     return {
-      income: inc,
-      expense: exp,
-      balance: net,
-      chartData: weeks,
+      income: summary.totalIncome / 100,
+      expense: summary.totalBills / 100,
+      balance: summary.net / 100,
+      chartData,
     };
-  }, [summary]);
+  }, [cashflow, startDate]);
+
+  const { income, expense, balance, chartData } = cashflowSummary;
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -174,10 +183,7 @@ export default function Home({ onGoToBills, onAddExpense }) {
                     >
                       {bill.overdue
                         ? "Overdue"
-                        : `Due ${new Date(bill.dueDate).toLocaleDateString(
-                            undefined,
-                            { month: "short", day: "numeric" }
-                          )}`}
+                        : `Due ${formatDateShort(bill.dueDate)}`}
                     </p>
                   </div>
                 </div>

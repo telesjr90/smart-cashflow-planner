@@ -1,26 +1,22 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { useCashflowStore } from "../store/useCashflowStore";
 import { projectCashflow } from "../lib/cashflow/index.js";
+import { formatDateShort } from "../utils/dateFormat";
 
 export function useCashflowTimeline(months = 6) {
-  // Select slices directly from the store (no object-literal selector)
   const startDate = useCashflowStore((state) => state.startDate);
   const accounts = useCashflowStore((state) => state.accounts || []);
   const bills = useCashflowStore((state) => state.bills || []);
   const income = useCashflowStore((state) => state.income || {});
   const paySchedule = useCashflowStore((state) => state.paySchedule || {});
-  const allocationRules = useCashflowStore(
-    (state) => state.allocationRules || []
-  );
-  const residualAccountId = useCashflowStore(
-    (state) => state.residualAccountId
-  );
+  const allocationRules = useCashflowStore((state) => state.allocationRules || []);
+  const residualAccountId = useCashflowStore((state) => state.residualAccountId);
   const paidBills = useCashflowStore((state) => state.paidBills || {});
   const extraIncomes = useCashflowStore((state) => state.extraIncomes || []);
   const expenses = useCashflowStore((state) => state.expenses || []);
   const mode = useCashflowStore((state) => state.mode);
 
-  const timelineData = useMemo(() => {
+  return useMemo(() => {
     try {
       const projection = projectCashflow({
         startDate,
@@ -37,15 +33,11 @@ export function useCashflowTimeline(months = 6) {
         months,
       });
 
-      // Assuming projection.ledger is an array of { date: 'YYYY-MM-DD', balances: { accountId: cents } }
       const ledger = projection.ledger || [];
       const dailyMap = new Map();
 
       ledger.forEach((entry) => {
-        const totalBal = Object.values(entry.balances || {}).reduce(
-          (a, b) => a + b,
-          0
-        );
+        const totalBal = Object.values(entry.balances || {}).reduce((a, b) => a + b, 0);
         dailyMap.set(entry.date, totalBal);
       });
 
@@ -53,11 +45,8 @@ export function useCashflowTimeline(months = 6) {
 
       return sortedDates.map((date) => ({
         date,
-        balance: (dailyMap.get(date) || 0) / 100, // cents → dollars
-        label: new Date(date).toLocaleDateString(undefined, {
-          month: "short",
-          day: "numeric",
-        }),
+        balance: (dailyMap.get(date) || 0) / 100,
+        label: formatDateShort(date),
       }));
     } catch (e) {
       console.error("Timeline calculation failed", e);
@@ -77,6 +66,4 @@ export function useCashflowTimeline(months = 6) {
     mode,
     months,
   ]);
-
-  return timelineData;
 }

@@ -1,0 +1,90 @@
+[
+  {
+    "name": "nav:home",
+    "status": "ok"
+  },
+  {
+    "name": "screenshot:home",
+    "status": "ok"
+  },
+  {
+    "name": "nav:bills",
+    "status": "ok-fallback"
+  },
+  {
+    "name": "bills:add",
+    "status": "ok"
+  },
+  {
+    "name": "bills:add-second",
+    "status": "ok"
+  },
+  {
+    "name": "bills:edit",
+    "status": "ok"
+  },
+  {
+    "name": "bills:changeAccount",
+    "status": "ok"
+  },
+  {
+    "name": "bills:togglePaid",
+    "status": "ok"
+  },
+  {
+    "name": "bills:bulkMarkPaidUnpaid",
+    "status": "ok"
+  },
+  {
+    "name": "expenses:addViaFab",
+    "status": "ok"
+  },
+  {
+    "name": "screenshot:bills",
+    "status": "ok"
+  },
+  {
+    "name": "nav:planner",
+    "status": "ok-fallback"
+  },
+  {
+    "name": "planner:chartVisible",
+    "status": "ok"
+  },
+  {
+    "name": "planner:switchMode",
+    "status": "ok"
+  },
+  {
+    "name": "screenshot:planner",
+    "status": "ok"
+  },
+  {
+    "name": "nav:settings",
+    "status": "ok-fallback"
+  },
+  {
+    "name": "settings:incomeSchedule:save",
+    "status": "ok"
+  },
+  {
+    "name": "settings:accounts:addSave",
+    "status": "ok"
+  },
+  {
+    "name": "settings:profile:roleHousehold",
+    "status": "ok"
+  },
+  {
+    "name": "settings:goals:addSave",
+    "status": "ok"
+  },
+  {
+    "name": "settings:budgets:addSave",
+    "status": "ok"
+  },
+  {
+    "name": "screenshot:settings",
+    "status": "ok"
+  }
+]
