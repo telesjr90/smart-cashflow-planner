@@ -7,6 +7,7 @@ import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { StatCard } from '../components/ui/StatCard';
 import { CashflowChart } from '../components/charts/CashflowChart';
 import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
 
 export default function Planner({ cashflow, months = 6 }) {
   const timeline = useMemo(() => {
@@ -33,11 +34,11 @@ export default function Planner({ cashflow, months = 6 }) {
   // 1. Calculate Insight Metrics
   const { lowestBalance, highestBalance, runwayDays } = useMemo(() => {
     if (!timeline.length) return { lowestBalance: 0, highestBalance: 0, runwayDays: 0 };
-    
+
     const balances = timeline.map(t => t.balance);
     const min = Math.min(...balances);
     const max = Math.max(...balances);
-    
+
     // Simple runway calc: count days until balance < 0
     const negativeIndex = balances.findIndex(b => b < 0);
     const days = negativeIndex === -1 ? '> 6 Months' : `${negativeIndex} Days`;
@@ -48,12 +49,20 @@ export default function Planner({ cashflow, months = 6 }) {
   // Format currency helper
   const fmt = (v) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(v);
 
+  const lowestVariant = lowestBalance < 0 ? 'highlight' : 'elevated';
+  const lowestIconColor = lowestBalance < 0 ? 'text-danger-500' : 'text-primary-600';
+  const lowestBadge = lowestBalance < 0 ? (
+    <Badge variant="danger">Risk</Badge>
+  ) : (
+    <Badge variant="success">Healthy</Badge>
+  );
+
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-6 pb-20 px-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between pt-2">
         <div>
-          <h2 className="text-title-l font-bold text-surface-900">Financial Analysis</h2>
+          <h2 className="text-title-l font-semibold text-surface-900">Financial Analysis</h2>
           <p className="text-caption text-surface-500">6 Month Projection</p>
         </div>
         <Button variant="secondary" size="sm" icon={Calendar}>
@@ -62,10 +71,10 @@ export default function Planner({ cashflow, months = 6 }) {
       </div>
 
       {/* Main Chart */}
-      <Card>
-        <CardHeader 
-          title="Projected Balance" 
-          subtitle="Net worth forecast based on recurring bills & income" 
+      <Card variant="elevated">
+        <CardHeader
+          title="Projected Balance"
+          subtitle="Net worth forecast based on recurring bills & income"
         />
         <CardBody>
           <div className="h-64 w-full">
@@ -76,28 +85,32 @@ export default function Planner({ cashflow, months = 6 }) {
 
       {/* Insight Stats */}
       <div className="grid grid-cols-2 gap-3">
-        <StatCard 
-          title="Lowest Balance" 
-          value={fmt(lowestBalance)} 
-          icon={<TrendingUp className={lowestBalance < 0 ? "text-danger-500" : "text-primary-500"} />}
-          variant={lowestBalance < 0 ? "danger" : "default"}
+        <StatCard
+          title="Lowest Balance"
+          value={fmt(lowestBalance)}
+          icon={<TrendingUp className={lowestIconColor} />}
+          variant={lowestVariant}
+          size="md"
         />
-        <StatCard 
-          title="Peak Balance" 
-          value={fmt(highestBalance)} 
+        <StatCard
+          title="Peak Balance"
+          value={fmt(highestBalance)}
           icon={<Target className="text-success-500" />}
+          variant="default"
+          size="md"
         />
       </div>
 
       {/* Safety Net / Runway */}
-      <Card className="bg-primary-900 text-white">
-        <CardBody className="flex items-center justify-between">
+      <Card variant="flat">
+        <CardBody className="flex items-center justify-between rounded-3xl bg-primary-600 text-white">
           <div>
-            <p className="text-primary-100 text-caption font-medium mb-1">Financial Runway</p>
-            <h3 className="text-title-l font-bold">{runwayDays}</h3>
-            <p className="text-tiny text-primary-200 mt-1">Until balance hits $0.00</p>
+            <p className="text-caption font-medium text-primary-100 mb-1">Financial Runway</p>
+            <h3 className="text-title-l font-semibold">{runwayDays}</h3>
+            <p className="text-tiny text-primary-100 mt-1">Until balance hits $0.00</p>
+            <div className="mt-2">{lowestBadge}</div>
           </div>
-          <div className="h-12 w-12 bg-white/10 rounded-full flex items-center justify-center">
+          <div className="h-12 w-12 bg-white/15 rounded-full flex items-center justify-center">
             <TrendingUp className="text-white" size={24} />
           </div>
         </CardBody>

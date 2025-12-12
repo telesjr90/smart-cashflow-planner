@@ -1,4 +1,7 @@
 // scripts/markBillsPaidUpTo2025-11-14.js
+// ONE-OFF FIRESTORE MAINTENANCE SCRIPT (DATE/USER BOUND)
+// - Hard-coded to mark bills due on/before 2025-11-14 as paid for two specific emails.
+// - Not general-purpose tooling; keep archived so it isn’t mistaken for reusable automation.
 // ES module version (works with "type": "module" in package.json)
 
 import { getDb } from "./adminClient.js";

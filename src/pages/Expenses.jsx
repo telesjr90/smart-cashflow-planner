@@ -5,25 +5,30 @@ import { Search, Plus } from 'lucide-react';
 import { useCashflowStore } from '../store/useCashflowStore';
 import useCashflowData from '../hooks/useCashflowData';
 import { getCategory } from '../lib/categories';
-import { useConfirm } from '../hooks/useConfirm';
 import { formatDateLong } from '../utils/dateFormat';
+import { formatCurrency } from '../lib/cashflow/formatters';
+import ConfirmModal from '../components/ui/modals/ConfirmModal';
+import { useToast } from '../components/ui/toast/useToast';
 
 // Components
 import { TransactionRow } from '../components/ui/TransactionRow';
 import ExpenseFormSheet from '../components/expenses/ExpenseFormSheet';
+import { Card, CardBody } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 
 export default function Expenses() {
-  
   // 1. Connect to Store
   const expenses = useCashflowStore((state) => state.expenses || []);
   const accounts = useCashflowStore((state) => state.accounts || []);
   const { handleUpdateExpenses } = useCashflowData();
-  const confirm = useConfirm();
+  const { showToast } = useToast();
 
   // 2. UI State
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [isDeletingId, setIsDeletingId] = useState(null);
 
   // 3. Group expenses by Date
   const groupedExpenses = useMemo(() => {
@@ -64,20 +69,18 @@ export default function Expenses() {
     setIsSaving(true);
     try {
       let nextExpenses;
-      
+
       if (!editingExpense) {
         // Create
         const newExpense = {
           ...draft,
           id: crypto.randomUUID(), // Generate client-side ID
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         };
         nextExpenses = [...expenses, newExpense];
       } else {
         // Update
-        nextExpenses = expenses.map(e => 
-          e.id === editingExpense.id ? { ...draft, id: e.id } : e
-        );
+        nextExpenses = expenses.map((e) => (e.id === editingExpense.id ? { ...draft, id: e.id } : e));
       }
 
       // Persist
@@ -88,23 +91,37 @@ export default function Expenses() {
     }
   };
 
-  const handleDelete = async (id) => {
-    const ok = await confirm({
-        title: "Delete Transaction",
-        message: "Are you sure you want to delete this transaction?",
-        confirmLabel: "Delete",
-        cancelLabel: "Cancel",
-    });
+  const handleDelete = (expense) => {
+    setPendingDelete(expense);
+  };
 
-    if (ok) {
-      const next = expenses.filter((e) => e.id !== id);
-      handleUpdateExpenses(next);
-      
-      // If we deleted the one currently being edited (rare but possible), close sheet
-      if (editingExpense && editingExpense.id === id) {
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete || isDeletingId) return;
+    const targetId = pendingDelete.id;
+    setIsDeletingId(targetId);
+
+    const prevExpenses = expenses;
+    const next = expenses.filter((e) => e.id !== targetId);
+
+    try {
+      await Promise.resolve(handleUpdateExpenses(next));
+      if (editingExpense && editingExpense.id === targetId) {
         handleSheetClose();
       }
+      showToast({ type: "success", message: "Transaction deleted." });
+    } catch (err) {
+      console.error("Failed to delete transaction", err);
+      handleUpdateExpenses(prevExpenses);
+      showToast({ type: "error", message: "Failed to delete transaction. Please try again." });
+    } finally {
+      setIsDeletingId(null);
+      setPendingDelete(null);
     }
+  };
+
+  const handleCancelDelete = () => {
+    if (isDeletingId) return;
+    setPendingDelete(null);
   };
 
   const formatDateHeader = (dateStr) => {
@@ -113,76 +130,71 @@ export default function Expenses() {
   };
 
   return (
-    <div className="space-y-6 pb-24">
+    <div className="space-y-6 pb-24 px-4">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between pt-2">
         <div>
-          <h2 className="text-title-l font-bold text-surface-900">Transactions</h2>
-          <p className="text-caption text-surface-500">
-            {expenses.length} Total items
-          </p>
+          <h2 className="text-title-l font-semibold text-surface-900">Transactions</h2>
+          <p className="text-caption text-surface-500">{expenses.length} Total items</p>
         </div>
         <div className="flex gap-2">
-          <button className="p-2 bg-white border border-surface-200 text-surface-400 rounded-xl shadow-sm">
-            <Search size={20} />
-          </button>
-          <button 
-            onClick={handleOpenAdd}
-            className="flex items-center justify-center h-10 w-10 bg-indigo-600 text-white rounded-xl shadow-sm hover:bg-indigo-700 transition-colors"
-          >
-            <Plus size={24} />
-          </button>
+          <Button variant="outline" size="icon" aria-label="Search">
+            <Search size={18} />
+          </Button>
+          <Button variant="primary" size="icon" onClick={handleOpenAdd} aria-label="Add transaction">
+            <Plus size={20} />
+          </Button>
         </div>
       </div>
 
       {/* Empty State */}
       {expenses.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="h-16 w-16 bg-surface-100 rounded-full flex items-center justify-center text-surface-400 mb-4">
-            <Search size={32} />
-          </div>
-          <h3 className="text-body font-semibold text-surface-900">No transactions yet</h3>
-          <p className="text-caption text-surface-500 max-w-xs mt-1 mb-4">
-            Add your first expense or income to start tracking.
-          </p>
-          <button 
-            onClick={handleOpenAdd}
-            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-full shadow-sm hover:bg-indigo-700"
-          >
-            Add Transaction
-          </button>
-        </div>
+        <Card variant="flat">
+          <CardBody className="flex flex-col items-center justify-center py-10 text-center space-y-3">
+            <div className="h-16 w-16 bg-surface-100 rounded-3xl flex items-center justify-center text-surface-400">
+              <Search size={32} />
+            </div>
+            <div className="text-body font-semibold text-surface-900">No transactions yet</div>
+            <p className="text-caption text-surface-500 max-w-xs">
+              Add your first expense or income to start tracking.
+            </p>
+            <Button onClick={handleOpenAdd} size="sm">
+              Add Transaction
+            </Button>
+          </CardBody>
+        </Card>
       ) : (
         /* Transaction List */
-        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {sortedDates.map((date) => (
             <div key={date} className="space-y-2">
-              <h3 className="text-tiny font-bold text-surface-400 uppercase tracking-wider pl-1">
+              <h3 className="text-tiny font-semibold text-surface-500 uppercase tracking-wide pl-1">
                 {formatDateHeader(date)}
               </h3>
-              
-              <div className="bg-white rounded-3xl shadow-soft border border-surface-100 overflow-hidden">
-                {groupedExpenses[date].map((expense, index) => {
-                  const category = getCategory(expense.category);
-                  const isIncome = expense.type === 'income';
 
-                  return (
-                    <div key={expense.id} className={index !== groupedExpenses[date].length - 1 ? 'border-b border-surface-100' : ''}>
-                      <TransactionRow 
+              <Card variant="flat">
+                <CardBody className="p-0 divide-y divide-surface-200/60">
+                  {groupedExpenses[date].map((expense) => {
+                    const category = getCategory(expense.category);
+                    const isIncome = expense.type === 'income';
+
+                    return (
+                      <TransactionRow
+                        key={expense.id}
                         title={category.label}
                         subtitle={expense.description}
                         amount={expense.amount}
                         category={category}
                         icon={category.icon}
                         variant={isIncome ? 'income' : 'expense'}
-                        className="shadow-none rounded-none border-none hover:bg-surface-50 cursor-pointer"
+                        className="hover:bg-surface-50 px-3 py-2"
                         onClick={() => handleOpenEdit(expense)}
-                        onDelete={() => handleDelete(expense.id)}
+                        onDelete={() => handleDelete(expense)}
                       />
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </CardBody>
+              </Card>
             </div>
           ))}
         </div>
@@ -196,6 +208,21 @@ export default function Expenses() {
         isSaving={isSaving}
         onSave={handleSaveExpense}
         onCancel={handleSheetClose}
+      />
+
+      <ConfirmModal
+        open={Boolean(pendingDelete)}
+        title="Delete this transaction?"
+        message={
+          pendingDelete
+            ? `Delete "${pendingDelete.description || getCategory(pendingDelete.category)?.label || "this transaction"}" for ${formatCurrency(pendingDelete.amount)}?`
+            : ""
+        }
+        confirmLabel={isDeletingId ? "Deleting..." : "Delete"}
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        variant="danger"
       />
     </div>
   );

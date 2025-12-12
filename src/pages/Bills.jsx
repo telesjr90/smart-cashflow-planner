@@ -10,13 +10,18 @@ import {
   Pencil,
 } from "lucide-react";
 import { safeLocalStorage, makeScopedKey } from "../lib/safeLocalStorage";
-import { useConfirm } from "../hooks/useConfirm";
 import BillFormSheet from "../components/bills/BillFormSheet";
 import { getCategoryLabel } from "../lib/categories";
 import { formatMonthYear } from "../utils/dateFormat";
 
 import { useCashflowStore } from "../store/useCashflowStore";
 import useCashflowData from "../hooks/useCashflowData";
+import { Card, CardBody } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
+import { Select } from "../components/ui/Select";
+import ConfirmModal from "../components/ui/modals/ConfirmModal";
+import { useToast } from "../components/ui/toast/useToast";
 
 const fmt = (v) =>
   `$${Number(v ?? 0).toLocaleString("en-CA", {
@@ -59,14 +64,17 @@ function getMonthIndexFromStart(startDate, dateStr) {
 // ---------- small UI blocks ----------
 function Segmented({ value, onChange, options }) {
   return (
-    <div className="inline-flex rounded-full bg-slate-100 p-0.5">
+    <div className="inline-flex rounded-pill bg-surface-100 p-0.5 border border-surface-200/60 shadow-soft">
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
-          className={`px-3 py-1 text-xs rounded-full transition-colors ${
-            value === o.value ? "bg-white shadow-sm text-slate-900" : "text-slate-500"
+          className={`px-3 py-1.5 text-caption rounded-pill transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50 ${
+            value === o.value
+              ? "bg-surface-100 text-primary-600 shadow-soft border border-primary-500/30"
+              : "text-surface-500 hover:bg-surface-50"
           }`}
+          type="button"
         >
           {o.label}
         </button>
@@ -77,46 +85,49 @@ function Segmented({ value, onChange, options }) {
 
 function MonthScroller({ months, selected, onChange }) {
   return (
-    <div className="mx-4 mt-3 flex items-center gap-2">
-          <button
-            className="p-1 rounded-full hover:bg-slate-100"
-            onClick={() => onChange(Math.max(0, selected - 1))}
-            aria-label="Previous month"
-          >
-            <ChevronLeft size={16} className="text-slate-500" />
-          </button>
-      <div className="flex-1 flex justify-center gap-1 overflow-x-auto no-scrollbar">
+    <div className="px-4 mt-3 flex items-center gap-2">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => onChange(Math.max(0, selected - 1))}
+        aria-label="Previous month"
+      >
+        <ChevronLeft size={18} />
+      </Button>
+      <div className="flex-1 flex justify-center gap-2 overflow-x-auto no-scrollbar">
         {months.map((label, idx) => (
           <button
             key={label}
             onClick={() => onChange(idx)}
-            className={`px-2 py-1 rounded-full text-xs whitespace-nowrap ${
-              idx === selected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"
+            className={`px-3 py-1.5 rounded-pill text-caption whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50 ${
+              idx === selected ? "bg-primary-600 text-white shadow-soft" : "bg-surface-100 text-surface-600 hover:bg-surface-200"
             }`}
+            type="button"
           >
             {label}
           </button>
         ))}
       </div>
-      <button
-        className="p-1 rounded-full hover:bg-slate-100"
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={() => onChange(Math.min(months.length - 1, selected + 1))}
         aria-label="Next month"
       >
-        <ChevronRight size={16} className="text-slate-500" />
-      </button>
+        <ChevronRight size={18} />
+      </Button>
     </div>
   );
 }
 
 function SummaryTile({ label, value, danger }) {
   return (
-    <div className="flex-1 rounded-2xl bg-slate-50 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={`mt-1 text-sm font-semibold ${danger ? "text-rose-600" : "text-slate-900"}`}>
-        {value}
-      </div>
-    </div>
+    <Card variant="flat" className="h-full">
+      <CardBody className="px-3 py-2 space-y-1">
+        <div className="text-tiny uppercase tracking-wide text-surface-500">{label}</div>
+        <div className={`text-body font-semibold ${danger ? "text-danger-500" : "text-surface-900"}`}>{value}</div>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -130,47 +141,43 @@ function PastDueBanner({ items, memberNames }) {
       ? memberNames?.W || "Partner W"
       : "Auto";
   return (
-    <div className="mx-4 mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3">
-      <div className="flex items-center gap-2 text-rose-700">
-        <AlertTriangle size={16} />
-        <div className="text-sm font-semibold">
-          {items.length} overdue bill{items.length > 1 ? "s" : ""} in this household
-        </div>
-      </div>
-      <div className="mt-2 space-y-1">
-        {preview.map((it) => (
-          <div
-            key={`${it.id}-${it.monthIndex}`}
-            className="text-xs text-rose-700 flex items-center justify-between"
-          >
-            <div className="truncate">
-              <span className="font-semibold">{it.name}</span> • Due {String(it.dueDay).padStart(2, "0")} •{" "}
-              {ownerName(it.payer)}
-            </div>
-            <div>{fmt(it.amount)}</div>
+    <Card variant="flat" className="mx-4">
+      <CardBody className="space-y-2 border border-danger-500/20 bg-danger-500/5 rounded-3xl">
+        <div className="flex items-center gap-2 text-danger-500">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <div className="text-body font-semibold">
+            {items.length} overdue bill{items.length > 1 ? "s" : ""} in this household
           </div>
-        ))}
-      </div>
-    </div>
+        </div>
+        <div className="space-y-1">
+          {preview.map((it) => (
+            <div
+              key={`${it.id}-${it.monthIndex}`}
+              className="text-caption text-danger-600 flex items-center justify-between gap-2"
+            >
+              <div className="truncate">
+                <span className="font-semibold">{it.name}</span> · Due {String(it.dueDay).padStart(2, "0")} ·{" "}
+                {ownerName(it.payer)}
+              </div>
+              <div className="font-semibold">{fmt(it.amount)}</div>
+            </div>
+          ))}
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 
 function BulkActions({ disabled, onMarkAllPaid, onMarkAllUnpaid }) {
   if (disabled) return null;
   return (
-    <div className="mx-4 mt-3 flex items-center justify-end gap-2">
-      <button
-        className="text-xs px-3 py-1 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
-        onClick={onMarkAllUnpaid}
-      >
+    <div className="px-4 mt-3 flex items-center justify-end gap-2">
+      <Button variant="outline" size="sm" onClick={onMarkAllUnpaid}>
         Mark all unpaid
-      </button>
-      <button
-        className="text-xs px-3 py-1 rounded-full bg-emerald-600 text-white hover:bg-emerald-700"
-        onClick={onMarkAllPaid}
-      >
+      </Button>
+      <Button variant="primary" size="sm" onClick={onMarkAllPaid}>
         Mark all paid
-      </button>
+      </Button>
     </div>
   );
 }
@@ -192,11 +199,11 @@ export default function Bills({ personScope = "self", isOnline = true }) {
   const memberNames = { H: "Partner H", W: "Partner W" };
 
   const { handleUpdateBills, handleTogglePaid, handleBulkMark, handleChangeBillAccount } = useCashflowData();
-  const confirm = useConfirm();
+  const { showToast } = useToast();
 
   if (!startDate) {
     return (
-      <div className="p-4 text-sm text-slate-700">
+      <div className="p-4 text-body text-surface-900">
         Start date is not defined. Please set a start date in Settings.
       </div>
     );
@@ -222,6 +229,8 @@ export default function Bills({ personScope = "self", isOnline = true }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingBill, setEditingBill] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [isDeletingId, setIsDeletingId] = useState(null);
 
   const hasAccounts = accounts && accounts.length > 0;
 
@@ -233,13 +242,17 @@ export default function Bills({ personScope = "self", isOnline = true }) {
       scope: cfg.scope || "shared",
       owner: cfg.owner || null,
     }));
+    if (!arr.length) {
+      return [{ key: "uncategorized", label: "Uncategorized", scope: "shared", owner: null }];
+    }
     if (role !== "H" && role !== "W") return arr;
-    return arr.filter((b) => {
+    const filtered = arr.filter((b) => {
       const scope = b.scope || "shared";
       if (scope === "shared") return true;
       if (!b.owner) return true;
       return b.owner === role;
     });
+    return filtered.length ? filtered : [{ key: "uncategorized", label: "Uncategorized", scope: "shared", owner: null }];
   }, [categoryBudgets, role]);
 
   const defaultCategoryKey = budgetOptions.length ? budgetOptions[0].key : "";
@@ -297,10 +310,21 @@ export default function Bills({ personScope = "self", isOnline = true }) {
     if (isOffline) return;
     setIsSaving(true);
     try {
+      const name = (billDraft.name || "").trim();
+      if (!name) {
+        showToast({ type: "error", message: "Bill name is required." });
+        return;
+      }
+
       const cleanAmount = Number.isFinite(+billDraft.amount) ? +billDraft.amount : 0;
+      if (!(cleanAmount > 0)) {
+        showToast({ type: "error", message: "Bill amount must be greater than zero." });
+        return;
+      }
+
       const cleanDueDay = Math.min(31, Math.max(1, parseInt(billDraft.dueDay || 1, 10)));
       const accountId = resolveAccountId({ ...billDraft, dueDay: cleanDueDay });
-      const categoryKey = billDraft.category || "";
+      const categoryKey = billDraft.category || budgetOptions[0]?.key || null;
 
       let nextBills;
 
@@ -311,7 +335,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
 
         const newBill = {
           id,
-          name: billDraft.name?.trim() || "New bill",
+          name,
           amount: cleanAmount,
           dueDay: cleanDueDay,
           payer: billDraft.payer || role,
@@ -324,7 +348,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
           b.id === editingBill.id
             ? {
                 ...b,
-                name: billDraft.name?.trim() || b.name,
+                name: name || b.name,
                 amount: cleanAmount,
                 dueDay: cleanDueDay,
                 payer: billDraft.payer || b.payer,
@@ -344,6 +368,10 @@ export default function Bills({ personScope = "self", isOnline = true }) {
       }
 
       handleSheetClose();
+      showToast({ type: "success", message: "Bill saved." });
+    } catch (err) {
+      console.error("Failed to save bill", err);
+      showToast({ type: "error", message: "Failed to save bill. Please try again." });
     } finally {
       setIsSaving(false);
     }
@@ -481,72 +509,91 @@ export default function Bills({ personScope = "self", isOnline = true }) {
     handleBulkMark({ billIds: ids, monthIndex: selectedMonth, value });
   };
 
-  const handleDelete = async (billId) => {
+  const handleDelete = (bill) => {
     if (isOffline) return;
-    const confirmed = await confirm({
-      title: "Delete Bill",
-      message: "Delete this bill from all future months",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-    });
+    setPendingDelete(bill);
+  };
 
-    if (!confirmed) return;
-
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete || isDeletingId) return;
+    const billId = pendingDelete.id;
+    setIsDeletingId(billId);
+    const prevBills = bills;
     const nextBills = bills.filter((b) => b.id !== billId);
-    handleUpdateBills(nextBills);
 
-    if (editingBill && editingBill.id === billId) {
-      handleSheetClose();
+    try {
+      await Promise.resolve(handleUpdateBills(nextBills));
+      if (editingBill && editingBill.id === billId) {
+        handleSheetClose();
+      }
+      showToast({ type: "success", message: "Bill deleted." });
+    } catch (err) {
+      console.error("Failed to delete bill", err);
+      handleUpdateBills(prevBills);
+      showToast({ type: "error", message: "Failed to delete bill. Please try again." });
+    } finally {
+      setIsDeletingId(null);
+      setPendingDelete(null);
     }
   };
 
+  const handleCancelDelete = () => {
+    if (isDeletingId) return;
+    setPendingDelete(null);
+  };
+
   return (
-    <div className="pb-24">
+    <div className="pb-24 space-y-4">
       <header className="flex items-center justify-between px-4 pt-4">
         <div className="flex items-center gap-2">
-          <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-            <ListChecks size={18} />
+          <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-600">
+            <ListChecks size={18} aria-hidden="true" />
           </div>
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Bills</div>
-            <div className="text-sm font-semibold text-slate-900">Monthly commitments</div>
+            <div className="text-tiny font-semibold uppercase tracking-wide text-surface-500">Bills</div>
+            <div className="text-body font-semibold text-surface-900">Monthly commitments</div>
           </div>
         </div>
         {!isEmpty && (
-          <button
+          <Button
             onClick={handleOpenAdd}
             disabled={isOffline}
-            className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 transition-colors"
+            variant="primary"
+            size="icon"
             aria-label="Add bill"
           >
-            <span className="text-xl leading-none mb-0.5">+</span>
-          </button>
+            <span className="text-title-l leading-none -mt-0.5" aria-hidden="true">
+              +
+            </span>
+          </Button>
         )}
       </header>
 
       {isOffline && (
-        <div className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Offline mode: actions are disabled until you reconnect.
-        </div>
+        <Card variant="flat" className="mx-4">
+          <CardBody className="flex items-center gap-2 text-caption text-warning-500 bg-warning-500/10 border border-warning-500/30 rounded-2xl">
+            Offline mode: actions are disabled until you reconnect.
+          </CardBody>
+        </Card>
       )}
 
       {isEmpty ? (
-        <div className="mx-4 mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-center">
-          <div className="text-sm font-medium text-slate-700 mb-2">You haven’t added any bills yet.</div>
-          <p className="text-xs text-slate-500 mb-4">Add your first bill to start planning your cash flow.</p>
-          <button
-            type="button"
-            onClick={handleOpenAdd}
-            className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
-          >
-            Add your first bill
-          </button>
-        </div>
+        <Card variant="flat" className="mx-4 mt-2">
+          <CardBody className="text-center space-y-3">
+            <div className="text-body font-semibold text-surface-900">You haven't added any bills yet.</div>
+            <p className="text-caption text-surface-500">Add your first bill to start planning your cash flow.</p>
+            <div className="flex justify-center">
+              <Button type="button" onClick={handleOpenAdd} disabled={isOffline} size="sm">
+                Add your first bill
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
       ) : (
         <>
           <MonthScroller months={months} selected={selectedMonth} onChange={setSelectedMonth} />
 
-          <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="px-4 mt-3 flex flex-wrap items-center justify-between gap-2">
             <Segmented
               value={status}
               onChange={setStatus}
@@ -568,7 +615,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
             />
           </div>
 
-          <div className="mx-4 mt-3 grid grid-cols-3 gap-2">
+          <div className="px-4 mt-3 grid grid-cols-3 gap-2">
             <SummaryTile label="Total" value={fmt(totals.all)} />
             <SummaryTile label="Unpaid" value={fmt(totals.unpaid)} danger />
             <SummaryTile label="Overdue" value={fmt(totals.overdue)} danger />
@@ -576,11 +623,13 @@ export default function Bills({ personScope = "self", isOnline = true }) {
 
           <PastDueBanner items={overdueItems} memberNames={memberNames} />
 
-          <div className="mt-3 space-y-1">
+          <div className="mt-3 space-y-2">
             {filtered.length === 0 && (
-              <div className="mx-4 mt-4 rounded-2xl bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                No bills match this filter for the selected month.
-              </div>
+              <Card variant="flat" className="mx-4">
+                <CardBody className="text-caption text-surface-500">
+                  No bills match this filter for the selected month.
+                </CardBody>
+              </Card>
             )}
             {filtered.map((item) => {
               const acctId = resolveAccountId(item);
@@ -588,76 +637,89 @@ export default function Bills({ personScope = "self", isOnline = true }) {
               const accountLabel = hasAccounts ? (acct ? acct.name : acctId || "Unassigned") : item.accountId || "Unassigned";
               const catLabel = categoryLabelForBill(item);
               return (
-                <div
-                  key={`${item.id}-${item.monthIndex}`}
-                  className="mx-4 rounded-2xl bg-white border border-slate-100 px-3 py-2 flex items-center gap-2"
-                >
-                  <button
-                    className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 disabled:opacity-50"
-                    onClick={() => handleToggle(item)}
-                    disabled={isOffline}
-                  >
-                    {item.paid ? <CheckCircle2 className="text-emerald-600" size={16} /> : <Circle className="text-slate-300" size={16} />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
-                      <div className="text-sm font-semibold text-slate-900">{fmt(item.amount)}</div>
-                    </div>
-                    <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                      <div className="flex items-center gap-2">
-                        <span>Due {String(item.dueDay).padStart(2, "0")}</span>
-                        <span>• {item.payer === "H" ? memberNames.H : item.payer === "W" ? memberNames.W : "Auto"}</span>
-                        {catLabel && (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
-                            {catLabel}
-                          </span>
-                        )}
+                <Card key={`${item.id}-${item.monthIndex}`} variant="flat" className="mx-4">
+                  <CardBody className="flex items-start gap-3 px-3 py-3">
+                    <button
+                      className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-pill border border-surface-200 text-surface-500 bg-surface-50 transition-colors hover:bg-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50 disabled:opacity-50"
+                      onClick={() => handleToggle(item)}
+                      disabled={isOffline}
+                      aria-pressed={item.paid}
+                      aria-label={item.paid ? "Mark unpaid" : "Mark paid"}
+                      type="button"
+                    >
+                      {item.paid ? (
+                        <CheckCircle2 className="text-success-500" size={18} aria-hidden="true" />
+                      ) : (
+                        <Circle className="text-surface-300" size={18} aria-hidden="true" />
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-body font-semibold text-surface-900">{item.name}</div>
+                        <div className="text-body font-semibold text-surface-900">{fmt(item.amount)}</div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] uppercase tracking-wide text-slate-400">Account</span>
-                          {hasAccounts && handleChangeBillAccount ? (
-                            <select
-                              className="text-[11px] border border-slate-200 rounded-full px-2 py-0.5 bg-slate-50 text-slate-700"
-                              value={acctId}
-                              onChange={(e) => handleChangeBillAccount(item.id, e.target.value)}
-                              disabled={isOffline}
-                            >
-                              {accounts.map((a) => (
-                                <option key={a.id} value={a.id}>
-                                  {a.name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="text-[11px] text-slate-600">{accountLabel}</span>
+                      <div className="flex items-center justify-between gap-2 text-caption text-surface-500">
+                        <div className="flex items-center gap-2 truncate">
+                          <span>Due {String(item.dueDay).padStart(2, "0")}</span>
+                          <span>· {item.payer === "H" ? memberNames.H : item.payer === "W" ? memberNames.W : "Auto"}</span>
+                          {catLabel && (
+                            <Badge variant="neutral" className="shrink-0">
+                              {catLabel}
+                            </Badge>
                           )}
                         </div>
-                        {handleUpdateBills && (
+                        <div className="flex items-center gap-2">
                           <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800 disabled:opacity-50"
-                              onClick={() => handleOpenEdit(item)}
-                              disabled={isOffline}
-                            >
-                              <Pencil size={12} /> Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700 disabled:opacity-50"
-                              onClick={() => handleDelete(item.id)}
-                              disabled={isOffline}
-                            >
-                              <Trash2 size={12} /> Delete
-                            </button>
+                            <span className="text-tiny uppercase tracking-wide text-surface-400">Account</span>
+                            {hasAccounts && handleChangeBillAccount ? (
+                              <Select
+                                size="sm"
+                                value={acctId}
+                                onChange={(e) => handleChangeBillAccount(item.id, e.target.value)}
+                                disabled={isOffline}
+                                className="min-w-[120px]"
+                              >
+                                {accounts.map((a) => (
+                                  <option key={a.id} value={a.id}>
+                                    {a.name}
+                                  </option>
+                                ))}
+                              </Select>
+                            ) : (
+                              <span className="text-caption text-surface-600">{accountLabel}</span>
+                            )}
                           </div>
-                        )}
+                          {handleUpdateBills && (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-surface-500 hover:text-surface-900 px-2"
+                                onClick={() => handleOpenEdit(item)}
+                                disabled={isOffline}
+                              >
+                                <Pencil size={14} />
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-danger-500 hover:text-danger-600 px-2"
+                                onClick={() => handleDelete(item)}
+                                disabled={isOffline}
+                              >
+                                <Trash2 size={14} />
+                                Delete
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
+                  </CardBody>
+                </Card>
               );
             })}
           </div>
@@ -666,7 +728,6 @@ export default function Bills({ personScope = "self", isOnline = true }) {
             onMarkAllPaid={() => handleBulk(true)}
             onMarkAllUnpaid={() => handleBulk(false)}
           />
-          <div className="h-24" />
         </>
       )}
 
@@ -682,6 +743,17 @@ export default function Bills({ personScope = "self", isOnline = true }) {
         isOnline={isOnline}
         onSave={handleSaveBill}
         onCancel={handleSheetClose}
+      />
+
+      <ConfirmModal
+        open={Boolean(pendingDelete)}
+        title={`Delete bill "${pendingDelete?.name || "this bill"}"?`}
+        message="Delete this bill from all future months?"
+        confirmLabel={isDeletingId ? "Deleting..." : "Delete"}
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        variant="danger"
       />
     </div>
   );

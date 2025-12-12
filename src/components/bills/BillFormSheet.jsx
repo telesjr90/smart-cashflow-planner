@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { X, Loader2 } from 'lucide-react';
-import { Input } from '../ui/Input';
-import { Select } from '../ui/Select';
+import React, { useState, useEffect } from "react";
+import { X, Loader2 } from "lucide-react";
+import { Input } from "../ui/Input";
+import { Select } from "../ui/Select";
 
 export default function BillFormSheet({
   open,
   bill, // null = new mode, object = edit mode
   defaultCategoryKey = "",
-  budgetOptions = [], 
+  budgetOptions = [],
   accounts = [],
   memberNames = { H: "Partner H", W: "Partner W" },
   userRole = "H",
@@ -22,7 +22,7 @@ export default function BillFormSheet({
     dueDay: 1,
     payer: "H",
     category: "",
-    accountId: ""
+    accountId: "",
   });
 
   useEffect(() => {
@@ -35,7 +35,7 @@ export default function BillFormSheet({
           dueDay: bill.dueDay || 1,
           payer: bill.payer || "H",
           category: bill.category || defaultCategoryKey,
-          accountId: bill.accountId || (accounts[0]?.id || "")
+          accountId: bill.accountId || (accounts[0]?.id || ""),
         });
       } else {
         setDraft({
@@ -44,7 +44,7 @@ export default function BillFormSheet({
           dueDay: 1,
           payer: userRole || "H",
           category: defaultCategoryKey,
-          accountId: accounts[0]?.id || ""
+          accountId: accounts[0]?.id || "",
         });
       }
     }
@@ -140,15 +140,22 @@ export default function BillFormSheet({
             <Select
               label="Category"
               value={draft.category}
-              onChange={(e) => setDraft(d => ({ ...d, category: e.target.value }))}
+              onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))}
+              helperText={
+                budgetOptions.length === 0
+                  ? "No categories available. Bills will be saved as Uncategorized."
+                  : undefined
+              }
             >
               {budgetOptions.length === 0 ? (
-                <option value="">No categories available</option>
+                <option value="uncategorized">Uncategorized</option>
               ) : (
                 <>
                   <option value="">Select a category...</option>
-                  {budgetOptions.map(opt => (
-                    <option key={opt.key} value={opt.key}>{opt.label}</option>
+                  {budgetOptions.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      {opt.label}
+                    </option>
                   ))}
                 </>
               )}
@@ -158,10 +165,13 @@ export default function BillFormSheet({
               <Select
                 label="Withdraw From"
                 value={draft.accountId}
-                onChange={(e) => setDraft(d => ({ ...d, accountId: e.target.value }))}
+                onChange={(e) => setDraft((d) => ({ ...d, accountId: e.target.value }))}
+                helperText="Select the account this bill draws from."
               >
-                {accounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>{acc.name}</option>
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name}
+                  </option>
                 ))}
               </Select>
             )}

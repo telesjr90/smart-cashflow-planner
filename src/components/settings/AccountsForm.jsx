@@ -1,7 +1,9 @@
 // File: src/components/settings/AccountsForm.jsx
-import React from "react";
+import React, { useState } from "react";
 import { Wallet, Plus, Trash2, CheckCircle2 } from "lucide-react";
 import BulkImportSpreadsheet from "../../components/BulkImportSpreadsheet";
+import ConfirmModal from "../ui/modals/ConfirmModal";
+import { useToast } from "../ui/toast/useToast";
 
 /**
  * Accounts configuration card.
@@ -20,6 +22,34 @@ export default function AccountsForm({
   onSaveAccounts,
   onBulkImport,
 }) {
+  const { showToast } = useToast();
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const handleDeleteRequest = (acct) => {
+    setPendingDelete(acct);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete || deletingId) return;
+    setDeletingId(pendingDelete.id);
+    try {
+      await Promise.resolve(onDeleteAccount?.(pendingDelete.id));
+      showToast({ type: "success", message: "Account deleted." });
+    } catch (err) {
+      console.error("Failed to delete account", err);
+      showToast({ type: "error", message: "Failed to delete account." });
+    } finally {
+      setDeletingId(null);
+      setPendingDelete(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    if (deletingId) return;
+    setPendingDelete(null);
+  };
+
   return (
     <section className="mt-4">
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
@@ -98,7 +128,7 @@ export default function AccountsForm({
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
-                    onClick={() => onDeleteAccount(acct.id)}
+                    onClick={() => handleDeleteRequest(acct)}
                   >
                     <Trash2 size={12} /> Delete
                   </button>
@@ -139,6 +169,21 @@ export default function AccountsForm({
         {/* Bulk import: accounts + bills from CSV template */}
         <BulkImportSpreadsheet onImport={onBulkImport} />
       </div>
+
+      <ConfirmModal
+        open={Boolean(pendingDelete)}
+        title="Delete account?"
+        message={
+          pendingDelete
+            ? `Delete account "${pendingDelete.name || "this account"}"?`
+            : ""
+        }
+        confirmLabel={deletingId ? "Deleting..." : "Delete"}
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        variant="danger"
+      />
     </section>
   );
 }

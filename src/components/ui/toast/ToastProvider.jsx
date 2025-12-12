@@ -10,26 +10,37 @@ export function ToastProvider({ children }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showToast = useCallback(({ type = "info", message, timeout = 4000 }) => {
-    const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-    
-    setToasts((prev) => [...prev, { id, type, message }]);
+  const showToast = useCallback(
+    ({ type = "info", message, timeout = 4000, id: providedId }) => {
+      const id = providedId || Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-    if (timeout) {
-      setTimeout(() => {
-        removeToast(id);
-      }, timeout);
-    }
-  }, [removeToast]);
+      setToasts((prev) => {
+        const next = [...prev.filter((t) => t.id !== id), { id, type, message }];
+        return next.slice(-3); // cap visible toasts
+      });
+
+      if (timeout) {
+        setTimeout(() => {
+          removeToast(id);
+        }, timeout);
+      }
+    },
+    [removeToast]
+  );
 
   const contextValue = { showToast, removeToast };
 
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
-      
+
       {/* Toast Container */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none">
+      <div
+        className="fixed left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-3 w-full max-w-sm px-4 pointer-events-none"
+        style={{ bottom: "calc(24px + env(safe-area-inset-bottom))" }}
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {toasts.map((toast) => (
           <ToastItem key={toast.id} toast={toast} onRemove={removeToast} />
         ))}
@@ -40,54 +51,54 @@ export function ToastProvider({ children }) {
 
 // Individual Toast Component
 function ToastItem({ toast, onRemove }) {
-  // Styles based on type
   const variants = {
     success: {
-      bg: "bg-white",
-      border: "border-emerald-100",
-      icon: <CheckCircle2 size={20} className="text-emerald-500" />,
-      text: "text-slate-800"
+      bg: "bg-surface-100",
+      border: "border-surface-200",
+      icon: <CheckCircle2 size={20} className="text-success-600" aria-hidden="true" />,
+      text: "text-surface-900",
     },
     error: {
-      bg: "bg-white",
-      border: "border-rose-100",
-      icon: <AlertCircle size={20} className="text-rose-500" />,
-      text: "text-slate-800"
+      bg: "bg-surface-100",
+      border: "border-surface-200",
+      icon: <AlertCircle size={20} className="text-danger-600" aria-hidden="true" />,
+      text: "text-surface-900",
     },
     warning: {
-      bg: "bg-white",
-      border: "border-amber-100",
-      icon: <AlertTriangle size={20} className="text-amber-500" />,
-      text: "text-slate-800"
+      bg: "bg-surface-100",
+      border: "border-surface-200",
+      icon: <AlertTriangle size={20} className="text-warning-600" aria-hidden="true" />,
+      text: "text-surface-900",
     },
     info: {
-      bg: "bg-slate-900",
-      border: "border-slate-800",
-      icon: <Info size={20} className="text-slate-400" />,
-      text: "text-white"
-    }
+      bg: "bg-surface-100",
+      border: "border-surface-200",
+      icon: <Info size={20} className="text-primary-600" aria-hidden="true" />,
+      text: "text-surface-900",
+    },
   };
 
   const style = variants[toast.type] || variants.info;
+  const isError = toast.type === "error";
 
   return (
-    <div 
+    <div
       className={`
-        pointer-events-auto flex items-start gap-3 p-4 rounded-xl shadow-lg border 
-        ${style.bg} ${style.border} 
+        pointer-events-auto flex items-start gap-3 p-4 rounded-3xl shadow-soft border bg-surface-100
+        ${style.bg} ${style.border}
         animate-in slide-in-from-bottom-2 fade-in duration-300
       `}
-      role="alert"
+      role={isError ? "alert" : "status"}
+      aria-live={isError ? "assertive" : "polite"}
     >
       <div className="mt-0.5 shrink-0">{style.icon}</div>
-      <p className={`text-sm font-medium flex-1 ${style.text}`}>
-        {toast.message}
-      </p>
-      <button 
+      <p className={`text-body font-semibold flex-1 ${style.text}`}>{toast.message}</p>
+      <button
         onClick={() => onRemove(toast.id)}
-        className="shrink-0 p-1 rounded-full opacity-50 hover:opacity-100 hover:bg-black/5 transition-opacity"
+        className="shrink-0 p-2 rounded-pill text-surface-400 hover:text-surface-900 hover:bg-surface-200/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50"
+        aria-label="Dismiss notification"
       >
-        <X size={16} className={toast.type === 'info' ? "text-white" : "text-slate-500"} />
+        <X size={16} className="text-surface-500" aria-hidden="true" />
       </button>
     </div>
   );

@@ -16,6 +16,11 @@ import useCashflowData from "../hooks/useCashflowData";
 // Lib
 import { projectCashflow, fromCents, formatCurrency } from "../lib/cashflow/index.js";
 
+// UI primitives
+import { Card, CardBody } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
+
 function classNames(...xs) {
   return xs.filter(Boolean).join(" ");
 }
@@ -79,11 +84,9 @@ export default function Accounts({
       });
 
       const out = {};
-      Object.entries(finalBalancesByAccount || {}).forEach(
-        ([id, cents]) => {
-          out[id] = Number(fromCents(cents));
-        }
-      );
+      Object.entries(finalBalancesByAccount || {}).forEach(([id, cents]) => {
+        out[id] = Number(fromCents(cents));
+      });
       return out;
     } catch (e) {
       console.warn("Accounts: engine balances failed", e);
@@ -107,9 +110,7 @@ export default function Accounts({
 
   const handleNameChange = useCallback(
     (id, newName) => {
-      const next = safeAccounts.map((a) =>
-        a.id === id ? { ...a, name: newName } : a
-      );
+      const next = safeAccounts.map((a) => (a.id === id ? { ...a, name: newName } : a));
       // Pass the existing residual ID to ensure it isn't lost
       handleUpdateAccounts(next, residualAccountId);
     },
@@ -144,12 +145,10 @@ export default function Accounts({
     const expensesArr = (expenses || []).filter((e) => isForAccount(e.accountId));
     const goalsArr = (goals || []).filter((g) => isForAccount(g.accountId));
 
-    const budgetsArr = Object.entries(categoryBudgets || {}).map(
-      ([category, cfg]) => ({
-        category,
-        amount: cfg?.amount ?? 0,
-      })
-    );
+    const budgetsArr = Object.entries(categoryBudgets || {}).map(([category, cfg]) => ({
+      category,
+      amount: cfg?.amount ?? 0,
+    }));
 
     return {
       bills: billsArr,
@@ -201,364 +200,319 @@ export default function Accounts({
   const totalMonthlyIncome = (incomeSafe.husband || 0) + (incomeSafe.wife || 0);
 
   return (
-    <main className="px-4 pb-24">
-      <header className="mb-4">
-        <div className="text-xs text-slate-500">Accounts</div>
-        <div className="flex items-center justify-between mt-1">
-          <div className="flex items-center gap-2">
-            <Wallet className="text-indigo-600" size={18} />
-            <h1 className="text-sm font-semibold text-slate-900">
-              Bank accounts & cash flow
-            </h1>
+    <main className="px-4 pb-24 space-y-4">
+      <header className="space-y-1.5 pt-2">
+        <div className="text-tiny font-semibold uppercase tracking-wide text-surface-500">Accounts</div>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-600">
+            <Wallet size={18} aria-hidden="true" />
+          </div>
+          <div>
+            <h1 className="text-title-l text-surface-900">Bank accounts & cash flow</h1>
+            <p className="text-caption text-surface-500">
+              Tap an account to see its bills, budgets, expenses, goals, and basic cash-flow impact.
+            </p>
           </div>
         </div>
-        <p className="mt-1 text-xs text-slate-500">
-          Tap an account to see its bills, budgets, expenses, goals, and basic
-          cash-flow impact.
-        </p>
       </header>
 
       {/* layout: list on left, detail on right (stacked on mobile) */}
       <section className="flex flex-col gap-3">
         {/* Accounts list */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <PiggyBank className="text-indigo-500" size={16} />
-              <div className="text-xs font-semibold text-slate-700">
-                Accounts ({safeAccounts.length})
+        <Card variant="flat">
+          <CardBody className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <PiggyBank className="text-primary-600" size={16} aria-hidden="true" />
+                <div className="text-caption font-semibold text-surface-900">
+                  Accounts ({safeAccounts.length})
+                </div>
               </div>
             </div>
-          </div>
 
-          {safeAccounts.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 text-center text-xs text-slate-500">
-              <div>You haven’t added any accounts yet.</div>
-              <button
-                type="button"
-                onClick={() => {
-                  const newId = `acct-${Date.now()}`;
-                  const newAccount = {
-                    id: newId,
-                    name: "New account",
-                    type: "deposit",
-                    openingBalance: 0,
-                  };
-                  handleUpdateAccounts([newAccount], newId);
-                }}
-                className="inline-flex items-center justify-center rounded-full bg-indigo-600 text-white px-3 py-1 mt-1"
-              >
-                Add your first account
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {safeAccounts.map((acc) => {
-                const active = acc.id === selectedId;
-                const isResidual = acc.id === residualAccountId;
-                const bal = balanceMap[acc.id] ?? acc.openingBalance ?? 0;
+            {safeAccounts.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 text-center text-caption text-surface-500">
+                <div>You haven&apos;t added any accounts yet.</div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    const newId = `acct-${Date.now()}`;
+                    const newAccount = {
+                      id: newId,
+                      name: "New account",
+                      type: "deposit",
+                      openingBalance: 0,
+                    };
+                    handleUpdateAccounts([newAccount], newId);
+                  }}
+                >
+                  Add your first account
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {safeAccounts.map((acc) => {
+                  const active = acc.id === selectedId;
+                  const isResidual = acc.id === residualAccountId;
+                  const bal = balanceMap[acc.id] ?? acc.openingBalance ?? 0;
 
-                return (
-                  <div
-                    key={acc.id}
-                    className={classNames(
-                      "flex items-center gap-2 rounded-xl px-2 py-2 border cursor-pointer",
-                      active
-                        ? "border-indigo-500 bg-indigo-50/60"
-                        : "border-slate-100 hover:bg-slate-50"
-                    )}
-                    onClick={() => setSelectedId(acc.id)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        <input
-                          className={classNames(
-                            "text-xs font-semibold bg-transparent border-none outline-none p-0 m-0",
-                            active ? "text-slate-900" : "text-slate-800"
-                          )}
-                          value={acc.name || ""}
-                          onChange={(e) => handleNameChange(acc.id, e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        {isResidual && (
-                          <span className="ml-1 inline-flex items-center rounded-full bg-indigo-100 text-[10px] font-medium text-indigo-700 px-1.5 py-0.5">
-                            Residual
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">
-                        Type: {acc.type || "deposit"} · Balance:{" "}
-                        {formatCurrency(bal)}
-                      </div>
-                    </div>
-                    <div
-                      className="flex items-center gap-1"
-                      onClick={(e) => e.stopPropagation()}
+                  return (
+                    <button
+                      key={acc.id}
+                      type="button"
+                      className={classNames(
+                        "w-full rounded-2xl border text-left transition-all duration-150",
+                        "flex items-center gap-3 px-3 py-2.5",
+                        active
+                          ? "border-primary-600 bg-primary-500/5 shadow-soft"
+                          : "border-surface-200/60 bg-surface-50 hover:bg-surface-100"
+                      )}
+                      onClick={() => setSelectedId(acc.id)}
                     >
-                      <label className="inline-flex items-center gap-1 text-[10px] text-slate-500">
-                        <input
-                          type="radio"
-                          name="residual-account"
-                          className="h-3 w-3"
-                          checked={isResidual}
-                          onChange={() => handleSetResidual(acc.id)}
-                        />
-                        residual
-                      </label>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <input
+                            className={classNames(
+                              "text-caption font-semibold bg-transparent border-none outline-none p-0 m-0 w-full min-w-0",
+                              active ? "text-surface-900" : "text-surface-900"
+                            )}
+                            value={acc.name || ""}
+                            onChange={(e) => handleNameChange(acc.id, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          {isResidual && (
+                            <Badge variant="primary" className="shrink-0">
+                              Residual
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-tiny text-surface-500 mt-0.5">
+                          Type: {acc.type || "deposit"} · Balance: {formatCurrency(bal)}
+                        </div>
+                      </div>
+                      <div
+                        className="flex items-center gap-1 text-tiny text-surface-500"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <label className="inline-flex items-center gap-1">
+                          <input
+                            type="radio"
+                            name="residual-account"
+                            className="h-3 w-3 accent-primary-600"
+                            checked={isResidual}
+                            onChange={() => handleSetResidual(acc.id)}
+                          />
+                          residual
+                        </label>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </CardBody>
+        </Card>
 
         {/* Detail panel */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
-          {!selected ? (
-            <div className="text-xs text-slate-500">
-              Select an account to see its details.
-            </div>
-          ) : (
-            <>
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="flex items-center gap-1 mb-0.5">
-                    <Wallet className="text-indigo-500" size={14} />
-                    <div className="text-xs font-semibold text-slate-900">
-                      {selected.name || "Unnamed account"}
+        <Card variant="elevated">
+          <CardBody className="space-y-4">
+            {!selected ? (
+              <div className="text-caption text-surface-500">Select an account to see its details.</div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="inline-flex items-center gap-1 rounded-pill bg-primary-500/10 px-2 py-1 text-caption text-primary-600">
+                      <Wallet className="text-primary-600" size={14} aria-hidden="true" />
+                      <span className="font-semibold">{selected.name || "Unnamed account"}</span>
+                    </div>
+                    <div className="text-caption text-surface-500">
+                      Type: {selected.type || "deposit"}
+                    </div>
+                    <div className="text-tiny text-surface-400">ID: {selected.id}</div>
+                  </div>
+                  <div className="text-right space-y-0.5">
+                    <div className="text-caption text-surface-500">Projected balance</div>
+                    <div className="text-title-l font-semibold text-surface-900">
+                      {formatCurrency(summary.balance)}
+                    </div>
+                    <div className="text-tiny text-surface-500 inline-flex items-center gap-1">
+                      <Info size={12} aria-hidden="true" />
+                      <span>Based on bills, budgets, goals & rules.</span>
                     </div>
                   </div>
-                  <div className="text-[11px] text-slate-500">
-                    Type: {selected.type || "deposit"}
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    ID: {selected.id}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[11px] text-slate-500">
-                    Projected balance
-                  </div>
-                  <div className="text-sm font-semibold text-slate-900">
-                    {formatCurrency(summary.balance)}
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5 inline-flex items-center gap-1">
-                    <Info size={10} />
-                    <span>Based on bills, budgets, goals & rules.</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick summary tiles */}
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div className="rounded-xl border border-slate-100 bg-slate-50 px-2 py-1.5">
-                  <div className="text-[10px] text-slate-500 mb-0.5">
-                    Monthly bills
-                  </div>
-                  <div className="text-xs font-semibold text-slate-900">
-                    {formatCurrency(summary.billTotal)}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-100 bg-slate-50 px-2 py-1.5">
-                  <div className="text-[10px] text-slate-500 mb-0.5">
-                    Tracked expenses
-                  </div>
-                  <div className="text-xs font-semibold text-slate-900">
-                    {formatCurrency(summary.expenseTotal)}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-100 bg-slate-50 px-2 py-1.5">
-                  <div className="text-[10px] text-slate-500 mb-0.5">
-                    Goals / month
-                  </div>
-                  <div className="text-xs font-semibold text-slate-900">
-                    {formatCurrency(summary.goalMonthly)}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-100 bg-slate-50 px-2 py-1.5">
-                  <div className="text-[10px] text-slate-500 mb-0.5">
-                    Budgets / month
-                  </div>
-                  <div className="text-xs font-semibold text-slate-900">
-                    {formatCurrency(summary.budgetMonthly)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Household & rules context */}
-              <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50 px-2 py-1.5">
-                <div className="flex items-start gap-2">
-                  <div className="mt-0.5">
-                    <ArrowRightLeft size={12} className="text-slate-400" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-[10px] text-slate-500">
-                      Household income:{" "}
-                      <span className="font-semibold">
-                        {formatCurrency(totalMonthlyIncome)}
-                      </span>{" "}
-                      · Pay schedule: {payScheduleLabel}
-                    </div>
-                    <div className="text-[10px] text-indigo-900/70 mt-0.5">
-                      Allocation rules:{" "}
-                      <span className="font-semibold">
-                        {rulesSafe.length} rule
-                        {rulesSafe.length === 1 ? "" : "s"}
-                      </span>{" "}
-                      across all accounts.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Attached items */}
-              <div className="space-y-3">
-                {/* Bills */}
-                <div>
-                  <div className="flex items-center gap-1 mb-1.5">
-                    <ListChecks className="text-slate-500" size={14} />
-                    <div className="text-[11px] font-semibold text-slate-700">
-                      Bills ({attached.bills.length})
-                    </div>
-                  </div>
-                  {attached.bills.length === 0 ? (
-                    <div className="text-[10px] text-slate-500">
-                      No bills linked to this account.
-                    </div>
-                  ) : (
-                    <ul className="space-y-0.5">
-                      {attached.bills.map((b) => (
-                        <li
-                          key={b.id}
-                          className="flex justify-between text-[10px] text-slate-600"
-                        >
-                          <span className="truncate">
-                            {b.name} · due day {b.dueDay}
-                          </span>
-                          <span className="ml-2 font-medium">
-                            {formatCurrency(b.amount)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
                 </div>
 
-                {/* Budgets */}
-                <div>
-                  <div className="flex items-center justify-between gap-1 mb-1.5">
-                    <div className="flex items-center gap-1">
-                      <Receipt className="text-slate-500" size={14} />
-                      <div className="text-[11px] font-semibold text-slate-700">
-                        Budgets ({attached.budgets.length})
+                {/* Quick summary tiles */}
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Monthly bills", value: formatCurrency(summary.billTotal) },
+                    { label: "Tracked expenses", value: formatCurrency(summary.expenseTotal) },
+                    { label: "Goals / month", value: formatCurrency(summary.goalMonthly) },
+                    { label: "Budgets / month", value: formatCurrency(summary.budgetMonthly) },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-2xl border border-surface-200/60 bg-surface-50 px-3 py-2 shadow-soft"
+                    >
+                      <div className="text-tiny text-surface-500 mb-1">{item.label}</div>
+                      <div className="text-body font-semibold text-surface-900">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Household & rules context */}
+                <div className="rounded-2xl border border-surface-200/60 bg-surface-50 px-3 py-2 shadow-soft">
+                  <div className="flex items-start gap-2">
+                    <div className="mt-0.5">
+                      <ArrowRightLeft size={14} className="text-surface-400" aria-hidden="true" />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <div className="text-caption text-surface-500">
+                        Household income:{" "}
+                        <span className="font-semibold text-surface-900">
+                          {formatCurrency(totalMonthlyIncome)}
+                        </span>{" "}
+                        · Pay schedule: {payScheduleLabel}
+                      </div>
+                      <div className="text-caption text-primary-600">
+                        Allocation rules:{" "}
+                        <span className="font-semibold text-surface-900">
+                          {rulesSafe.length} rule{rulesSafe.length === 1 ? "" : "s"}
+                        </span>{" "}
+                        across all accounts.
                       </div>
                     </div>
-                    {typeof onGoToSettingsBudgets === "function" && (
-                      <button
-                        type="button"
-                        onClick={() => onGoToSettingsBudgets()}
-                        className="text-[10px] text-indigo-600 hover:underline"
-                      >
-                        Edit
-                      </button>
-                    )}
                   </div>
-                  {attached.budgets.length === 0 ? (
-                    <div className="text-[10px] text-slate-500">
-                      No category budgets linked to this account.
-                    </div>
-                  ) : (
-                    <ul className="space-y-0.5">
-                      {attached.budgets.map((b) => (
-                        <li
-                          key={b.category}
-                          className="flex justify-between text-[10px] text-slate-600"
-                        >
-                          <span className="truncate">{b.category}</span>
-                          <span className="ml-2 font-medium">
-                            {formatCurrency(b.amount)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
                 </div>
 
-                {/* Goals */}
-                <div>
-                  <div className="flex items-center justify-between gap-1 mb-1.5">
+                {/* Attached items */}
+                <div className="space-y-3">
+                  {/* Bills */}
+                  <div className="space-y-1">
                     <div className="flex items-center gap-1">
-                      <Target className="text-slate-500" size={14} />
-                      <div className="text-[11px] font-semibold text-slate-700">
-                        Goals ({attached.goals.length})
+                      <ListChecks className="text-surface-500" size={14} aria-hidden="true" />
+                      <div className="text-caption font-semibold text-surface-700">
+                        Bills ({attached.bills.length})
                       </div>
                     </div>
-                    {typeof onGoToSettingsGoals === "function" && (
-                      <button
-                        type="button"
-                        onClick={() => onGoToSettingsGoals()}
-                        className="text-[10px] text-indigo-600 hover:underline"
-                      >
-                        Edit
-                      </button>
+                    {attached.bills.length === 0 ? (
+                      <div className="text-tiny text-surface-500">No bills linked to this account.</div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {attached.bills.map((b) => (
+                          <li key={b.id} className="flex justify-between text-caption text-surface-600">
+                            <span className="truncate">
+                              {b.name} · due day {b.dueDay}
+                            </span>
+                            <span className="ml-2 font-semibold text-surface-900">
+                              {formatCurrency(b.amount)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
-                  {attached.goals.length === 0 ? (
-                    <div className="text-[10px] text-slate-500">
-                      No goals linked to this account yet.
-                    </div>
-                  ) : (
-                    <ul className="space-y-0.5">
-                      {attached.goals.map((g) => (
-                        <li
-                          key={g.id}
-                          className="flex justify-between text-[10px] text-slate-600"
-                        >
-                          <span className="truncate">{g.name}</span>
-                          <span className="ml-2 font-medium">
-                            {formatCurrency(g.perMonth || 0)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
 
-                {/* Expenses */}
-                <div>
-                  <div className="flex items-center gap-1 mb-1.5">
-                    <ArrowRightLeft className="text-slate-500" size={14} />
-                    <div className="text-[11px] font-semibold text-slate-700">
-                      Expenses ({attached.expenses.length})
-                    </div>
-                  </div>
-                  {attached.expenses.length === 0 ? (
-                    <div className="text-[10px] text-slate-500">
-                      No tracked expenses for this account yet.
-                    </div>
-                  ) : (
-                    <ul className="space-y-0.5">
-                      {attached.expenses.map((e, idx) => (
-                        <li
-                          key={e.id || idx}
-                          className="flex justify-between text-[10px] text-slate-600"
+                  {/* Budgets */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1">
+                        <Receipt className="text-surface-500" size={14} aria-hidden="true" />
+                        <div className="text-caption font-semibold text-surface-700">
+                          Budgets ({attached.budgets.length})
+                        </div>
+                      </div>
+                      {typeof onGoToSettingsBudgets === "function" && (
+                        <button
+                          type="button"
+                          onClick={() => onGoToSettingsBudgets()}
+                          className="text-tiny font-semibold text-primary-600 hover:underline"
                         >
-                          <span className="truncate">
-                            {e.description || e.category || "Expense"}
-                          </span>
-                          <span className="ml-2 font-medium">
-                            {formatCurrency(e.amount)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    {attached.budgets.length === 0 ? (
+                      <div className="text-tiny text-surface-500">No category budgets linked to this account.</div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {attached.budgets.map((b) => (
+                          <li key={b.category} className="flex justify-between text-caption text-surface-600">
+                            <span className="truncate">{b.category}</span>
+                            <span className="ml-2 font-semibold text-surface-900">
+                              {formatCurrency(b.amount)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* Goals */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1">
+                        <Target className="text-surface-500" size={14} aria-hidden="true" />
+                        <div className="text-caption font-semibold text-surface-700">
+                          Goals ({attached.goals.length})
+                        </div>
+                      </div>
+                      {typeof onGoToSettingsGoals === "function" && (
+                        <button
+                          type="button"
+                          onClick={() => onGoToSettingsGoals()}
+                          className="text-tiny font-semibold text-primary-600 hover:underline"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    {attached.goals.length === 0 ? (
+                      <div className="text-tiny text-surface-500">No goals linked to this account yet.</div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {attached.goals.map((g) => (
+                          <li key={g.id} className="flex justify-between text-caption text-surface-600">
+                            <span className="truncate">{g.name}</span>
+                            <span className="ml-2 font-semibold text-surface-900">
+                              {formatCurrency(g.perMonth || 0)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* Expenses */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <ArrowRightLeft className="text-surface-500" size={14} aria-hidden="true" />
+                      <div className="text-caption font-semibold text-surface-700">
+                        Expenses ({attached.expenses.length})
+                      </div>
+                    </div>
+                    {attached.expenses.length === 0 ? (
+                      <div className="text-tiny text-surface-500">No tracked expenses for this account yet.</div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {attached.expenses.map((e, idx) => (
+                          <li key={e.id || idx} className="flex justify-between text-caption text-surface-600">
+                            <span className="truncate">{e.description || e.category || "Expense"}</span>
+                            <span className="ml-2 font-semibold text-surface-900">
+                              {formatCurrency(e.amount)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
-        </div>
+              </>
+            )}
+          </CardBody>
+        </Card>
       </section>
     </main>
   );

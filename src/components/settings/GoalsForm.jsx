@@ -1,5 +1,5 @@
 // File: src/components/settings/GoalsForm.jsx
-import React from "react";
+import React, { useState } from "react";
 import { Target, Plus, Trash2, CheckCircle2 } from "lucide-react";
 
 /**
@@ -7,6 +7,9 @@ import { Target, Plus, Trash2, CheckCircle2 } from "lucide-react";
  *
  * This component is fully controlled by the parent (Settings).
  * It assumes it is wrapped by a Card with padding.
+ *
+ * onAddGoal is expected to insert a fully initialized goal object with:
+ * { id, name, targetAmount, perMonth, scope, owner, accountId, contributions, startDate, endDate }
  */
 export default function GoalsForm({
   visibleGoals,
@@ -22,6 +25,49 @@ export default function GoalsForm({
   onDeleteGoal,
   onSaveGoals,
 }) {
+  const [errors, setErrors] = useState({});
+
+  const handleAddGoal = () => {
+    const defaultGoal = {
+      id: crypto.randomUUID(),
+      name: "",
+      targetAmount: 0,
+      perMonth: 0,
+      scope: "personal",
+      owner: localRole || "H",
+      accountId: "",
+      contributions: { H: 0, W: 0 },
+      startDate: "",
+      endDate: "",
+      status: "active",
+    };
+    onAddGoal?.(defaultGoal);
+  };
+
+  const validateField = (goalId, field, value) => {
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (field === "name") {
+        if (!value || !value.trim()) next[goalId] = { ...(next[goalId] || {}), name: "Name is required." };
+        else if (next[goalId]?.name) {
+          next[goalId] = { ...(next[goalId] || {}) };
+          delete next[goalId].name;
+        }
+      }
+      if (field === "targetAmount") {
+        if (!(value > 0)) next[goalId] = { ...(next[goalId] || {}), targetAmount: "Target must be greater than 0." };
+        else if (next[goalId]?.targetAmount) {
+          next[goalId] = { ...(next[goalId] || {}) };
+          delete next[goalId].targetAmount;
+        }
+      }
+      if (next[goalId] && Object.keys(next[goalId]).length === 0) {
+        delete next[goalId];
+      }
+      return next;
+    });
+  };
+
   return (
     <>
       <div className="flex items-center justify-between mb-3">
@@ -31,7 +77,7 @@ export default function GoalsForm({
         </div>
         <button
           type="button"
-          onClick={onAddGoal}
+          onClick={handleAddGoal}
           className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
         >
           <Plus size={12} /> Add goal
@@ -59,8 +105,13 @@ export default function GoalsForm({
                   onChange={(e) =>
                     onGoalChange(goal.id, { name: e.target.value })
                   }
+                  onBlur={(e) => validateField(goal.id, "name", e.target.value)}
                   placeholder="Goal name"
+                  aria-invalid={errors[goal.id]?.name ? "true" : undefined}
                 />
+                {errors[goal.id]?.name && (
+                  <span className="text-[10px] text-rose-600 mt-1">{errors[goal.id].name}</span>
+                )}
               </label>
 
               <label className="flex flex-col text-[10px] text-slate-500">
@@ -76,8 +127,15 @@ export default function GoalsForm({
                         e.target.value === "" ? 0 : parseFloat(e.target.value),
                     })
                   }
+                  onBlur={(e) => validateField(goal.id, "targetAmount", parseFloat(e.target.value))}
                   placeholder="0.00"
+                  aria-invalid={errors[goal.id]?.targetAmount ? "true" : undefined}
                 />
+                {errors[goal.id]?.targetAmount && (
+                  <span className="text-[10px] text-rose-600 mt-1">
+                    {errors[goal.id].targetAmount}
+                  </span>
+                )}
               </label>
 
               {goal.scope === "personal" ? (

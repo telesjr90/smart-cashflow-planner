@@ -1,6 +1,8 @@
 // File: src/components/settings/AllocationRulesForm.jsx
-import React from "react";
+import React, { useState } from "react";
 import { ArrowRightLeft, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import ConfirmModal from "../ui/modals/ConfirmModal";
+import { useToast } from "../ui/toast/useToast";
 
 /**
  * Income allocation rules configuration card content.
@@ -16,6 +18,33 @@ export default function AllocationRulesForm({
   onDeleteRule,
   onSaveRules,
 }) {
+  const { showToast } = useToast();
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [isDeletingId, setIsDeletingId] = useState(null);
+
+  const handleDeleteRequest = (rule) => setPendingDelete(rule);
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete || isDeletingId) return;
+    const targetId = pendingDelete.id;
+    setIsDeletingId(targetId);
+    try {
+      await Promise.resolve(onDeleteRule?.(targetId));
+      showToast({ type: "success", message: "Allocation rule deleted." });
+    } catch (err) {
+      console.error("Failed to delete allocation rule", err);
+      showToast({ type: "error", message: "Failed to delete allocation rule." });
+    } finally {
+      setIsDeletingId(null);
+      setPendingDelete(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    if (isDeletingId) return;
+    setPendingDelete(null);
+  };
+
   return (
     <>
       <div className="flex items-center justify-between mb-3">
@@ -132,7 +161,7 @@ export default function AllocationRulesForm({
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
-                  onClick={() => onDeleteRule(rule.id)}
+                  onClick={() => handleDeleteRequest(rule)}
                 >
                   <Trash2 size={12} /> Delete
                 </button>
@@ -153,6 +182,21 @@ export default function AllocationRulesForm({
           </button>
         </div>
       )}
+
+      <ConfirmModal
+        open={Boolean(pendingDelete)}
+        title="Delete allocation rule?"
+        message={
+          pendingDelete
+            ? `Delete allocation rule "${pendingDelete.label || "this rule"}"?`
+            : ""
+        }
+        confirmLabel={isDeletingId ? "Deleting..." : "Delete"}
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        variant="danger"
+      />
     </>
   );
 }

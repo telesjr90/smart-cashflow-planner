@@ -16,15 +16,7 @@ import IncomeScheduleForm from "../components/settings/IncomeScheduleForm";
 import BillSharingForm from "../components/settings/BillSharingForm";
 import StartingBalanceCard from "../components/settings/StartingBalanceCard";
 import BalancesSummaryCard from "../components/settings/BalancesSummaryCard";
-
-// Small card wrapper for consistent styling
-function Card({ children, className = "" }) {
-  return (
-    <div className={`bg-white rounded-2xl shadow-sm border border-surface-200 ${className}`}>
-      {children}
-    </div>
-  );
-}
+import { Card, CardBody } from "../components/ui/Card";
 
 const DEFAULT_BUDGET_CATEGORIES = {
   housing: { label: "Housing", amount: 0 },
@@ -39,7 +31,7 @@ export default function Settings({
   // Navigation props can remain if passed by router
   scrollToSection = null,
   onResetScrollHint = () => {},
-  onDirtyChange, 
+  onDirtyChange,
   isOnline = true,
 }) {
   const actionsDisabled = !isOnline;
@@ -80,8 +72,6 @@ export default function Settings({
   // Derive Balances for Summary Card (Sum of account opening balances)
   const balances = useMemo(() => {
     const total = accounts.reduce((sum, a) => sum + (Number(a.openingBalance) || 0), 0);
-    // Simple split estimation based on profile role ownership could go here, 
-    // but for now we display global total to keep it simple.
     return { total, husband: 0, wife: 0 };
   }, [accounts]);
 
@@ -183,7 +173,6 @@ export default function Settings({
     const existingAccounts = accounts || [];
     const existingBills = bills || [];
 
-    // Merge Accounts
     const newAccounts = (importedAccounts || []).map((acc, idx) => ({
       ...acc,
       id: acc.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + (existingAccounts.length + idx + 1),
@@ -191,7 +180,6 @@ export default function Settings({
     const allAccounts = [...existingAccounts, ...newAccounts];
     const accountIdByName = new Map(allAccounts.map((a) => [a.name.toLowerCase(), a.id]));
 
-    // Merge Bills
     const newBills = (importedBills || []).map((b) => ({
       id: b.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + (b.dueDay || 1),
       name: b.name,
@@ -199,15 +187,17 @@ export default function Settings({
       dueDay: b.dueDay,
       payer: b.payer,
       category: b.category,
-      accountId: (b.accountName && accountIdByName.get(b.accountName.toLowerCase())) || residualAccountId || allAccounts[0]?.id || null,
+      accountId:
+        (b.accountName && accountIdByName.get(b.accountName.toLowerCase())) ||
+        residualAccountId ||
+        allAccounts[0]?.id ||
+        null,
     }));
     const allBills = [...existingBills, ...newBills];
 
-    // Save
     handleUpdateAccounts(allAccounts, localResidualId);
     handleUpdateBills(allBills);
-    
-    // Sync Local
+
     setLocalAccounts(allAccounts);
     setDirtyAccounts(false);
   };
@@ -422,12 +412,16 @@ export default function Settings({
 
   // Bill Sharing
   const committedBillSharingRef = useRef(billSharing);
-  const [localBillSharing, setLocalBillSharing] = useState(billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] });
+  const [localBillSharing, setLocalBillSharing] = useState(
+    billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] }
+  );
   const [dirtyBillSharing, setDirtyBillSharing] = useState(false);
 
   useEffect(() => {
     committedBillSharingRef.current = billSharing;
-    setLocalBillSharing(billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] });
+    setLocalBillSharing(
+      billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] }
+    );
     setDirtyBillSharing(false);
   }, [billSharing]);
 
@@ -472,30 +466,56 @@ export default function Settings({
   // Dirty State Prop
   useEffect(() => {
     if (onDirtyChange) {
-      const isDirty = dirtyStartingBalance || dirtyProfile || dirtyAccounts || dirtyRules || dirtyIncomeSchedule || dirtyGoals || dirtyBudgets || dirtyBillSharing;
+      const isDirty =
+        dirtyStartingBalance ||
+        dirtyProfile ||
+        dirtyAccounts ||
+        dirtyRules ||
+        dirtyIncomeSchedule ||
+        dirtyGoals ||
+        dirtyBudgets ||
+        dirtyBillSharing;
       onDirtyChange(isDirty);
     }
-  }, [dirtyStartingBalance, dirtyProfile, dirtyAccounts, dirtyRules, dirtyIncomeSchedule, dirtyGoals, dirtyBudgets, dirtyBillSharing, onDirtyChange]);
+  }, [
+    dirtyStartingBalance,
+    dirtyProfile,
+    dirtyAccounts,
+    dirtyRules,
+    dirtyIncomeSchedule,
+    dirtyGoals,
+    dirtyBudgets,
+    dirtyBillSharing,
+    onDirtyChange,
+  ]);
 
   return (
     <div className="min-h-svh bg-surface-50">
-      <header className="px-4 pt-4 pb-3 border-b border-surface-200 bg-white">
+      <header className="px-4 pt-4 pb-3 border-b border-surface-200 bg-surface-100">
         <div className="flex items-center gap-2">
-          <SettingsIcon className="text-surface-700" size={18} />
+          <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-600">
+            <SettingsIcon size={18} aria-hidden="true" />
+          </div>
           <div>
-            <div className="text-xs font-semibold text-surface-900">Settings</div>
-            <div className="text-[11px] text-surface-500">Manage your household, accounts, and goals</div>
+            <div className="text-caption font-semibold text-surface-900">Settings</div>
+            <div className="text-tiny text-surface-500">Manage your household, accounts, and goals</div>
           </div>
         </div>
       </header>
 
       {!isOnline && (
-        <div className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Offline mode: settings changes are disabled until you reconnect.
-        </div>
+        <Card variant="flat" className="mx-4 mt-3">
+          <CardBody className="rounded-2xl border border-warning-500/40 bg-warning-500/10 text-caption text-warning-600">
+            Offline mode: settings changes are disabled until you reconnect.
+          </CardBody>
+        </Card>
       )}
 
-      <section className={`px-4 pt-3 pb-20 space-y-4 max-w-md mx-auto ${actionsDisabled ? "pointer-events-none opacity-60" : ""}`}>
+      <section
+        className={`px-4 pt-3 pb-20 space-y-4 max-w-md mx-auto ${
+          actionsDisabled ? "pointer-events-none opacity-60" : ""
+        }`}
+      >
         <ProfileForm
           uid={userProfile.uid}
           localHouseholdId={localHouseholdId}
@@ -505,24 +525,28 @@ export default function Settings({
           onSaveProfile={handleSaveProfile}
         />
 
-        <section className="mt-4">
-          <Card className="p-4">
-            <StartingBalanceCard
-              startingBalance={localStartingBalance}
-              dirtyStartingBalance={dirtyStartingBalance}
-              onStartingBalanceChange={handleStartingBalanceChange}
-              onSaveStartingBalance={handleSaveStartingBalance}
-            />
+        <section className="mt-2">
+          <Card variant="flat">
+            <CardBody className="p-4">
+              <StartingBalanceCard
+                startingBalance={localStartingBalance}
+                dirtyStartingBalance={dirtyStartingBalance}
+                onStartingBalanceChange={handleStartingBalanceChange}
+                onSaveStartingBalance={handleSaveStartingBalance}
+              />
+            </CardBody>
           </Card>
         </section>
 
-        <section className="mt-4">
-          <Card className="p-4">
-            <BalancesSummaryCard
-              total={formatMoney(balances.total)}
-              husband={formatMoney(balances.husband)}
-              wife={formatMoney(balances.wife)}
-            />
+        <section className="mt-2">
+          <Card variant="flat">
+            <CardBody className="p-4">
+              <BalancesSummaryCard
+                total={formatMoney(balances.total)}
+                husband={formatMoney(balances.husband)}
+                wife={formatMoney(balances.wife)}
+              />
+            </CardBody>
           </Card>
         </section>
 
@@ -538,76 +562,86 @@ export default function Settings({
           onBulkImport={handleBulkImport}
         />
 
-        <section className="mt-4">
-          <Card className="p-4">
-            <AllocationRulesForm
-              rules={localRules}
-              accounts={localAccounts}
-              dirtyRules={dirtyRules}
-              onAddRule={handleAddRule}
-              onRuleChange={handleRuleChange}
-              onDeleteRule={handleDeleteRule}
-              onSaveRules={handleSaveRules}
-            />
+        <section className="mt-2">
+          <Card variant="flat">
+            <CardBody className="p-4">
+              <AllocationRulesForm
+                rules={localRules}
+                accounts={localAccounts}
+                dirtyRules={dirtyRules}
+                onAddRule={handleAddRule}
+                onRuleChange={handleRuleChange}
+                onDeleteRule={handleDeleteRule}
+                onSaveRules={handleSaveRules}
+              />
+            </CardBody>
           </Card>
         </section>
 
-        <section className="mt-4">
-          <Card className="p-4 space-y-4">
-            <IncomeScheduleForm
-              income={localIncome}
-              schedule={localSchedule}
-              dirtyIncomeSchedule={dirtyIncomeSchedule}
-              onIncomeChange={handleIncomeChange}
-              onScheduleChange={handleScheduleChange}
-              onSaveIncomeSchedule={handleSaveIncomeSchedule}
-            />
+        <section className="mt-2">
+          <Card variant="flat">
+            <CardBody className="p-4 space-y-4">
+              <IncomeScheduleForm
+                income={localIncome}
+                schedule={localSchedule}
+                dirtyIncomeSchedule={dirtyIncomeSchedule}
+                onIncomeChange={handleIncomeChange}
+                onScheduleChange={handleScheduleChange}
+                onSaveIncomeSchedule={handleSaveIncomeSchedule}
+              />
+            </CardBody>
           </Card>
         </section>
 
-        <section className="mt-4">
-          <Card className="p-4">
-            <BillSharingForm
-              billSharing={localBillSharing}
-              dirtyBillSharing={dirtyBillSharing}
-              onModeChange={handleBillSharingModeChange}
-              onPercentageChange={handleBillSharingPercentageChange}
-              onSave={handleSaveBillSharing}
-            />
+        <section className="mt-2">
+          <Card variant="flat">
+            <CardBody className="p-4">
+              <BillSharingForm
+                billSharing={localBillSharing}
+                dirtyBillSharing={dirtyBillSharing}
+                onModeChange={handleBillSharingModeChange}
+                onPercentageChange={handleBillSharingPercentageChange}
+                onSave={handleSaveBillSharing}
+              />
+            </CardBody>
           </Card>
         </section>
 
-        <section ref={goalsRef} className="mt-4">
-          <Card className="p-4">
-            <GoalsForm
-              visibleGoals={visibleGoals}
-              localRole={localRole}
-              localAccounts={localAccounts}
-              dirtyGoals={dirtyGoals}
-              onAddGoal={handleAddGoal}
-              onGoalChange={handleGoalChange}
-              onGoalPerMonthChange={handleGoalPerMonthChange}
-              onGoalScopeChange={handleGoalScopeChange}
-              onGoalContributionChange={handleGoalContributionChange}
-              onGoalApproval={handleGoalApproval}
-              onDeleteGoal={handleDeleteGoal}
-              onSaveGoals={handleSaveGoals}
-            />
+        <section ref={goalsRef} className="mt-2">
+          <Card variant="flat">
+            <CardBody className="p-4">
+              <GoalsForm
+                visibleGoals={visibleGoals}
+                localRole={localRole}
+                localAccounts={localAccounts}
+                dirtyGoals={dirtyGoals}
+                onAddGoal={handleAddGoal}
+                onGoalChange={handleGoalChange}
+                onGoalPerMonthChange={handleGoalPerMonthChange}
+                onGoalScopeChange={handleGoalScopeChange}
+                onGoalContributionChange={handleGoalContributionChange}
+                onGoalApproval={handleGoalApproval}
+                onDeleteGoal={handleDeleteGoal}
+                onSaveGoals={handleSaveGoals}
+              />
+            </CardBody>
           </Card>
         </section>
 
-        <section ref={budgetsRef} className="mt-4">
-          <Card className="p-4">
-            <BudgetsForm
-              visibleBudgets={visibleBudgets}
-              localRole={localRole}
-              localAccounts={localAccounts}
-              dirtyBudgets={dirtyBudgets}
-              onAddBudgetCategory={handleAddBudgetCategory}
-              onBudgetChange={handleBudgetChange}
-              onDeleteBudget={handleDeleteBudget}
-              onSaveBudgets={handleSaveBudgets}
-            />
+        <section ref={budgetsRef} className="mt-2">
+          <Card variant="flat">
+            <CardBody className="p-4">
+              <BudgetsForm
+                visibleBudgets={visibleBudgets}
+                localRole={localRole}
+                localAccounts={localAccounts}
+                dirtyBudgets={dirtyBudgets}
+                onAddBudgetCategory={handleAddBudgetCategory}
+                onBudgetChange={handleBudgetChange}
+                onDeleteBudget={handleDeleteBudget}
+                onSaveBudgets={handleSaveBudgets}
+              />
+            </CardBody>
           </Card>
         </section>
       </section>

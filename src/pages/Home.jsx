@@ -11,6 +11,8 @@ import { StatCard } from "../components/ui/StatCard";
 import { Card, CardHeader, CardBody } from "../components/ui/Card";
 import { CashflowChart } from "../components/charts/CashflowChart";
 import DashboardSkeleton from "../components/ui/skeleton/DashboardSkeleton";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
 
 const getMonthIndexFromStart = (startDate, dateStr) => {
   const s = new Date(startDate + "T00:00:00");
@@ -68,156 +70,135 @@ export default function Home({
     return <DashboardSkeleton />;
   }
 
+  const balanceStatus = balance >= 0 ? "positive" : "negative";
+
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 px-4 pt-6">
+    <div className="min-h-screen bg-surface-50 pb-24 px-4 pt-6 space-y-6">
       {/* --- Header --- */}
-      <header className="mb-6">
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-          Smart Cash Flow Planner
-        </h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Overview of your projected and actual cash flow.
-        </p>
+      <header className="space-y-1">
+        <h1 className="text-title-l font-semibold text-surface-900">Smart Cash Flow Planner</h1>
+        <p className="text-caption text-surface-500">Overview of your projected and actual cash flow.</p>
       </header>
 
       {/* --- Hero Section: Balance --- */}
-      <section className="space-y-4 mb-6">
-        <div>
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Projected Cash Flow
-          </h2>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-4xl font-bold text-slate-900 tracking-tight">
-              {formatCurrency(balance)}
-            </span>
-            <span
-              className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                balance >= 0
-                  ? "bg-emerald-50 text-emerald-600"
-                  : "bg-rose-50 text-rose-600"
-              }`}
-            >
-              {balance >= 0 ? "+ On Track" : "Over Budget"}
-            </span>
+      <Card variant="elevated">
+        <CardBody className="space-y-4">
+          <div className="space-y-2">
+            <h2 className="text-caption font-semibold uppercase tracking-wide text-surface-500">Projected Cash Flow</h2>
+            <div className="flex items-baseline gap-2">
+              <span className="text-title-xl font-semibold text-surface-900 tracking-tight">
+                {formatCurrency(balance)}
+              </span>
+              <Badge variant={balanceStatus === "positive" ? "success" : "danger"}>
+                {balanceStatus === "positive" ? "On Track" : "Over Budget"}
+              </Badge>
+            </div>
+            <p className="text-caption text-surface-500">Estimated for this month</p>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Estimated for this month
-          </p>
-        </div>
 
-        {/* Quick Stats Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard
-            title="Income"
-            value={formatCurrency(income)}
-            icon={<TrendingUp size={18} className="text-emerald-500" />}
-            variant="default"
-          />
-          <StatCard
-            title="Expenses"
-            value={formatCurrency(expense)}
-            icon={<TrendingDown size={18} className="text-rose-500" />}
-            variant="subtle"
-          />
-        </div>
-      </section>
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              title="Income"
+              value={formatCurrency(income)}
+              icon={<TrendingUp size={18} className="text-success-500" />}
+              variant="default"
+              size="sm"
+            />
+            <StatCard
+              title="Expenses"
+              value={formatCurrency(expense)}
+              icon={<TrendingDown size={18} className="text-danger-500" />}
+              variant="highlight"
+              size="sm"
+            />
+          </div>
+        </CardBody>
+      </Card>
 
       {/* --- Chart Section --- */}
-      <section className="mb-6">
-        <Card className="rounded-3xl border-none shadow-sm bg-white">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">
-                  Weekly Cash Balance
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Based on your projected income and bills
-                </p>
-              </div>
+      <Card variant="elevated">
+        <CardHeader className="px-5 pt-5 pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-title-l text-surface-900">Weekly Cash Balance</h3>
+              <p className="text-caption text-surface-500">Based on your projected income and bills</p>
             </div>
-          </CardHeader>
-          <CardBody className="pt-0">
-            <CashflowChart data={chartData} />
-          </CardBody>
-        </Card>
-      </section>
+          </div>
+        </CardHeader>
+        <CardBody className="pt-0">
+          <CashflowChart data={chartData} />
+        </CardBody>
+      </Card>
 
       {/* --- Upcoming Bills Section --- */}
-      <section className="mb-10">
-        <div className="flex items-center justify-between mb-3 px-1">
-          <h3 className="text-lg font-bold text-slate-900">Upcoming Bills</h3>
-          <button
-            onClick={onGoToBills}
-            className="text-xs font-semibold text-indigo-600 flex items-center gap-1 hover:text-indigo-700"
-          >
-            See all <ArrowRight size={14} />
-          </button>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-title-l font-semibold text-surface-900">Upcoming Bills</h3>
+          <Button variant="ghost" size="sm" className="text-primary-600" onClick={onGoToBills}>
+            See all <ArrowRight size={14} aria-hidden="true" />
+          </Button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           {upcomingBills.length > 0 ? (
             upcomingBills.map((bill) => (
-              <Card
-                key={`${bill.id}-${bill.dueDate}`}
-                className="rounded-3xl flex items-center justify-between p-4 shadow-sm border-none bg-white"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`h-10 w-10 rounded-2xl flex items-center justify-center ${
-                      bill.overdue
-                        ? "bg-rose-50 text-rose-500"
-                        : "bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    <Wallet size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">
-                      {bill.name}
-                    </p>
-                    <p
-                      className={`text-[10px] font-medium ${
-                        bill.overdue ? "text-rose-500" : "text-slate-500"
+              <Card key={`${bill.id}-${bill.dueDate}`} variant="flat">
+                <CardBody className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`h-10 w-10 rounded-2xl flex items-center justify-center ${
+                        bill.overdue ? "bg-danger-500/10 text-danger-500" : "bg-surface-100 text-surface-600"
                       }`}
                     >
-                      {bill.overdue
-                        ? "Overdue"
-                        : `Due ${formatDateShort(bill.dueDate)}`}
-                    </p>
+                      <Wallet size={20} aria-hidden="true" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-body font-semibold text-surface-900">{bill.name}</p>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-caption ${bill.overdue ? "text-danger-500" : "text-surface-500"}`}>
+                          {bill.overdue ? "Overdue" : `Due ${formatDateShort(bill.dueDate)}`}
+                        </span>
+                        {bill.paid && (
+                          <Badge variant="success" className="px-2 py-0.5 text-tiny">
+                            Paid
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-slate-900">
-                    {formatCurrency((bill.amountCents || bill.amount || 0) / 100)}
-                  </p>
-                  {bill.paid && (
-                    <p className="text-[10px] text-emerald-500 font-medium">
-                      Paid
+                  <div className="text-right space-y-0.5">
+                    <p className="text-body font-semibold text-surface-900">
+                      {formatCurrency((bill.amountCents || bill.amount || 0) / 100)}
                     </p>
-                  )}
-                </div>
+                    {bill.overdue && (
+                      <span className="text-tiny text-danger-500 font-semibold">Attention needed</span>
+                    )}
+                  </div>
+                </CardBody>
               </Card>
             ))
           ) : (
-            <div className="p-6 text-center bg-slate-50 rounded-3xl border border-slate-100 border-dashed">
-              <p className="text-xs text-slate-400">
+            <Card variant="flat">
+              <CardBody className="text-center bg-surface-50 rounded-3xl border border-dashed border-surface-200 text-caption text-surface-500">
                 No upcoming bills for this month.
-              </p>
-            </div>
+              </CardBody>
+            </Card>
           )}
         </div>
       </section>
 
       {/* Floating Action Button */}
-      <button
+      <Button
         onClick={onAddExpense}
-        className="fixed bottom-24 right-4 h-14 w-14 bg-indigo-600 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all z-40"
+        variant="primary"
+        size="lg"
+        className="fixed right-4 bottom-24 sm:bottom-[calc(24px+env(safe-area-inset-bottom))] h-14 w-14 rounded-pill shadow-soft hover:shadow-glow transition-all hover:scale-105 active:scale-95"
         aria-label="Add Transaction"
       >
-        <Plus size={28} />
-      </button>
+        <Plus size={24} aria-hidden="true" />
+      </Button>
     </div>
   );
 }

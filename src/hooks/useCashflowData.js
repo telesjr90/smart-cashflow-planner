@@ -1,5 +1,6 @@
 // File: src/hooks/useCashflowData.js
 import { useState, useEffect, useRef, useCallback } from "react";
+import { shallow } from "zustand/shallow";
 import {
   collection,
   doc,
@@ -16,6 +17,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { getDefaultPlannerStartDate } from "../lib/cashflow/index.js";
 import { useToast } from "../components/ui/toast/useToast";
+import { useCashflowStore } from "../store/useCashflowStore";
 
 // --- Constants & Defaults ---
 const USERS = "users";
@@ -179,6 +181,43 @@ async function loadHouseholdMembers(currentUserUid) {
   }
 }
 
+const selectPlanSnapshot = (state) => ({
+  startDate: state.startDate,
+  startingBalance: state.startingBalance,
+  bills: state.recurringBills?.length ? state.recurringBills : state.bills,
+  paidBills: state.paidBills,
+  confirmedDiscretionary: state.confirmedDiscretionary,
+  expenses: state.transactions?.length ? state.transactions : state.expenses,
+  categoryBudgets: state.categoryBudgets,
+  goals: state.goals,
+  extraIncomes: state.extraIncomes,
+  accounts: state.accounts,
+  allocationRules: state.allocationRules,
+  residualAccountId: state.residualAccountId,
+  income: state.income,
+  paySchedule: state.paySchedule,
+  billSharing: state.billSharing,
+  balanceSplit: state.balanceSplit,
+});
+
+const mergeWithEmptyData = (plan) => {
+  const base = plan || {};
+  return {
+    ...emptyUserData,
+    ...base,
+    paidBills: { ...emptyUserData.paidBills, ...(base.paidBills || {}) },
+    confirmedDiscretionary: { ...emptyUserData.confirmedDiscretionary, ...(base.confirmedDiscretionary || {}) },
+    categoryBudgets: { ...emptyUserData.categoryBudgets, ...(base.categoryBudgets || {}) },
+    billSharing: { ...emptyUserData.billSharing, ...(base.billSharing || {}) },
+    income: { ...emptyUserData.income, ...(base.income || {}) },
+    paySchedule: { ...emptyUserData.paySchedule, ...(base.paySchedule || {}) },
+    balanceSplit: { ...emptyUserData.balanceSplit, ...(base.balanceSplit || {}) },
+    expenses: base.expenses || emptyUserData.expenses,
+    bills: base.bills || emptyUserData.bills,
+    accounts: base.accounts || emptyUserData.accounts,
+  };
+};
+
 // --- The Hook ---
 
 export default function useCashflowData() {
@@ -196,6 +235,8 @@ export default function useCashflowData() {
   const { showToast } = useToast();
   const userUnsubRef = useRef(null);
   const seededOnce = useRef(false);
+  const planFromStore = useCashflowStore(selectPlanSnapshot, shallow);
+  const setFullPlanData = useCashflowStore((state) => state.setFullPlanData);
 
   // Check for Agent Demo mode
   const isAgentDemo =
@@ -209,8 +250,11 @@ export default function useCashflowData() {
   // Auth & Subscription Effect
   useEffect(() => {
     if (isAgentDemo) {
+      // Demo path: bypass Firebase and hydrate from local store (if any) plus defaults.
       const demoUser = { uid: "demo-user", displayName: "Agent Demo" };
       setUser(demoUser);
+      const mergedDemoData = mergeWithEmptyData(planFromStore);
+      setFullPlanData?.(mergedDemoData);
       setMe({
         profile: {
           email: "demo@example.com",
@@ -218,10 +262,10 @@ export default function useCashflowData() {
           role: "H",
           householdId: "demo-household",
         },
-        data: { ...emptyUserData },
+        data: { ...mergedDemoData },
         sectionVersions: { ...DEFAULT_SECTION_VERSIONS },
       });
-      setMyData({ ...emptyUserData });
+      setMyData({ ...mergedDemoData });
       setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
       setHousehold([]);
       setLoading(false);
@@ -229,6 +273,18 @@ export default function useCashflowData() {
       return;
     }
 
+    if (!auth || !db) {
+      // Firebase unavailable: rely on local store snapshot and mark limited functionality.
+      const fallback = mergeWithEmptyData(planFromStore);
+      setMyData(fallback);
+      setFullPlanData?.(fallback);
+      setNetworkError(true);
+      setLoading(false);
+      setHasCached(true);
+      return;
+    }
+
+    // Online path: normal auth flow + Firestore subscription.
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u || null);
       if (!u) {
@@ -301,8 +357,10 @@ export default function useCashflowData() {
           console.warn("onSnapshot error", err);
           setLoading(false);
           setNetworkError(true);
+          const fallbackData = mergeWithEmptyData(planFromStore);
           if (!myData) {
-            setMyData(emptyUserData);
+            setMyData(fallbackData);
+            setFullPlanData?.(fallbackData);
           }
           setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
           setHasCached(true);

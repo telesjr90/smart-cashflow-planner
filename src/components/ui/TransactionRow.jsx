@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { formatCurrency } from "../../lib/cashflow/formatters";
 import { formatDateShort } from "../../utils/dateFormat";
 import { Trash2 } from "lucide-react";
@@ -18,20 +18,43 @@ export function TransactionRow({
   className = "",
 }) {
   const isIncome = variant === "income";
-  const amountClass = isIncome ? "text-success-500" : "text-surface-900";
+  const amountClass = isIncome ? "text-success-500" : "text-danger-500";
   const sign = isIncome ? "+" : "-";
+  const clickable = Boolean(onClick);
 
   return (
     <div
       onClick={onClick}
-      className={`group flex items-center justify-between p-4 bg-white border border-surface-100 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer ${className}`}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.(e);
+              }
+            }
+          : undefined
+      }
+      className={`group flex items-center justify-between p-4 bg-surface-100 border border-surface-200/60 rounded-3xl shadow-soft transition-all duration-200 ${
+        clickable
+          ? "cursor-pointer hover:shadow-soft hover:bg-surface-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50"
+          : ""
+      } ${className}`}
     >
       <div className="flex items-center gap-4 overflow-hidden">
         {/* Icon Container */}
         <div
-          className={`p-3 rounded-xl flex-shrink-0 ${isIncome ? "bg-success-500/10 text-success-500" : "bg-surface-100 text-surface-600"}`}
+          className={`p-3 rounded-2xl flex-shrink-0 ${
+            isIncome ? "bg-success-500/10 text-success-500" : "bg-surface-200/60 text-surface-600"
+          }`}
         >
-          {Icon ? <Icon size={20} weight="duotone" /> : <div className="w-5 h-5 bg-current rounded-full opacity-20" />}
+          {Icon ? (
+            <Icon size={20} weight="duotone" aria-hidden="true" />
+          ) : (
+            <div className="w-5 h-5 bg-current rounded-full opacity-20" />
+          )}
         </div>
 
         {/* Text Details */}
@@ -56,13 +79,14 @@ export function TransactionRow({
           </span>
           {status && (
             <span
-              className={`text-tiny px-2 py-0.5 rounded-full ${
+              className={`rounded-pill px-2 py-0.5 text-tiny font-semibold ${
                 status === "paid"
                   ? "bg-success-500/10 text-success-500"
                   : status === "overdue"
                   ? "bg-danger-500/10 text-danger-500"
                   : "bg-warning-500/10 text-warning-500"
               }`}
+              role="status"
             >
               {status}
             </span>
@@ -76,10 +100,10 @@ export function TransactionRow({
               e.stopPropagation();
               onDelete();
             }}
-            className="p-2 text-surface-300 hover:text-danger-500 hover:bg-danger-50 rounded-full transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 mobile:opacity-100"
+            className="p-2 text-surface-400 hover:text-danger-500 hover:bg-danger-50 rounded-pill transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 mobile:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50"
             aria-label="Delete"
           >
-            <Trash2 size={18} />
+            <Trash2 size={18} aria-hidden="true" />
           </button>
         )}
 
