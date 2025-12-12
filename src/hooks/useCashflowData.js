@@ -235,6 +235,10 @@ export default function useCashflowData() {
   const { showToast } = useToast();
   const userUnsubRef = useRef(null);
   const seededOnce = useRef(false);
+  
+  // Guard ref to prevent infinite loops during store hydration
+  const hasHydratedRef = useRef(false);
+
   const planFromStore = useCashflowStore(selectPlanSnapshot, shallow);
   const setFullPlanData = useCashflowStore((state) => state.setFullPlanData);
 
@@ -249,42 +253,55 @@ export default function useCashflowData() {
 
   // Auth & Subscription Effect
   useEffect(() => {
+    // --- PATH A: DEMO MODE ---
     if (isAgentDemo) {
       // Demo path: bypass Firebase and hydrate from local store (if any) plus defaults.
-      const demoUser = { uid: "demo-user", displayName: "Agent Demo" };
-      setUser(demoUser);
-      const mergedDemoData = mergeWithEmptyData(planFromStore);
-      setFullPlanData?.(mergedDemoData);
-      setMe({
-        profile: {
-          email: "demo@example.com",
-          displayName: "Agent Demo",
-          role: "H",
-          householdId: "demo-household",
-        },
-        data: { ...mergedDemoData },
-        sectionVersions: { ...DEFAULT_SECTION_VERSIONS },
-      });
-      setMyData({ ...mergedDemoData });
-      setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
-      setHousehold([]);
-      setLoading(false);
-      setHasCached(true);
+      // GUARD: Only run this ONCE to avoid infinite loops
+      if (!hasHydratedRef.current) {
+        const demoUser = { uid: "demo-user", displayName: "Agent Demo" };
+        setUser(demoUser);
+        const mergedDemoData = mergeWithEmptyData(planFromStore);
+        
+        setFullPlanData?.(mergedDemoData);
+        
+        setMe({
+          profile: {
+            email: "demo@example.com",
+            displayName: "Agent Demo",
+            role: "H",
+            householdId: "demo-household",
+          },
+          data: { ...mergedDemoData },
+          sectionVersions: { ...DEFAULT_SECTION_VERSIONS },
+        });
+        setMyData({ ...mergedDemoData });
+        setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
+        setHousehold([]);
+        setLoading(false);
+        setHasCached(true);
+        
+        hasHydratedRef.current = true; // Mark as hydrated
+      }
       return;
     }
 
+    // --- PATH B: FIREBASE UNAVAILABLE ---
     if (!auth || !db) {
       // Firebase unavailable: rely on local store snapshot and mark limited functionality.
-      const fallback = mergeWithEmptyData(planFromStore);
-      setMyData(fallback);
-      setFullPlanData?.(fallback);
       setNetworkError(true);
+      if (!hasHydratedRef.current) {
+         const fallback = mergeWithEmptyData(planFromStore);
+         setMyData(fallback);
+         setFullPlanData?.(fallback);
+         hasHydratedRef.current = true;
+      }
       setLoading(false);
       setHasCached(true);
       return;
     }
 
-    // Online path: normal auth flow + Firestore subscription.
+    // --- PATH C: FIREBASE ONLINE ---
+    // Normal auth flow + Firestore subscription.
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u || null);
       if (!u) {
@@ -357,12 +374,14 @@ export default function useCashflowData() {
           console.warn("onSnapshot error", err);
           setLoading(false);
           setNetworkError(true);
-          const fallbackData = mergeWithEmptyData(planFromStore);
-          if (!myData) {
+          
+          // Fallback logic on error
+          if (!hasHydratedRef.current) {
+            const fallbackData = mergeWithEmptyData(planFromStore);
             setMyData(fallbackData);
             setFullPlanData?.(fallbackData);
+            hasHydratedRef.current = true;
           }
-          setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
           setHasCached(true);
         }
       );
