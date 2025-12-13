@@ -543,8 +543,8 @@ export default function Bills({ personScope = "self", isOnline = true }) {
   };
 
   return (
-    <div className="pb-24 space-y-4">
-      <header className="flex items-center justify-between px-4 pt-4">
+    <div className="pb-24 space-y-4" data-testid="bills-page">
+      <header className="flex items-center justify-between px-4 pt-4" data-testid="bills-header">
         <div className="flex items-center gap-2">
           <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-600">
             <ListChecks size={18} aria-hidden="true" />
@@ -578,7 +578,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
       )}
 
       {isEmpty ? (
-        <Card variant="flat" className="mx-4 mt-2">
+        <Card variant="flat" className="mx-4 mt-2" data-testid="bills-empty">
           <CardBody className="text-center space-y-3">
             <div className="text-body font-semibold text-surface-900">You haven't added any bills yet.</div>
             <p className="text-caption text-surface-500">Add your first bill to start planning your cash flow.</p>
@@ -623,7 +623,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
 
           <PastDueBanner items={overdueItems} memberNames={memberNames} />
 
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 space-y-2" data-testid="bills-list">
             {filtered.length === 0 && (
               <Card variant="flat" className="mx-4">
                 <CardBody className="text-caption text-surface-500">

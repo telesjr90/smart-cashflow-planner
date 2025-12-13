@@ -86,7 +86,9 @@ export default function App() {
         startDate: new Date().toISOString().slice(0, 10),
         startingBalance: 5000,
         accounts: [{ id: "acc1", name: "Checking", type: "checking", openingBalance: 5000 }],
-        bills: [],
+        bills: [
+          { id: "demo-bill-1", name: "Internet", amount: 80, dueDay: 15, payer: "H", category: "utilities" },
+        ],
         expenses: [],
         income: { husband: 4000, wife: 0 },
         paySchedule: { type: "semi-monthly", day1: 15, day2: "last" },

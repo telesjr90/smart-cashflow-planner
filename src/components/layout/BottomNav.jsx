@@ -35,6 +35,7 @@ export function BottomNav({ currentTab, onTabChange, onAddPress }) {
                   <div key={item.id} className="relative -top-8">
                     <button
                       onClick={onAddPress}
+                      data-testid={`nav-${item.id}`}
                       className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white shadow-glow hover:scale-105 active:scale-95 transition-transform"
                       aria-label="Add Transaction"
                     >
@@ -49,6 +50,7 @@ export function BottomNav({ currentTab, onTabChange, onAddPress }) {
                 <button
                   key={item.id}
                   onClick={() => onTabChange(item.id)}
+                  data-testid={`nav-${item.id}`}
                   aria-label={item.label}
                   className={`flex flex-col items-center gap-1 p-2 transition-all duration-200 ${
                     isActive 
