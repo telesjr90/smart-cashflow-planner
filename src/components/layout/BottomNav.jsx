@@ -49,6 +49,7 @@ export function BottomNav({ currentTab, onTabChange, onAddPress }) {
                 <button
                   key={item.id}
                   onClick={() => onTabChange(item.id)}
+                  aria-label={item.label}
                   className={`flex flex-col items-center gap-1 p-2 transition-all duration-200 ${
                     isActive 
                       ? 'text-primary-600 dark:text-primary-500' 
@@ -66,7 +67,7 @@ export function BottomNav({ currentTab, onTabChange, onAddPress }) {
                   />
 
                   {/* Optional: Hide label on mobile if space is tight, or keep it small */}
-                  <span className={`text-[10px] font-semibold ${isActive ? 'opacity-100' : 'opacity-0 hidden'}`}>
+                  <span className={`text-[10px] font-semibold ${isActive ? 'opacity-100' : 'opacity-80'}`}>
                     {item.label}
                   </span>
                 </button>

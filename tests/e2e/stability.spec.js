@@ -1,5 +1,33 @@
 import { test, expect } from '@playwright/test';
 
+/**
+ * Clicks a bottom-nav tab using accessible name first, then data-testid as fallback.
+ * Throws a clear, actionable error if neither is found.
+ */
+async function clickNavTab(page, tabName) {
+  const expectedName = tabName.charAt(0).toUpperCase() + tabName.slice(1);
+  const expectedTestId = `nav-${tabName}`;
+  const roleLocator = page.getByRole('button', { name: new RegExp(expectedName, 'i') });
+  try {
+    await roleLocator.first().click({ timeout: 2000 });
+    return;
+  } catch (roleError) {
+    const testIdLocator = page.getByTestId(expectedTestId);
+    try {
+      await testIdLocator.click({ timeout: 2000 });
+      return;
+    } catch (testIdError) {
+      throw new Error(
+        `Could not find bottom-nav button for '${tabName}'. Expected either:\n` +
+        `- a role="button" with accessible name matching /${expectedName}/i, OR\n` +
+        `- an element with data-testid="${expectedTestId}".\n` +
+        `Please ensure BottomNav sets aria-label="${expectedName}" or data-testid="${expectedTestId}" on the ${expectedName} tab button.\n` +
+        `Original errors:\n${roleError}\n${testIdError}`
+      );
+    }
+  }
+}
+
 test.describe('Stability & Smoke (remote, agentDemo)', () => {
   test.beforeEach(async ({ page }) => {
     // Fail on any console error – this is where the React #185 regression would surface
@@ -17,19 +45,25 @@ test.describe('Stability & Smoke (remote, agentDemo)', () => {
 
     for (let i = 0; i < 3; i++) {
       // Planner
-      await page.getByRole('button', { name: /planner/i }).click();
-      await expect(page.getByText(/Monthly snapshot/i)).toBeVisible();
+      await clickNavTab(page, 'planner');
+      await expect(
+        page.getByRole('heading', { level: 1, name: /Financial Analysis|Monthly snapshot/i })
+      ).toBeVisible();
 
-      // Dashboard (Infographic)
-      await page.getByRole('button', { name: /dashboard/i }).click();
-      await expect(page.getByText(/Cash Flow Plan/i)).toBeVisible();
+      // Bills
+      await clickNavTab(page, 'bills');
+      await expect(page.getByText(/Upcoming Bills|Mark Paid/i)).toBeVisible();
+
+      // Expenses
+      await clickNavTab(page, 'expenses');
+      await expect(page.getByText(/Expenses|Transactions/i)).toBeVisible();
 
       // Settings
-      await page.getByRole('button', { name: /settings/i }).click();
+      await clickNavTab(page, 'settings');
       await expect(page.getByText(/Household & Profile/i)).toBeVisible();
 
       // Home
-      await page.getByRole('button', { name: /home/i }).click();
+      await clickNavTab(page, 'home');
       await expect(page.getByText('Projected Cash Flow')).toBeVisible();
     }
   });
