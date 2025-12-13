@@ -27,6 +27,7 @@ export default function Home({
   startDate,
   onGoToBills,
   onAddExpense,
+  onGoToExpenses,
   isLoading,
 }) {
   // 1. Compute upcoming bills using a memo + pure selector
@@ -124,6 +125,16 @@ export default function Home({
               <h3 className="text-title-l text-surface-900">Weekly Cash Balance</h3>
               <p className="text-caption text-surface-500">Based on your projected income and bills</p>
             </div>
+            {typeof onGoToExpenses === "function" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary-600"
+                onClick={() => onGoToExpenses?.()}
+              >
+                View expenses <ArrowRight size={14} aria-hidden="true" />
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardBody className="pt-0">

@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import ErrorBoundary from "./components/ErrorBoundary";
 import { Layout } from "./components/layout/Layout";
 import Home from "./pages/Home";
 import Bills from "./pages/Bills";
 import Planner from "./pages/Planner";
 import Settings from "./pages/Settings";
-import MonthlyCashFlowInfographic from "./MonthlyCashFlowInfographic";
 import Expenses from "./pages/Expenses";
 import AddTransactionModal from "./components/AddTransactionModal.jsx";
 import { Card, CardBody } from "./components/ui/Card";
@@ -323,32 +321,32 @@ export default function App() {
             />
           )}
 
-          {tab === "planner" && <Planner cashflow={activeCashflow} months={plannerMonths} />}
-
-          {tab === "dashboard" && (
-            <ErrorBoundary resetKey={`${userProfile.uid}-${safeStartDate}-${mode}`}>
-              <MonthlyCashFlowInfographic
-                uid={userProfile.uid}
-                householdId={householdId}
-                role={role}
-                personScope={personScope}
-                liveStartDate={safeStartDate}
-                liveIncome={income}
-                livePaySchedule={paySchedule}
-                liveBills={displayedBills}
-                liveAccounts={accounts}
-                liveStartingBalance={unifiedStartingBalance}
-                liveAllocationRules={allocationRules}
-                liveGoals={goals}
-                liveCategoryBudgets={categoryBudgets}
-                paidBills={paidFlags}
-                mergeWrite={(data) => console.log("Infographic write:", data)}
-                liveExtraIncomes={extraIncomes}
-                liveExpenses={expenses}
-                mode={mode}
-                setMode={store.setMode}
-              />
-            </ErrorBoundary>
+          {tab === "planner" && (
+            <Planner
+              cashflow={activeCashflow}
+              months={plannerMonths}
+              infographicProps={{
+                uid: userProfile.uid,
+                householdId,
+                role,
+                personScope,
+                liveStartDate: safeStartDate,
+                liveIncome: income,
+                livePaySchedule: paySchedule,
+                liveBills: displayedBills,
+                liveAccounts: accounts,
+                liveStartingBalance: unifiedStartingBalance,
+                liveAllocationRules: allocationRules,
+                liveGoals: goals,
+                liveCategoryBudgets: categoryBudgets,
+                paidBills: paidFlags,
+                mergeWrite: (data) => console.log("Infographic write:", data),
+                liveExtraIncomes: extraIncomes,
+                liveExpenses: expenses,
+                mode,
+                setMode: store.setMode,
+              }}
+            />
           )}
 
           {tab === "bills" && <Bills personScope={personScope} isOnline={isOnline} />}

@@ -8,7 +8,6 @@ import {
   ListChecks,
   Target,
   Settings as SettingsIcon,
-  CalendarDays,
   ArrowRightLeft,
 } from "lucide-react";
 import { ThemeToggle } from "../ui/ThemeToggle";
@@ -35,7 +34,6 @@ function Tabs({ current, onChange }) {
   const items = [
     { key: "home", label: "Home", icon: HomeIcon },
     { key: "planner", label: "Planner", icon: Target },
-    { key: "dashboard", label: "Dashboard", icon: CalendarDays },
     { key: "bills", label: "Bills", icon: ListChecks },
     { key: "accounts", label: "Accounts", icon: Wallet },
     { key: "settings", label: "Settings", icon: SettingsIcon },

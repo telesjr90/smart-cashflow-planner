@@ -1,6 +1,5 @@
 // File: src/hooks/useCashflowData.js
 import { useState, useEffect, useRef, useCallback } from "react";
-import { shallow } from "zustand/shallow";
 import {
   collection,
   doc,
@@ -235,11 +234,10 @@ export default function useCashflowData() {
   const { showToast } = useToast();
   const userUnsubRef = useRef(null);
   const seededOnce = useRef(false);
-  
+
   // Guard ref to prevent infinite loops during store hydration
   const hasHydratedRef = useRef(false);
 
-  const planFromStore = useCashflowStore(selectPlanSnapshot, shallow);
   const setFullPlanData = useCashflowStore((state) => state.setFullPlanData);
 
   // Check for Agent Demo mode
@@ -253,6 +251,16 @@ export default function useCashflowData() {
 
   // Auth & Subscription Effect
   useEffect(() => {
+    const readPlanFromStore = () => {
+      try {
+        const snapshot = selectPlanSnapshot(useCashflowStore.getState() || {});
+        return mergeWithEmptyData(snapshot);
+      } catch (e) {
+        console.warn("Failed to read plan from store for fallback", e);
+        return mergeWithEmptyData(null);
+      }
+    };
+
     // --- PATH A: DEMO MODE ---
     if (isAgentDemo) {
       // Demo path: bypass Firebase and hydrate from local store (if any) plus defaults.
@@ -260,10 +268,10 @@ export default function useCashflowData() {
       if (!hasHydratedRef.current) {
         const demoUser = { uid: "demo-user", displayName: "Agent Demo" };
         setUser(demoUser);
-        const mergedDemoData = mergeWithEmptyData(planFromStore);
-        
+        const mergedDemoData = readPlanFromStore();
+
         setFullPlanData?.(mergedDemoData);
-        
+
         setMe({
           profile: {
             email: "demo@example.com",
@@ -279,7 +287,7 @@ export default function useCashflowData() {
         setHousehold([]);
         setLoading(false);
         setHasCached(true);
-        
+
         hasHydratedRef.current = true; // Mark as hydrated
       }
       return;
@@ -290,10 +298,10 @@ export default function useCashflowData() {
       // Firebase unavailable: rely on local store snapshot and mark limited functionality.
       setNetworkError(true);
       if (!hasHydratedRef.current) {
-         const fallback = mergeWithEmptyData(planFromStore);
-         setMyData(fallback);
-         setFullPlanData?.(fallback);
-         hasHydratedRef.current = true;
+        const fallback = readPlanFromStore();
+        setMyData(fallback);
+        setFullPlanData?.(fallback);
+        hasHydratedRef.current = true;
       }
       setLoading(false);
       setHasCached(true);
@@ -374,10 +382,10 @@ export default function useCashflowData() {
           console.warn("onSnapshot error", err);
           setLoading(false);
           setNetworkError(true);
-          
+
           // Fallback logic on error
           if (!hasHydratedRef.current) {
-            const fallbackData = mergeWithEmptyData(planFromStore);
+            const fallbackData = readPlanFromStore();
             setMyData(fallbackData);
             setFullPlanData?.(fallbackData);
             hasHydratedRef.current = true;

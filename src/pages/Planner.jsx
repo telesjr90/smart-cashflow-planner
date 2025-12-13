@@ -1,15 +1,17 @@
-import React, { useMemo } from 'react';
-import { TrendingUp, Calendar, Target } from 'lucide-react';
-import { formatDateShort } from '../utils/dateFormat';
+import React, { useMemo } from "react";
+import { TrendingUp, Calendar, Target } from "lucide-react";
+import { formatDateShort } from "../utils/dateFormat";
+import MonthlyCashFlowInfographic from "../MonthlyCashFlowInfographic";
+import ErrorBoundary from "../components/ErrorBoundary";
 
 // Components
-import { Card, CardHeader, CardBody } from '../components/ui/Card';
-import { StatCard } from '../components/ui/StatCard';
-import { CashflowChart } from '../components/charts/CashflowChart';
-import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
+import { Card, CardHeader, CardBody } from "../components/ui/Card";
+import { StatCard } from "../components/ui/StatCard";
+import { CashflowChart } from "../components/charts/CashflowChart";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
 
-export default function Planner({ cashflow, months = 6 }) {
+export default function Planner({ cashflow, months = 6, infographicProps }) {
   const timeline = useMemo(() => {
     const ledger = cashflow?.ledger || [];
     const scopedLedger = ledger.filter(
@@ -115,7 +117,16 @@ export default function Planner({ cashflow, months = 6 }) {
           </div>
         </CardBody>
       </Card>
-
+      {infographicProps && (
+        <ErrorBoundary resetKey={`${infographicProps.uid || "planner"}-${infographicProps.liveStartDate || "start"}`}>
+          <Card variant="elevated">
+            <CardHeader title="Cashflow Infographic" subtitle="Projected vs actual view" />
+            <CardBody className="p-0">
+              <MonthlyCashFlowInfographic {...infographicProps} />
+            </CardBody>
+          </Card>
+        </ErrorBoundary>
+      )}
     </div>
   );
 }

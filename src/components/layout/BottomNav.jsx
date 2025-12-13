@@ -1,13 +1,21 @@
 import React from "react";
-import { Home, BarChart2, Wallet, User, Plus } from "lucide-react";
+import {
+  Home,
+  Target,
+  Receipt,
+  ListChecks,
+  Settings,
+  Plus,
+} from "lucide-react";
 
 export function BottomNav({ currentTab, onTabChange, onAddPress }) {
   const navItems = [
     { id: "home", icon: Home, label: "Home" },
-    { id: "planner", icon: BarChart2, label: "Analysis" }, // Mapped 'Planner' -> Analysis icon
+    { id: "planner", icon: Target, label: "Planner" },
+    { id: "expenses", icon: Receipt, label: "Expenses" },
     { id: "add", icon: Plus, label: "Add", isFab: true },
-    { id: "bills", icon: Wallet, label: "Wallet" }, // Mapped 'Bills' -> Wallet icon
-    { id: "settings", icon: User, label: "Profile" }, // Mapped 'Settings' -> Profile icon
+    { id: "bills", icon: ListChecks, label: "Bills" },
+    { id: "settings", icon: Settings, label: "Settings" },
   ];
 
   return (

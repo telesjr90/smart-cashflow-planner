@@ -1,0 +1,20 @@
+# Feature Routes & Data Map
+
+| Feature | Route/Nav key | Top-level component | Main data hooks/stores used | Main user actions (handlers) |
+| --- | --- | --- | --- | --- |
+| Home / Overview | Tab `home` (BottomNav) | `src/pages/Home.jsx` | Props from `App` (cashflow, bills, paidBills, startDate) derived from `useCashflowStore`/`useCashflowData` upstream | Add transaction via FAB (`onAddExpense`), view upcoming bills (`onGoToBills`), read-only summary |
+| Financial Analysis / Planner | Tab `planner` (BottomNav) | `src/pages/Planner.jsx` | Props `cashflow` from `useCashflowStore`/`useCashflowData` upstream | View projected balances chart; no mutating actions exposed; infographic shown within Planner |
+| Bills | Tab `bills` (BottomNav) | `src/pages/Bills.jsx` | `useCashflowStore` (bills, accounts, budgets, paidBills, etc.), `useCashflowData` (handleUpdateBills, handleTogglePaid, handleBulkMark, handleChangeBillAccount), `useToast` | Add/edit bill (sheet + `handleSaveBill`), delete bill (ConfirmModal `handleConfirmDelete`), mark paid/unpaid (`handleToggle`/`handleBulk`), change account (`handleChangeBillAccount`) |
+| Add Transaction | Triggered by FAB/onAddExpense (no dedicated route) | `src/components/AddTransactionModal.jsx` | Local state; saved via `onSave` prop into store (`updateExpenses` in `App`) | Create transaction (`handleSubmit`), choose category/date/account/type; closes on save |
+| Expenses (Transaction list) | Tab `expenses` exists in `App` (not in BottomNav) | `src/pages/Expenses.jsx` | `useCashflowStore` (expenses/accounts), `useCashflowData` (handleUpdateExpenses), `useToast` | Add/edit transaction (sheet `handleSaveExpense`), delete transaction (ConfirmModal `handleConfirmDelete`), open existing (`handleOpenEdit`) |
+| Settings - Accounts | Tab `settings` (BottomNav), section in `src/pages/Settings.jsx` | `src/components/settings/AccountsForm.jsx` inside `Settings.jsx` | Parent `Settings` uses `useCashflowStore` state + `useCashflowData` handlers (`handleUpdateAccounts` etc.), `useToast` in AccountsForm | Add account (`onAddAccount`), edit fields (`onAccountChange`), delete account (ConfirmModal `handleConfirmDelete`), set residual (`onResidualChange`), save (`onSaveAccounts`) |
+| Settings - Allocation Rules | Tab `settings` | `src/components/settings/AllocationRulesForm.jsx` | Parent `Settings` with `useCashflowStore/useCashflowData`; `useToast` in form | Add rule (`onAddRule`), edit fields (`onRuleChange`), delete rule (ConfirmModal `handleConfirmDelete`), save (`onSaveRules`) |
+| Settings - Goals | Tab `settings` | `src/components/settings/GoalsForm.jsx` | Parent `Settings` with store/hooks | Add goal (`handleAddGoal` inserts initialized goal), edit fields (`onGoalChange`, scope/owner/perMonth contributions), delete (`onDeleteGoal`), save (`onSaveGoals`); light inline validation for name/target |
+| Settings - Budgets | Tab `settings` | `src/components/settings/BudgetsForm.jsx` (used in `Settings.jsx`) | Parent `Settings` with store/hooks | Add/edit/delete budget category (`onAddBudgetCategory`, `onBudgetChange`, `onDeleteBudget`), save (`onSaveBudgets`) |
+| Settings - Pay Schedule / Income | Tab `settings` | `src/components/settings/IncomeForm.jsx` (in `Settings.jsx`) | Parent `Settings` with store/hooks | Edit income/pay schedule (`onIncomeChange`, `onScheduleChange`), save (`onSaveIncomeSchedule`) |
+| Settings - Bill Sharing | Tab `settings` | `src/components/settings/BillSharingForm.jsx` (in `Settings.jsx`) | Parent `Settings` with store/hooks | Change mode/percentage (`onModeChange`, `onPercentageChange`), save (`onSave`) |
+| Infographic (within Planner) | Included within Planner page | `MonthlyCashFlowInfographic` rendered inside `src/pages/Planner.jsx` | `useCashflowStore` state via props passed from `App` | View projected/actual infographic; no separate nav |
+| Accounts page (legacy) | File `src/pages/Accounts.jsx` exists but not referenced by nav | `src/pages/Accounts.jsx` | Uses store/hooks inside the page | Appears unreachable from current navigation |
+
+## Unreachable / hidden features
+- `src/pages/Accounts.jsx` is not wired to BottomNav/Layout routing.
