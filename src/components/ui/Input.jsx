@@ -19,8 +19,10 @@ export function Input({
   const isDisabled = props.disabled;
 
   const variants = {
-    outline: "bg-white border border-surface-200 focus:border-primary-600",
-    filled: "bg-surface-50 border border-surface-200 focus:border-primary-600",
+    outline:
+      "bg-surface-50 border border-surface-200 focus:border-primary-600 focus:ring-primary-600 focus:ring-offset-surface-50",
+    filled:
+      "bg-surface-50 border border-surface-200 focus:border-primary-600 focus:ring-primary-600 focus:ring-offset-surface-50",
   };
 
   const sizes = {
@@ -58,9 +60,9 @@ export function Input({
           className={`
             w-full rounded-2xl ${sizeStyles.input} text-surface-900 placeholder:text-surface-300 transition-all
             ${variants[variant] || variants.outline}
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50
-            disabled:opacity-50 disabled:cursor-not-allowed read-only:bg-surface-100
-            ${isInvalid ? "border-danger-500 focus-visible:ring-danger-500 focus-visible:border-danger-500" : ""}
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50
+            disabled:bg-surface-100 disabled:text-surface-500 disabled:cursor-not-allowed disabled:border-surface-200
+            ${isInvalid ? "border-danger-500 text-danger-500 placeholder:text-danger-500/60 focus-visible:ring-danger-500 focus-visible:border-danger-500" : ""}
             ${(Icon || prefix) ? sizeStyles.left : sizeStyles.padding}
             ${rightElement ? "pr-14" : sizeStyles.padding}
             ${className}

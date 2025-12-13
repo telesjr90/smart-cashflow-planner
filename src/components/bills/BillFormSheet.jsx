@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { X, Loader2 } from "lucide-react";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
+import { Button } from "../ui/Button";
 
 export default function BillFormSheet({
   open,
@@ -78,24 +79,24 @@ export default function BillFormSheet({
 
       <div className="
         pointer-events-auto
-        relative w-full bg-white shadow-xl overflow-hidden
-        rounded-t-3xl sm:rounded-2xl
+        relative w-full bg-surface-50 border border-surface-200 shadow-soft overflow-hidden
+        rounded-t-2xl sm:rounded-2xl
         max-w-md sm:m-4
         animate-in slide-in-from-bottom duration-300 sm:zoom-in-95
       ">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h2 className="text-sm font-bold text-slate-900">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200">
+          <h2 className="text-title-l font-semibold text-surface-900">
             {bill ? "Edit Bill" : "New Bill"}
           </h2>
           <button 
             onClick={onCancel}
-            className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+            className="p-2 rounded-full text-surface-400 hover:bg-surface-100 transition-colors"
           >
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 md:p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Name"
@@ -103,6 +104,8 @@ export default function BillFormSheet({
               placeholder="e.g. Netflix"
               value={draft.name}
               onChange={(e) => setDraft(d => ({ ...d, name: e.target.value }))}
+              data-testid="input-bill-name"
+              className="rounded-lg"
             />
             <Input
               label="Amount"
@@ -112,6 +115,8 @@ export default function BillFormSheet({
               placeholder="0.00"
               value={draft.amount}
               onChange={(e) => setDraft(d => ({ ...d, amount: e.target.value }))}
+              data-testid="input-bill-amount"
+              className="rounded-lg"
             />
           </div>
 
@@ -124,11 +129,14 @@ export default function BillFormSheet({
               rightElement="of month"
               value={draft.dueDay}
               onChange={(e) => setDraft(d => ({ ...d, dueDay: e.target.value }))}
+              data-testid="input-bill-day"
+              className="rounded-lg"
             />
             <Select
               label="Payer"
               value={draft.payer}
               onChange={(e) => setDraft(d => ({ ...d, payer: e.target.value }))}
+              className="rounded-lg"
             >
               <option value="H">{memberNames.H || "Partner H"}</option>
               <option value="W">{memberNames.W || "Partner W"}</option>
@@ -146,6 +154,7 @@ export default function BillFormSheet({
                   ? "No categories available. Bills will be saved as Uncategorized."
                   : undefined
               }
+              className="rounded-lg"
             >
               {budgetOptions.length === 0 ? (
                 <option value="uncategorized">Uncategorized</option>
@@ -167,6 +176,7 @@ export default function BillFormSheet({
                 value={draft.accountId}
                 onChange={(e) => setDraft((d) => ({ ...d, accountId: e.target.value }))}
                 helperText="Select the account this bill draws from."
+                className="rounded-lg"
               >
                 {accounts.map((acc) => (
                   <option key={acc.id} value={acc.id}>
@@ -177,23 +187,29 @@ export default function BillFormSheet({
             )}
           </div>
 
-          <div className="pt-4 flex gap-3">
-            <button
+          <div className="pt-2 flex gap-3">
+            <Button
               type="button"
               onClick={onCancel}
               disabled={isSaving}
-              className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              variant="secondary"
+              size="md"
+              fullWidth
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              disabled={isSaving || !draft.name || !isOnline}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-70 disabled:cursor-not-allowed transition-all"
+              disabled={!draft.name || !isOnline}
+              data-testid="btn-save-bill"
+              variant="primary"
+              size="md"
+              fullWidth
+              isLoading={isSaving}
+              icon={isSaving ? Loader2 : undefined}
             >
-              {isSaving && <Loader2 size={16} className="animate-spin" />}
               {isSaving ? "Saving..." : isOnline ? "Save Bill" : "Offline"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

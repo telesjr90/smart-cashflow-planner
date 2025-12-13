@@ -28,6 +28,7 @@ export default function IncomeScheduleForm({
           <button
             type="button"
             onClick={onSaveIncomeSchedule}
+            data-testid="save-income-btn"
             className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
           >
             <CheckCircle2 size={12} /> Save
@@ -46,6 +47,7 @@ export default function IncomeScheduleForm({
             className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-right text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
             value={income.husband === "" ? "" : income.husband}
             onChange={(e) => onIncomeChange("husband", e.target.value)}
+            data-testid="input-income-husband"
           />
         </div>
 
@@ -59,6 +61,7 @@ export default function IncomeScheduleForm({
             className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-right text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
             value={income.wife === "" ? "" : income.wife}
             onChange={(e) => onIncomeChange("wife", e.target.value)}
+            data-testid="input-income-wife"
           />
         </div>
 

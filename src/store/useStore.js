@@ -182,6 +182,9 @@ export const useStore = create(
 
       setMode: (mode) => set({ mode }),
 
+      setConfirmedDiscretionary: (map) =>
+        set({ confirmedDiscretionary: map || {} }),
+
       setHasHydrated: (hydrated = true) => set({ hasHydrated: hydrated }),
 
       // Reset for logout

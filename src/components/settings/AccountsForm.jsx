@@ -4,6 +4,10 @@ import { Wallet, Plus, Trash2, CheckCircle2 } from "lucide-react";
 import BulkImportSpreadsheet from "../../components/BulkImportSpreadsheet";
 import ConfirmModal from "../ui/modals/ConfirmModal";
 import { useToast } from "../ui/toast/useToast";
+import { Input } from "../ui/Input";
+import { Select } from "../ui/Select";
+import { Button } from "../ui/Button";
+import { Card, CardBody } from "../ui/Card";
 
 /**
  * Accounts configuration card.
@@ -52,123 +56,128 @@ export default function AccountsForm({
 
   return (
     <section className="mt-4">
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Wallet className="text-indigo-500" size={18} />
-            <div className="text-sm font-semibold text-slate-900">Accounts</div>
-          </div>
-          <button
-            type="button"
-            onClick={onAddAccount}
-            className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
-          >
-            <Plus size={12} /> Add account
-          </button>
-        </div>
-
-        {accounts.length === 0 && (
-          <p className="text-xs text-slate-500">No accounts defined yet.</p>
-        )}
-
-        <div className="space-y-3">
-          {accounts.map((acct) => (
-            <div
-              key={acct.id}
-              className="p-2 border border-slate-200 rounded-lg bg-slate-50"
-            >
-              <div className="grid grid-cols-4 gap-2 items-center">
-                <label className="flex flex-col text-[10px] text-slate-500">
-                  <span>Name</span>
-                  <input
-                    type="text"
-                    className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                    value={acct.name}
-                    onChange={(e) =>
-                      onAccountChange(acct.id, { name: e.target.value })
-                    }
-                    placeholder="Account name"
-                  />
-                </label>
-
-                <label className="flex flex-col text-[10px] text-slate-500">
-                  <span>Type</span>
-                  <select
-                    className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                    value={acct.type}
-                    onChange={(e) =>
-                      onAccountChange(acct.id, { type: e.target.value })
-                    }
-                  >
-                    <option value="deposit">Deposit</option>
-                    <option value="savings">Savings</option>
-                  </select>
-                </label>
-
-                <label className="flex flex-col text-[10px] text-slate-500">
-                  <span>Opening balance</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                    value={acct.openingBalance}
-                    onChange={(e) =>
-                      onAccountChange(acct.id, {
-                        openingBalance:
-                          e.target.value === ""
-                            ? 0
-                            : parseFloat(e.target.value),
-                      })
-                    }
-                    placeholder="0.00"
-                  />
-                </label>
-
-                <div className="flex items-center justify-end">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
-                    onClick={() => handleDeleteRequest(acct)}
-                  >
-                    <Trash2 size={12} /> Delete
-                  </button>
-                </div>
-              </div>
+      <Card variant="flat">
+        <CardBody className="p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2" data-testid="accounts-section">
+              <Wallet className="text-primary-600" size={18} />
+              <div className="text-body font-semibold text-surface-900">Accounts</div>
             </div>
-          ))}
-        </div>
-
-        <div className="mt-3 flex items-center justify-between gap-2 text-[11px]">
-          <div className="flex items-center gap-1">
-            <span className="text-slate-500">Residual account</span>
-            <select
-              className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-              value={residualAccountId || ""}
-              onChange={(e) => onResidualChange(e.target.value)}
+            <Button
+              type="button"
+              onClick={onAddAccount}
+              data-testid="btn-add-account"
+              size="sm"
+              variant="primary"
+              icon={Plus}
             >
-              <option value="">None</option>
-              {accounts.map((acct) => (
-                <option key={acct.id} value={acct.id}>
-                  {acct.name}
-                </option>
-              ))}
-            </select>
+              Add account
+            </Button>
           </div>
 
-          {dirtyAccounts && (
-            <button
-              type="button"
-              onClick={onSaveAccounts}
-              className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
-            >
-              <CheckCircle2 size={12} /> Save accounts
-            </button>
+          {accounts.length === 0 && (
+            <p className="text-caption text-surface-500">No accounts defined yet.</p>
           )}
-        </div>
 
-        {/* Bulk import: accounts + bills from CSV template */}
-        <BulkImportSpreadsheet onImport={onBulkImport} />
-      </div>
+          <div className="space-y-3">
+            {accounts.map((acct) => {
+              const nameError = !String(acct.name || "").trim();
+              return (
+                <div
+                  key={acct.id}
+                  className="rounded-2xl border border-surface-200 bg-surface-50 p-3 space-y-2"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
+                    <div className="space-y-1">
+                      <Input
+                        label="Name"
+                        value={acct.name}
+                        onChange={(e) => onAccountChange(acct.id, { name: e.target.value })}
+                        data-testid="input-account-name"
+                        placeholder="Account name"
+                        aria-invalid={nameError}
+                      />
+                      {nameError && (
+                        <p className="text-caption text-danger-500">Name is required.</p>
+                      )}
+                    </div>
+
+                    <Select
+                      label="Type"
+                      value={acct.type}
+                      onChange={(e) => onAccountChange(acct.id, { type: e.target.value })}
+                    >
+                      <option value="deposit">Deposit</option>
+                      <option value="savings">Savings</option>
+                    </Select>
+
+                    <Input
+                      label="Opening balance"
+                      type="number"
+                      step="0.01"
+                      value={acct.openingBalance}
+                      onChange={(e) =>
+                        onAccountChange(acct.id, {
+                          openingBalance: e.target.value === "" ? 0 : parseFloat(e.target.value),
+                        })
+                      }
+                      data-testid="input-account-balance"
+                      placeholder="0.00"
+                    />
+
+                    <div className="flex items-end justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-danger-600"
+                        onClick={() => handleDeleteRequest(acct)}
+                        icon={Trash2}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <span className="text-caption text-surface-600">Residual account</span>
+              <Select
+                value={residualAccountId || ""}
+                onChange={(e) => onResidualChange(e.target.value)}
+                className="min-w-[160px]"
+              >
+                <option value="">None</option>
+                {accounts.map((acct) => (
+                  <option key={acct.id} value={acct.id}>
+                    {acct.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            {dirtyAccounts && (
+              <Button
+                type="button"
+                onClick={onSaveAccounts}
+                data-testid="btn-save-accounts"
+                variant="primary"
+                size="sm"
+                icon={CheckCircle2}
+              >
+                Save accounts
+              </Button>
+            )}
+          </div>
+
+          {/* Bulk import: accounts + bills from CSV template */}
+          <BulkImportSpreadsheet onImport={onBulkImport} />
+        </CardBody>
+      </Card>
 
       <ConfirmModal
         open={Boolean(pendingDelete)}

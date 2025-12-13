@@ -1,186 +1,114 @@
-import React, { useState, useEffect } from 'react';
-import { X, Loader2 } from 'lucide-react';
-import { CATEGORY_LIST } from '../../lib/categories';
-import { Input } from '../ui/Input';
-import { Select } from '../ui/Select';
+import React, { useMemo, useState, useEffect } from "react";
+import { X } from "lucide-react";
+import TransactionForm, {
+  buildDefaultFormValues,
+  transactionToFormValues,
+} from "../transactions/TransactionForm";
+import { useCashflowStore } from "../../store/useCashflowStore";
+import { useToast } from "../ui/toast/useToast";
+import { ModalShell } from "../ui/modals/ModalShell.jsx";
 
 export default function ExpenseFormSheet({
   open,
   expense,
-  accounts = [],
+  accounts: accountsProp = [],
+  categories: categoriesProp = [],
   isSaving = false,
   onSave,
   onCancel,
 }) {
-  const [draft, setDraft] = useState({
-    amount: "",
-    description: "",
-    category: "food",
-    date: new Date().toISOString().slice(0, 10),
-    accountId: "",
-    type: "expense"
-  });
+  const accountsFromStore = useCashflowStore((state) => state.accounts || []);
+  const categoryBudgets = useCashflowStore((state) => state.categoryBudgets || {});
+  const updateExpenses = useCashflowStore((state) => state.updateExpenses);
+  const expenses = useCashflowStore((state) => state.expenses || []);
+  const { showToast } = useToast();
+
+  const accounts = accountsProp.length ? accountsProp : accountsFromStore;
+  const categories = useMemo(() => {
+    if (categoriesProp.length) return categoriesProp;
+    const entries = Object.entries(categoryBudgets).map(([id, cfg]) => ({
+      id,
+      name: cfg?.label || id,
+    }));
+    return entries.length ? entries : [];
+  }, [categoriesProp, categoryBudgets]);
+
+  const [formValues, setFormValues] = useState(() =>
+    expense
+      ? transactionToFormValues(expense)
+      : buildDefaultFormValues({
+          categoryId: categories[0]?.id || "",
+          accountId: accounts[0]?.id || "",
+        })
+  );
 
   useEffect(() => {
-    if (open) {
-      if (expense) {
-        setDraft({
-          id: expense.id,
-          amount: expense.amount ?? "",
-          description: expense.description || "",
-          category: expense.category || "other",
-          date: expense.date || new Date().toISOString().slice(0, 10),
-          accountId: expense.accountId || (accounts[0]?.id || ""),
-          type: expense.type || "expense",
-          createdAt: expense.createdAt
-        });
-      } else {
-        setDraft({
-          amount: "",
-          description: "",
-          category: "food",
-          date: new Date().toISOString().slice(0, 10),
-          accountId: accounts[0]?.id || "",
-          type: "expense"
-        });
-      }
-    }
-  }, [open, expense, accounts]);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const cleanAmount = Number.isFinite(parseFloat(draft.amount)) ? parseFloat(draft.amount) : 0;
-    onSave({
-      ...draft,
-      amount: cleanAmount,
-      date: draft.date || new Date().toISOString().slice(0, 10),
-    });
-  };
+    if (!open) return;
+    setFormValues(() =>
+      expense
+        ? transactionToFormValues(expense)
+        : buildDefaultFormValues({
+            categoryId: categories[0]?.id || "",
+            accountId: accounts[0]?.id || "",
+          })
+    );
+  }, [open, expense, categories, accounts]);
 
   if (!open) return null;
 
+  const handleSubmit = (payload) => {
+    const isEdit = Boolean(expense?.id);
+    const next = isEdit
+      ? expenses.map((tx) => (tx.id === expense.id ? { ...payload, id: expense.id } : tx))
+      : [...expenses, payload];
+
+    updateExpenses(next);
+    onSave?.(payload);
+    showToast({ type: "success", message: isEdit ? "Transaction updated." : "Transaction added." });
+    onCancel?.();
+  };
+
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none"
       role="dialog"
       aria-modal="true"
     >
-      <div 
+      <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity animate-in fade-in duration-200"
         onClick={onCancel}
       />
 
-      <div className="
-        pointer-events-auto
-        relative w-full bg-white shadow-xl overflow-hidden
-        rounded-t-3xl sm:rounded-2xl
-        max-w-md sm:m-4
-        animate-in slide-in-from-bottom duration-300 sm:zoom-in-95
-      ">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h2 className="text-sm font-bold text-slate-900">
+      <ModalShell
+        title={expense ? "Edit Transaction" : "New Transaction"}
+        className="pointer-events-auto relative w-full max-w-md overflow-hidden animate-in slide-in-from-bottom duration-300 max-h-[100dvh] sm:max-h-[90vh] flex flex-col sm:m-4"
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200">
+          <h2 className="text-title-l font-bold text-surface-900">
             {expense ? "Edit Transaction" : "New Transaction"}
           </h2>
-          <button 
+          <button
             onClick={onCancel}
-            className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+            className="p-2 rounded-full text-surface-400 hover:bg-surface-100 hover:text-surface-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50"
+            aria-label="Close"
           >
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div className="flex p-1 bg-slate-100 rounded-xl">
-            <button
-              type="button"
-              onClick={() => setDraft(d => ({ ...d, type: 'expense' }))}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${draft.type === 'expense' ? 'bg-white shadow-sm text-rose-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Expense
-            </button>
-            <button
-              type="button"
-              onClick={() => setDraft(d => ({ ...d, type: 'income' }))}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${draft.type === 'income' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Income
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            <Input
-              label="Amount"
-              type="number"
-              step="0.01"
-              autoFocus={!expense}
-              prefix="$"
-              placeholder="0.00"
-              className="pl-8 py-3 text-2xl font-bold"
-              value={draft.amount}
-              onChange={(e) => setDraft(d => ({ ...d, amount: e.target.value }))}
-            />
-
-            <Input
-              label="Description"
-              placeholder="What is this for?"
-              value={draft.description}
-              onChange={(e) => setDraft(d => ({ ...d, description: e.target.value }))}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Category"
-              value={draft.category}
-              onChange={(e) => setDraft(d => ({ ...d, category: e.target.value }))}
-            >
-              {CATEGORY_LIST.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.label}</option>
-              ))}
-            </Select>
-
-            <Input
-              label="Date"
-              type="date"
-              value={draft.date}
-              onChange={(e) => setDraft(d => ({ ...d, date: e.target.value }))}
-            />
-
-            {accounts.length > 0 && (
-              <div className="col-span-2">
-                <Select
-                  label="Account"
-                  value={draft.accountId}
-                  onChange={(e) => setDraft(d => ({ ...d, accountId: e.target.value }))}
-                >
-                  {accounts.map(acc => (
-                    <option key={acc.id} value={acc.id}>{acc.name}</option>
-                  ))}
-                </Select>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-4 flex gap-3">
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={isSaving}
-              className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving || !draft.amount}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-70 disabled:cursor-not-allowed transition-all"
-            >
-              {isSaving && <Loader2 size={16} className="animate-spin" />}
-              {isSaving ? "Saving..." : "Save"}
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="space-y-4">
+          <TransactionForm
+            values={formValues}
+            onChange={setFormValues}
+            onSubmit={handleSubmit}
+            onCancel={onCancel}
+            accounts={accounts}
+            categories={categories}
+            isOnline
+            isSaving={isSaving}
+          />
+        </div>
+      </ModalShell>
     </div>
   );
 }

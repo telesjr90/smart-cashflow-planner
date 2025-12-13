@@ -4,40 +4,35 @@
 
 @layer base {
   :root {
-    /* --- Brand Colors (Violet) --- */
     --primary-50: 245 243 255;
     --primary-100: 237 233 254;
-    --primary-500: 139 92 246;  /* Vivid Violet */
-    --primary-600: 124 58 237;  /* Main Action */
+    --primary-500: 139 92 246;
+    --primary-600: 124 58 237;
     --primary-700: 109 40 217;
     --primary-900: 76 29 149;
 
-    /* --- Accent (Soft Pink/Rose - often used in finance apps) --- */
     --secondary-500: 244 63 94;
 
-    /* --- Surface (Clean & Soft) --- */
-    --surface-50: 252 252 253;  /* Very light gray/white background */
-    --surface-100: 255 255 255; /* Pure white cards */
-    --surface-200: 239 241 244; /* Borders */
-    --surface-300: 200 205 215; /* Disabled / Icons */
-    --surface-500: 148 163 184; /* Muted text */
-    --surface-900: 15 23 42;    /* Dark navy text */
+    --surface-50: 252 252 253;
+    --surface-100: 255 255 255;
+    --surface-200: 239 241 244;
+    --surface-300: 200 205 215;
+    --surface-500: 148 163 184;
+    --surface-900: 15 23 42;
 
-    /* --- Status Colors --- */
-    --success-500: 34 197 94;   /* Emerald */
-    --danger-500: 239 68 68;    /* Red */
-    --warning-500: 245 158 11;  /* Amber */
+    --success-500: 34 197 94;
+    --danger-500: 239 68 68;
+    --warning-500: 245 158 11;
   }
 
   .dark {
-    /* --- Dark Mode Mapping --- */
     --primary-50: 30 27 75;
     --primary-100: 46 16 101;
     --primary-500: 139 92 246; 
     --primary-600: 124 58 237; 
     
-    --surface-50: 15 23 42;     /* Dark Navy BG */
-    --surface-100: 30 41 59;    /* Lighter Navy Cards */
+    --surface-50: 15 23 42;
+    --surface-100: 30 41 59;
     --surface-200: 51 65 85;
     --surface-300: 71 85 105;
     --surface-500: 148 163 184;
@@ -45,6 +40,34 @@
   }
 
   body {
-    @apply bg-surface-50 text-surface-900 font-sans antialiased transition-colors duration-200;
+    @apply bg-surface-50 text-surface-900 font-sans text-body antialiased leading-relaxed transition-colors duration-200;
+  }
+
+  h1 {
+    @apply text-title-2xl font-bold tracking-tight text-surface-900;
+  }
+
+  h2 {
+    @apply text-title-xl font-semibold text-surface-900;
+  }
+
+  h3 {
+    @apply text-title-l font-semibold text-surface-900;
+  }
+
+  h4 {
+    @apply text-base font-semibold text-surface-900;
+  }
+
+  p {
+    @apply text-body text-surface-900;
+  }
+
+  small {
+    @apply text-caption font-medium text-surface-500;
+  }
+
+  a {
+    @apply text-primary-600 hover:text-primary-700 underline-offset-4;
   }
 }

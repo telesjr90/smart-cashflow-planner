@@ -1,6 +1,6 @@
 // src/pages/Settings.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, ChevronRight } from "lucide-react";
 
 // Hooks
 import { useCashflowStore } from "../store/useCashflowStore";
@@ -272,25 +272,25 @@ export default function Settings({
   };
 
   // Goals
-  const normalizeGoal = (goal) => ({
+  const normalizeGoal = (goal, role) => ({
     scope: "personal",
     status: "active",
     pendingFor: null,
-    createdBy: localRole,
+    createdBy: role,
     contributions: {},
-    owner: localRole,
+    owner: role,
     startDate: "",
     endDate: "",
     accountId: null,
     ...goal,
   });
 
-  const [localGoals, setLocalGoals] = useState(() => (goals || []).map(normalizeGoal));
+  const [localGoals, setLocalGoals] = useState(() => (goals || []).map((g) => normalizeGoal(g, localRoleState)));
   const [dirtyGoals, setDirtyGoals] = useState(false);
 
   useEffect(() => {
-    setLocalGoals((goals || []).map(normalizeGoal));
-  }, [goals]);
+    setLocalGoals((goals || []).map((g) => normalizeGoal(g, localRoleState)));
+  }, [goals, localRoleState]);
 
   const handleAddGoal = () => {
     const newGoal = normalizeGoal({
@@ -299,7 +299,7 @@ export default function Settings({
       targetAmount: 0,
       perMonth: 0,
       savedSoFar: 0,
-    });
+    }, localRoleState);
     setLocalGoals((prev) => [...prev, newGoal]);
     setDirtyGoals(true);
   };
@@ -316,7 +316,7 @@ export default function Settings({
         const updated = { ...goal, scope };
         if (scope === "personal") {
           updated.contributions = {};
-          updated.owner = goal.owner || localRole;
+          updated.owner = goal.owner || localRoleState;
         } else {
           updated.contributions = { H: 0, W: 0 };
           updated.owner = null;
@@ -448,17 +448,24 @@ export default function Settings({
   };
 
   // Scroll Hints
-  const goalsRef = useRef(null);
-  const budgetsRef = useRef(null);
+  const [activeSection, setActiveSection] = useState("profile");
 
   useEffect(() => {
     if (!scrollToSection) return;
     const lower = String(scrollToSection).toLowerCase();
-    if (lower === "goals" && goalsRef.current) {
-      goalsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-      onResetScrollHint();
-    } else if (lower === "budgets" && budgetsRef.current) {
-      budgetsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    const keyMap = {
+      goals: "goals",
+      budgets: "budgets",
+      profile: "profile",
+      accounts: "accounts",
+      allocations: "allocations",
+      income: "income",
+      "bill-sharing": "bill-sharing",
+    };
+    const targetKey = keyMap[lower];
+    if (targetKey) {
+      setActiveSection(targetKey);
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
       onResetScrollHint();
     }
   }, [scrollToSection, onResetScrollHint]);
@@ -491,80 +498,119 @@ export default function Settings({
 
   return (
     <div className="min-h-svh bg-surface-50">
-      <header className="px-4 pt-4 pb-3 border-b border-surface-200 bg-surface-100">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-600">
-            <SettingsIcon size={18} aria-hidden="true" />
+      <header className="px-6 md:px-8 lg:px-12 pt-6 pb-4 border-b border-surface-200 bg-surface-100">
+        <div className="flex items-center gap-3">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-600">
+            <SettingsIcon size={20} aria-hidden="true" />
           </div>
           <div>
-            <div className="text-caption font-semibold text-surface-900">Settings</div>
-            <div className="text-tiny text-surface-500">Manage your household, accounts, and goals</div>
+            <div className="text-title-l font-semibold text-surface-900">Settings</div>
+            <div className="text-caption text-surface-500">Manage your household, accounts, and goals</div>
           </div>
         </div>
       </header>
 
       {!isOnline && (
-        <Card variant="flat" className="mx-4 mt-3">
+        <Card variant="flat" className="mx-6 md:mx-8 lg:mx-12 mt-3">
           <CardBody className="rounded-2xl border border-warning-500/40 bg-warning-500/10 text-caption text-warning-600">
             Offline mode: settings changes are disabled until you reconnect.
           </CardBody>
         </Card>
       )}
 
-      <section
-        className={`px-4 pt-3 pb-20 space-y-4 max-w-md mx-auto ${
+      <main
+        className={`max-w-6xl mx-auto px-6 md:px-8 lg:px-12 py-8 pb-24 space-y-6 ${
           actionsDisabled ? "pointer-events-none opacity-60" : ""
         }`}
       >
-        <ProfileForm
-          uid={userProfile.uid}
-          localHouseholdId={localHouseholdId}
-          localRole={localRoleState}
-          dirtyProfile={dirtyProfile}
-          onProfileChange={handleProfileChange}
-          onSaveProfile={handleSaveProfile}
-        />
+        <nav className="space-y-2">
+          {[
+            { key: "profile", label: "Profile & Household" },
+            { key: "accounts", label: "Accounts & Residual" },
+            { key: "allocations", label: "Allocation Rules" },
+            { key: "income", label: "Income & Pay Schedule" },
+            { key: "bill-sharing", label: "Bill Sharing" },
+            { key: "goals", label: "Goals" },
+            { key: "budgets", label: "Budgets" },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => {
+                setActiveSection(item.key);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              aria-current={activeSection === item.key ? "page" : undefined}
+              className="w-full flex items-center justify-between rounded-2xl bg-surface-50 border border-surface-200 px-4 py-3 text-body font-semibold text-surface-900 hover:bg-surface-100 transition-colors"
+            >
+              <span>{item.label}</span>
+              <ChevronRight size={18} className="text-surface-400" aria-hidden="true" />
+            </button>
+          ))}
+        </nav>
 
-        <section className="mt-2">
-          <Card variant="flat">
-            <CardBody className="p-4">
-              <StartingBalanceCard
-                startingBalance={localStartingBalance}
-                dirtyStartingBalance={dirtyStartingBalance}
-                onStartingBalanceChange={handleStartingBalanceChange}
-                onSaveStartingBalance={handleSaveStartingBalance}
-              />
-            </CardBody>
-          </Card>
-        </section>
+        {activeSection === "profile" && (
+          <div>
+            <ProfileForm
+              uid={userProfile.uid}
+              localHouseholdId={localHouseholdId}
+              localRole={localRoleState}
+              dirtyProfile={dirtyProfile}
+              onProfileChange={handleProfileChange}
+              onSaveProfile={handleSaveProfile}
+            />
+          </div>
+        )}
 
-        <section className="mt-2">
-          <Card variant="flat">
-            <CardBody className="p-4">
-              <BalancesSummaryCard
-                total={formatMoney(balances.total)}
-                husband={formatMoney(balances.husband)}
-                wife={formatMoney(balances.wife)}
-              />
-            </CardBody>
-          </Card>
-        </section>
+        {activeSection === "accounts" && (
+          <div className="space-y-6">
+            <section>
+              <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+                <h3 className="flex items-center justify-between gap-3 text-title-l font-semibold text-surface-900">
+                  Starting Balance
+                </h3>
+                <StartingBalanceCard
+                  startingBalance={localStartingBalance}
+                  dirtyStartingBalance={dirtyStartingBalance}
+                  onStartingBalanceChange={handleStartingBalanceChange}
+                  onSaveStartingBalance={handleSaveStartingBalance}
+                />
+              </div>
+            </section>
 
-        <AccountsForm
-          accounts={localAccounts}
-          residualAccountId={localResidualId}
-          dirtyAccounts={dirtyAccounts}
-          onAddAccount={handleAddAccount}
-          onAccountChange={handleAccountChange}
-          onDeleteAccount={handleDeleteAccount}
-          onResidualChange={handleResidualChange}
-          onSaveAccounts={handleSaveAccounts}
-          onBulkImport={handleBulkImport}
-        />
+            <section>
+              <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+                <h3 className="flex items-center justify-between gap-3 text-title-l font-semibold text-surface-900">
+                  Account Balances
+                </h3>
+                <BalancesSummaryCard
+                  total={formatMoney(balances.total)}
+                  husband={formatMoney(balances.husband)}
+                  wife={formatMoney(balances.wife)}
+                />
+              </div>
+            </section>
 
-        <section className="mt-2">
-          <Card variant="flat">
-            <CardBody className="p-4">
+            <AccountsForm
+              accounts={localAccounts}
+              residualAccountId={localResidualId}
+              dirtyAccounts={dirtyAccounts}
+              onAddAccount={handleAddAccount}
+              onAccountChange={handleAccountChange}
+              onDeleteAccount={handleDeleteAccount}
+              onResidualChange={handleResidualChange}
+              onSaveAccounts={handleSaveAccounts}
+              onBulkImport={handleBulkImport}
+            />
+          </div>
+        )}
+
+        {activeSection === "allocations" && (
+          <section>
+            <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+              <h3 className="flex items-center justify-between gap-3 text-title-l font-semibold text-surface-900">
+                Allocation Rules
+              </h3>
               <AllocationRulesForm
                 rules={localRules}
                 accounts={localAccounts}
@@ -574,13 +620,16 @@ export default function Settings({
                 onDeleteRule={handleDeleteRule}
                 onSaveRules={handleSaveRules}
               />
-            </CardBody>
-          </Card>
-        </section>
+            </div>
+          </section>
+        )}
 
-        <section className="mt-2">
-          <Card variant="flat">
-            <CardBody className="p-4 space-y-4">
+        {activeSection === "income" && (
+          <section>
+            <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+              <h3 className="flex items-center justify-between gap-3 text-title-l font-semibold text-surface-900">
+                Income &amp; Pay Schedule
+              </h3>
               <IncomeScheduleForm
                 income={localIncome}
                 schedule={localSchedule}
@@ -589,13 +638,16 @@ export default function Settings({
                 onScheduleChange={handleScheduleChange}
                 onSaveIncomeSchedule={handleSaveIncomeSchedule}
               />
-            </CardBody>
-          </Card>
-        </section>
+            </div>
+          </section>
+        )}
 
-        <section className="mt-2">
-          <Card variant="flat">
-            <CardBody className="p-4">
+        {activeSection === "bill-sharing" && (
+          <section>
+            <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+              <h3 className="flex items-center justify-between gap-3 text-title-l font-semibold text-surface-900">
+                Bill Sharing
+              </h3>
               <BillSharingForm
                 billSharing={localBillSharing}
                 dirtyBillSharing={dirtyBillSharing}
@@ -603,13 +655,16 @@ export default function Settings({
                 onPercentageChange={handleBillSharingPercentageChange}
                 onSave={handleSaveBillSharing}
               />
-            </CardBody>
-          </Card>
-        </section>
+            </div>
+          </section>
+        )}
 
-        <section ref={goalsRef} className="mt-2">
-          <Card variant="flat">
-            <CardBody className="p-4">
+        {activeSection === "goals" && (
+          <section>
+            <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+              <h3 className="flex items-center justify-between gap-3 text-title-l font-semibold text-surface-900">
+                Goals
+              </h3>
               <GoalsForm
                 visibleGoals={visibleGoals}
                 localRole={localRole}
@@ -624,13 +679,16 @@ export default function Settings({
                 onDeleteGoal={handleDeleteGoal}
                 onSaveGoals={handleSaveGoals}
               />
-            </CardBody>
-          </Card>
-        </section>
+            </div>
+          </section>
+        )}
 
-        <section ref={budgetsRef} className="mt-2">
-          <Card variant="flat">
-            <CardBody className="p-4">
+        {activeSection === "budgets" && (
+          <section>
+            <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+              <h3 className="flex items-center justify-between gap-3 text-title-l font-semibold text-surface-900">
+                Budgets
+              </h3>
               <BudgetsForm
                 visibleBudgets={visibleBudgets}
                 localRole={localRole}
@@ -641,10 +699,10 @@ export default function Settings({
                 onDeleteBudget={handleDeleteBudget}
                 onSaveBudgets={handleSaveBudgets}
               />
-            </CardBody>
-          </Card>
-        </section>
-      </section>
+            </div>
+          </section>
+        )}
+      </main>
     </div>
   );
 }

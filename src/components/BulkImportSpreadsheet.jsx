@@ -1,6 +1,9 @@
 // src/components/BulkImportSpreadsheet.jsx
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import Papa from "papaparse";
+import { UploadCloud, Loader2 } from "lucide-react";
+import { Button } from "./ui/Button";
+import { useToast } from "./ui/toast/useToast";
 
 /**
  * Bulk import component for onboarding accounts + bills from a CSV template.
@@ -11,21 +14,20 @@ import Papa from "papaparse";
  * - Rows with type = "account" create accounts.
  * - Rows with type = "bill" create bills.
  *
- * This component is intentionally dumb about app state – it just parses the file
- * and returns normalized arrays of {accounts, bills} via `onImport`. The parent
- * (e.g. Settings page) is responsible for:
- *   - Mapping `accountName` -> accountId for bills
- *   - Merging with existing accounts/bills
- *   - Calling handleUpdateAccounts / handleUpdateBills
+ * This component parses the file and returns normalized arrays of {accounts, bills} via `onImport`.
+ * The parent (e.g. Settings page) is responsible for mapping names to IDs and persisting.
  */
 export default function BulkImportSpreadsheet({
   onImport,
   templateHref = "/templates/onboarding-import-template.csv",
 }) {
+  const { showToast } = useToast();
+  const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [parsing, setParsing] = useState(false);
   const [errors, setErrors] = useState([]);
   const [preview, setPreview] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   const handleFileChange = (e) => {
     const selected = e.target.files?.[0] || null;
@@ -71,9 +73,7 @@ export default function BulkImportSpreadsheet({
             const bill = rowToBill(row, line, errs);
             if (bill) bills.push(bill);
           } else {
-            errs.push(
-              `Row ${line}: unknown type "${row.type}" (expected "account" or "bill").`
-            );
+            errs.push(`Row ${line}: unknown type "${row.type}" (expected "account" or "bill").`);
           }
         });
 
@@ -94,43 +94,74 @@ export default function BulkImportSpreadsheet({
 
   const handleImportClick = () => {
     if (!preview) return;
-    onImport(preview);
-    // reset state so user can import another file if needed
-    setFile(null);
-    setPreview(null);
-    setErrors([]);
+    setImporting(true);
+    Promise.resolve(onImport(preview))
+      .then(() => {
+        showToast({
+          type: "success",
+          message: `Imported ${preview.accounts.length} account(s) and ${preview.bills.length} bill(s).`,
+        });
+        setFile(null);
+        setPreview(null);
+        setErrors([]);
+      })
+      .catch((err) => {
+        console.error("Import failed", err);
+        showToast({ type: "error", message: "Import failed. Please try again." });
+      })
+      .finally(() => setImporting(false));
   };
 
   return (
-    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+    <div className="mt-4 rounded-2xl border border-surface-200 bg-surface-50 p-4 space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <a
           href={templateHref}
           download="cashflow-onboarding-template.csv"
-          className="text-xs font-medium text-indigo-600 underline"
+          className="text-caption font-semibold text-primary-600 underline"
         >
           Download CSV template
         </a>
 
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          onChange={handleFileChange}
-          className="text-xs"
-        />
+        <div className="flex-1 min-w-[240px]">
+          <label
+            htmlFor="bulk-import-file"
+            className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-surface-200 bg-white px-4 py-3 hover:border-primary-300 transition-colors"
+            onClick={() => inputRef.current?.click()}
+          >
+            <div className="h-10 w-10 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center">
+              {parsing ? <Loader2 className="animate-spin" size={20} /> : <UploadCloud size={20} />}
+            </div>
+            <div className="flex flex-col text-body text-surface-900">
+              <span className="font-semibold">{file ? file.name : "Select or drop a CSV file"}</span>
+              <span className="text-caption text-surface-500">CSV only · accounts & bills</span>
+            </div>
+            <input
+              ref={inputRef}
+              id="bulk-import-file"
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+          </label>
+        </div>
 
-        <button
+        <Button
           type="button"
           onClick={parseFile}
           disabled={!file || parsing}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 disabled:opacity-50"
+          size="sm"
+          variant="secondary"
+          icon={parsing ? Loader2 : undefined}
+          isLoading={parsing}
         >
-          {parsing ? "Parsing…" : "Preview import"}
-        </button>
+          {parsing ? "Parsing..." : "Preview import"}
+        </Button>
       </div>
 
       {errors.length > 0 && (
-        <div className="rounded-md bg-red-50 p-2 text-xs text-red-700 space-y-1">
+        <div className="rounded-2xl bg-danger-500/10 p-3 text-caption text-danger-600 space-y-1 border border-danger-500/20">
           <div className="font-semibold">Import issues</div>
           <ul className="list-disc pl-4 space-y-0.5">
             {errors.map((err) => (
@@ -141,69 +172,66 @@ export default function BulkImportSpreadsheet({
       )}
 
       {preview && (
-        <div className="rounded-md bg-white p-2 text-xs text-slate-700 flex flex-col gap-2">
-          <div className="flex flex-wrap gap-3">
+        <div className="rounded-2xl bg-white p-3 text-body text-surface-900 flex flex-col gap-3 border border-surface-200">
+          <div className="flex flex-wrap gap-3 text-caption text-surface-600">
             <span>
-              Accounts to import:{" "}
-              <strong>{preview.accounts.length}</strong>
+              Accounts to import: <strong>{preview.accounts.length}</strong>
             </span>
             <span>
-              Bills to import:{" "}
-              <strong>{preview.bills.length}</strong>
+              Bills to import: <strong>{preview.bills.length}</strong>
             </span>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-4">
             {preview.accounts.length > 0 && (
-              <div>
-                <div className="font-semibold">Sample accounts</div>
-                <ul className="list-disc pl-4">
+              <div className="space-y-1">
+                <div className="font-semibold text-body">Sample accounts</div>
+                <ul className="list-disc pl-4 text-caption text-surface-600 space-y-0.5">
                   {preview.accounts.slice(0, 3).map((a) => (
                     <li key={`${a.name}-${a.type}`}>
-                      {a.name} – {a.type} – {a.openingBalance.toFixed(2)}
+                      {a.name} — {a.type} — {a.openingBalance.toFixed(2)}
                     </li>
                   ))}
-                  {preview.accounts.length > 3 && (
-                    <li>… and {preview.accounts.length - 3} more</li>
-                  )}
+                  {preview.accounts.length > 3 && <li>… and {preview.accounts.length - 3} more</li>}
                 </ul>
               </div>
             )}
 
             {preview.bills.length > 0 && (
-              <div>
-                <div className="font-semibold">Sample bills</div>
-                <ul className="list-disc pl-4">
+              <div className="space-y-1">
+                <div className="font-semibold text-body">Sample bills</div>
+                <ul className="list-disc pl-4 text-caption text-surface-600 space-y-0.5">
                   {preview.bills.slice(0, 3).map((b) => (
                     <li key={`${b.name}-${b.dueDay}`}>
-                      {b.name} – {b.amount.toFixed(2)} on day {b.dueDay}
+                      {b.name} — {b.amount.toFixed(2)} on day {b.dueDay}
                       {b.accountName ? ` (from ${b.accountName})` : ""}
                     </li>
                   ))}
-                  {preview.bills.length > 3 && (
-                    <li>… and {preview.bills.length - 3} more</li>
-                  )}
+                  {preview.bills.length > 3 && <li>… and {preview.bills.length - 3} more</li>}
                 </ul>
               </div>
             )}
           </div>
 
-          <button
+          <Button
             type="button"
             onClick={handleImportClick}
-            className="self-start rounded-md bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
+            variant="primary"
+            size="sm"
+            icon={importing ? Loader2 : undefined}
+            isLoading={importing}
+            disabled={importing}
+            className="self-start"
           >
-            Import into plan
-          </button>
+            {importing ? "Importing..." : "Import into plan"}
+          </Button>
         </div>
       )}
 
       {!preview && errors.length === 0 && (
-        <p className="text-[11px] text-slate-500">
-          Use the template to add rows for your{" "}
-          <span className="font-medium">accounts</span> and{" "}
-          <span className="font-medium">bills</span>, save as CSV, then upload it
-          here to preview and import.
+        <p className="text-caption text-surface-500">
+          Use the template to add rows for your <span className="font-medium">accounts</span> and{" "}
+          <span className="font-medium">bills</span>, save as CSV, then upload it here to preview and import.
         </p>
       )}
     </div>
@@ -250,9 +278,7 @@ function rowToAccount(row, line, errs) {
   const openingRaw = row.opening_balance;
   const opening = toNumber(openingRaw);
   if (Number.isNaN(opening)) {
-    errs.push(
-      `Row ${line}: invalid opening_balance "${openingRaw}" (expected a number).`
-    );
+    errs.push(`Row ${line}: invalid opening_balance "${openingRaw}" (expected a number).`);
     return null;
   }
 
@@ -272,18 +298,14 @@ function rowToBill(row, line, errs) {
   const amountRaw = row.bill_amount;
   const amount = toNumber(amountRaw);
   if (Number.isNaN(amount)) {
-    errs.push(
-      `Row ${line}: invalid bill_amount "${amountRaw}" (expected a number).`
-    );
+    errs.push(`Row ${line}: invalid bill_amount "${amountRaw}" (expected a number).`);
     return null;
   }
 
   const dueRaw = row.bill_due_day;
   const dueDay = Number(String(dueRaw).trim());
   if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) {
-    errs.push(
-      `Row ${line}: invalid bill_due_day "${dueRaw}" (expected integer between 1 and 31).`
-    );
+    errs.push(`Row ${line}: invalid bill_due_day "${dueRaw}" (expected integer between 1 and 31).`);
     return null;
   }
 
@@ -293,8 +315,6 @@ function rowToBill(row, line, errs) {
     dueDay,
     payer: (row.bill_payer || "AUTO").trim(),
     category: row.bill_category ? String(row.bill_category).trim() : null,
-    accountName: row.bill_account_name
-      ? String(row.bill_account_name).trim()
-      : null,
+    accountName: row.bill_account_name ? String(row.bill_account_name).trim() : null,
   };
 }

@@ -5,13 +5,15 @@ import MonthlyCashFlowInfographic from "../MonthlyCashFlowInfographic";
 import ErrorBoundary from "../components/ErrorBoundary";
 
 // Components
-import { Card, CardHeader, CardBody } from "../components/ui/Card";
+import { Card, CardBody } from "../components/ui/Card";
 import { StatCard } from "../components/ui/StatCard";
 import { CashflowChart } from "../components/charts/CashflowChart";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
+import { useToast } from "../components/ui/toast/useToast";
 
 export default function Planner({ cashflow, months = 6, infographicProps }) {
+  const { showToast } = useToast();
   const timeline = useMemo(() => {
     const ledger = cashflow?.ledger || [];
     const scopedLedger = ledger.filter(
@@ -63,44 +65,51 @@ export default function Planner({ cashflow, months = 6, infographicProps }) {
     <div className="space-y-6 pb-20 px-4">
       {/* Header */}
       <div className="flex items-center justify-between pt-2">
-        <div>
-          <h2 className="text-title-l font-semibold text-surface-900">Financial Analysis</h2>
+        <div className="space-y-1">
+          <h2 className="text-title-2xl font-bold tracking-tight text-surface-900">Financial Analysis</h2>
           <p className="text-caption text-surface-500">6 Month Projection</p>
         </div>
-        <Button variant="secondary" size="sm" icon={Calendar}>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={Calendar}
+          onClick={() => showToast({ type: "info", message: "Adjust range coming soon." })}
+        >
           Adjust Range
         </Button>
       </div>
 
       {/* Main Chart */}
-      <Card variant="elevated">
-        <CardHeader
-          title="Projected Balance"
-          subtitle="Net worth forecast based on recurring bills & income"
-        />
-        <CardBody>
-          <div className="h-64 w-full">
-            <CashflowChart data={timeline} />
+      <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-1">
+            <h3 className="text-title-l text-surface-900">Projected Balance</h3>
+            <p className="text-caption text-surface-500">Net worth forecast based on recurring bills &amp; income</p>
           </div>
-        </CardBody>
-      </Card>
+        </div>
+        <div className="h-64 w-full">
+          <CashflowChart data={timeline} />
+        </div>
+      </div>
 
       {/* Insight Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard
-          title="Lowest Balance"
-          value={fmt(lowestBalance)}
-          icon={<TrendingUp className={lowestIconColor} />}
-          variant={lowestVariant}
-          size="md"
-        />
-        <StatCard
-          title="Peak Balance"
-          value={fmt(highestBalance)}
-          icon={<Target className="text-success-500" />}
-          variant="default"
-          size="md"
-        />
+      <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <StatCard
+            title="Lowest Balance"
+            value={fmt(lowestBalance)}
+            icon={<TrendingUp className={lowestIconColor} />}
+            variant={lowestVariant}
+            size="md"
+          />
+          <StatCard
+            title="Peak Balance"
+            value={fmt(highestBalance)}
+            icon={<Target className="text-success-500" />}
+            variant="default"
+            size="md"
+          />
+        </div>
       </div>
 
       {/* Safety Net / Runway */}
@@ -119,12 +128,14 @@ export default function Planner({ cashflow, months = 6, infographicProps }) {
       </Card>
       {infographicProps && (
         <ErrorBoundary resetKey={`${infographicProps.uid || "planner"}-${infographicProps.liveStartDate || "start"}`}>
-          <Card variant="elevated">
-            <CardHeader title="Cashflow Infographic" subtitle="Projected vs actual view" />
-            <CardBody className="p-0">
-              <MonthlyCashFlowInfographic {...infographicProps} />
-            </CardBody>
-          </Card>
+          <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-title-l text-surface-900">Cashflow Infographic</h3>
+              <p className="text-caption text-surface-500">Projected vs actual view</p>
+            </div>
+            {/* Wrapper removed here to prevent clipping of internal card shadows */}
+            <MonthlyCashFlowInfographic {...infographicProps} />
+          </div>
         </ErrorBoundary>
       )}
     </div>

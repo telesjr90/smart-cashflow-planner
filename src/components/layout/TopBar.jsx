@@ -1,10 +1,16 @@
-import React from 'react';
-import { Bell, Menu } from 'lucide-react';
-import { ThemeToggle } from '../ui/ThemeToggle';
+import React from "react";
+import { Bell, Menu } from "lucide-react";
+import { ThemeToggle } from "../ui/ThemeToggle";
+import { useToast } from "../ui/toast/useToast";
 
 export function TopBar({ user, title, showProfile = true }) {
+  const { showToast } = useToast();
   // Use a reliable placeholder service for the avatar
-  const profileImage = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid || 'Finzo'}`;
+  const profileImage = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid || "Finzo"}`;
+
+  const handleNotificationsClick = () => {
+    showToast({ type: "info", message: "No new notifications yet." });
+  };
 
   return (
     <header className="sticky top-0 z-30 w-full bg-surface-50/80 backdrop-blur-md border-b border-surface-200/50 px-5 py-3 transition-colors duration-200">
@@ -38,9 +44,14 @@ export function TopBar({ user, title, showProfile = true }) {
         {/* Right Side: Actions */}
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <button className="p-2 text-surface-500 hover:bg-surface-200/50 rounded-full transition-colors relative">
-            <Bell size={24} />
-            <span className="absolute top-2 right-2.5 h-2 w-2 rounded-full bg-danger-500 border border-white dark:border-surface-900"></span>
+          <button
+            type="button"
+            className="p-2 text-surface-500 hover:bg-surface-200/50 rounded-full transition-colors"
+            aria-label="Notifications"
+            title="No new notifications"
+            onClick={handleNotificationsClick}
+          >
+            <Bell size={24} aria-hidden="true" />
           </button>
         </div>
       </div>

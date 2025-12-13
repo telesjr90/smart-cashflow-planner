@@ -26,6 +26,8 @@ export function DateInput({
   const helperId = helperText ? `${controlId}-helper` : undefined;
   const errorId = error ? `${controlId}-error` : undefined;
   const describedBy = [helperId, errorId].filter(Boolean).join(" ") || undefined;
+  const normalizedValue =
+    value instanceof Date ? value.toISOString().slice(0, 10) : value ?? "";
 
   return (
     <label className={`block w-full space-y-1 ${containerClassName}`} htmlFor={controlId}>
@@ -39,17 +41,17 @@ export function DateInput({
         <input
           id={controlId}
           type="date"
-          value={value}
+          value={normalizedValue}
           onChange={(e) => onChange?.(e.target.value)}
           min={min}
           max={max}
           required={required}
           disabled={disabled}
           className={`
-            w-full h-11 px-4 pr-11 rounded-2xl bg-white border border-surface-200 text-body text-surface-900 placeholder:text-surface-300 transition-all
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50 focus:border-primary-600
-            disabled:opacity-50 disabled:cursor-not-allowed read-only:bg-surface-100
-            ${isInvalid ? "border-danger-500 focus-visible:ring-danger-500 focus-visible:border-danger-500" : ""}
+            w-full h-11 px-4 pr-11 rounded-2xl bg-surface-50 border border-surface-200 text-body text-surface-900 placeholder:text-surface-300 transition-all appearance-none
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50 focus:border-primary-600
+            disabled:bg-surface-100 disabled:text-surface-500 disabled:cursor-not-allowed disabled:border-surface-200
+            ${isInvalid ? "border-danger-500 text-danger-500 placeholder:text-danger-500/60 focus-visible:ring-danger-500 focus-visible:border-danger-500" : ""}
             ${className}
           `}
           aria-invalid={isInvalid || undefined}

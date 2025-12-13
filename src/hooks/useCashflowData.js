@@ -429,6 +429,9 @@ export default function useCashflowData() {
     async (nextBills) => {
       const base = myData || emptyUserData;
       setMyData({ ...base, bills: nextBills });
+      if (setFullPlanData) {
+        setFullPlanData({ ...base, bills: nextBills });
+      }
       if (isAgentDemo || !auth.currentUser) return;
 
       try {
@@ -580,6 +583,9 @@ export default function useCashflowData() {
       optimistic.residualAccountId = extraArg || base.residualAccountId || newValue[0]?.id || null;
     }
     setMyData(optimistic);
+    if (setFullPlanData) {
+      setFullPlanData(optimistic);
+    }
 
     if (isAgentDemo || !auth.currentUser) return;
 

@@ -249,7 +249,9 @@ const computeProjectCashflow = ({
   const safeBills = Array.isArray(bills) ? bills : [];
   const safePaidBills = paidBills || {};
   const billEvents = [];
-  const todayStr = getTodayISODate();
+  const todayLocal = getTodayISODate();
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const todayCutoff = todayUtc > todayLocal ? todayUtc : todayLocal;
   for (let m = 0; m < projectionMonths; m++) {
     for (const b of safeBills) {
       if (!b?.id) continue;
@@ -266,7 +268,7 @@ const computeProjectCashflow = ({
       // But typically "Actual" mode hides UNPAID bills in the past if the user wants to see "real cash now".
       // However, for projection, we usually want to know what's pending.
       // Logic from previous engine:
-      if (mode === "actual" && billDate < todayStr && !isPaid) {
+      if (mode === "actual" && billDate < todayCutoff && !isPaid) {
         continue;
       }
 
@@ -304,8 +306,8 @@ const computeProjectCashflow = ({
   let filteredIncome = incomeEvents;
   let filteredExpenses = expenseEvents;
   if (mode === "actual") {
-    filteredIncome = incomeEvents.filter((ev) => ev.date <= todayStr);
-    filteredExpenses = expenseEvents.filter((ev) => ev.date <= todayStr);
+    filteredIncome = incomeEvents.filter((ev) => ev.date <= todayCutoff);
+    filteredExpenses = expenseEvents.filter((ev) => ev.date <= todayCutoff);
   }
 
   // 5) Merge and Sort

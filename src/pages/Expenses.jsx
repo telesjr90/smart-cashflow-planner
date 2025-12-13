@@ -137,20 +137,15 @@ export default function Expenses() {
           <h2 className="text-title-l font-semibold text-surface-900">Transactions</h2>
           <p className="text-caption text-surface-500">{expenses.length} Total items</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="icon" aria-label="Search">
-            <Search size={18} />
-          </Button>
-          <Button variant="primary" size="icon" onClick={handleOpenAdd} aria-label="Add transaction">
-            <Plus size={20} />
-          </Button>
-        </div>
+        <Button variant="primary" size="icon" onClick={handleOpenAdd} aria-label="Add transaction">
+          <Plus size={20} />
+        </Button>
       </div>
 
       {/* Empty State */}
       {expenses.length === 0 ? (
-        <Card variant="flat">
-          <CardBody className="flex flex-col items-center justify-center py-10 text-center space-y-3">
+        <Card variant="flat" className="bg-surface-100 border border-surface-200 rounded-2xl shadow-soft">
+          <CardBody className="flex flex-col items-center justify-center text-center space-y-3 p-6 md:p-6">
             <div className="h-16 w-16 bg-surface-100 rounded-3xl flex items-center justify-center text-surface-400">
               <Search size={32} />
             </div>
@@ -158,7 +153,7 @@ export default function Expenses() {
             <p className="text-caption text-surface-500 max-w-xs">
               Add your first expense or income to start tracking.
             </p>
-            <Button onClick={handleOpenAdd} size="sm">
+            <Button onClick={handleOpenAdd} size="sm" variant="primary">
               Add Transaction
             </Button>
           </CardBody>

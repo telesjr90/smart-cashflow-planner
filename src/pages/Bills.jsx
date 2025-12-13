@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Trash2,
   Pencil,
+  Plus,
 } from "lucide-react";
 import { safeLocalStorage, makeScopedKey } from "../lib/safeLocalStorage";
 import BillFormSheet from "../components/bills/BillFormSheet";
@@ -85,7 +86,7 @@ function Segmented({ value, onChange, options }) {
 
 function MonthScroller({ months, selected, onChange }) {
   return (
-    <div className="px-4 mt-3 flex items-center gap-2">
+    <div className="mt-4 flex items-center gap-3">
       <Button
         variant="ghost"
         size="icon"
@@ -543,8 +544,8 @@ export default function Bills({ personScope = "self", isOnline = true }) {
   };
 
   return (
-    <div className="pb-24 space-y-4" data-testid="bills-page">
-      <header className="flex items-center justify-between px-4 pt-4" data-testid="bills-header">
+    <div className="pb-24 px-4 space-y-6" data-testid="bills-page">
+      <header className="flex items-center justify-between pt-4" data-testid="bills-header">
         <div className="flex items-center gap-2">
           <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-600">
             <ListChecks size={18} aria-hidden="true" />
@@ -559,18 +560,17 @@ export default function Bills({ personScope = "self", isOnline = true }) {
             onClick={handleOpenAdd}
             disabled={isOffline}
             variant="primary"
-            size="icon"
+            size="md"
+            icon={Plus}
             aria-label="Add bill"
           >
-            <span className="text-title-l leading-none -mt-0.5" aria-hidden="true">
-              +
-            </span>
+            Add Bill
           </Button>
         )}
       </header>
 
       {isOffline && (
-        <Card variant="flat" className="mx-4">
+        <Card variant="flat">
           <CardBody className="flex items-center gap-2 text-caption text-warning-500 bg-warning-500/10 border border-warning-500/30 rounded-2xl">
             Offline mode: actions are disabled until you reconnect.
           </CardBody>
@@ -578,12 +578,22 @@ export default function Bills({ personScope = "self", isOnline = true }) {
       )}
 
       {isEmpty ? (
-        <Card variant="flat" className="mx-4 mt-2" data-testid="bills-empty">
-          <CardBody className="text-center space-y-3">
+        <Card
+          variant="flat"
+          className="bg-surface-100 border border-surface-200 rounded-2xl shadow-soft"
+          data-testid="bills-empty"
+        >
+          <CardBody className="text-center space-y-3 p-6 md:p-8">
             <div className="text-body font-semibold text-surface-900">You haven't added any bills yet.</div>
             <p className="text-caption text-surface-500">Add your first bill to start planning your cash flow.</p>
             <div className="flex justify-center">
-              <Button type="button" onClick={handleOpenAdd} disabled={isOffline} size="sm">
+              <Button
+                type="button"
+                onClick={handleOpenAdd}
+                disabled={isOffline}
+                size="sm"
+                variant="primary"
+              >
                 Add your first bill
               </Button>
             </div>
@@ -593,7 +603,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
         <>
           <MonthScroller months={months} selected={selectedMonth} onChange={setSelectedMonth} />
 
-          <div className="px-4 mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <Segmented
               value={status}
               onChange={setStatus}
@@ -615,7 +625,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
             />
           </div>
 
-          <div className="px-4 mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-4 grid grid-cols-3 gap-4">
             <SummaryTile label="Total" value={fmt(totals.all)} />
             <SummaryTile label="Unpaid" value={fmt(totals.unpaid)} danger />
             <SummaryTile label="Overdue" value={fmt(totals.overdue)} danger />
@@ -623,10 +633,10 @@ export default function Bills({ personScope = "self", isOnline = true }) {
 
           <PastDueBanner items={overdueItems} memberNames={memberNames} />
 
-          <div className="mt-3 space-y-2" data-testid="bills-list">
+          <div className="mt-4 space-y-3 px-0" data-testid="bills-list">
             {filtered.length === 0 && (
-              <Card variant="flat" className="mx-4">
-                <CardBody className="text-caption text-surface-500">
+              <Card variant="flat" className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft">
+                <CardBody className="text-caption text-surface-500 p-5 text-center">
                   No bills match this filter for the selected month.
                 </CardBody>
               </Card>
@@ -637,7 +647,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
               const accountLabel = hasAccounts ? (acct ? acct.name : acctId || "Unassigned") : item.accountId || "Unassigned";
               const catLabel = categoryLabelForBill(item);
               return (
-                <Card key={`${item.id}-${item.monthIndex}`} variant="flat" className="mx-4">
+                <Card key={`${item.id}-${item.monthIndex}`} variant="flat">
                   <CardBody className="flex items-start gap-3 px-3 py-3">
                     <button
                       className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-pill border border-surface-200 text-surface-500 bg-surface-50 transition-colors hover:bg-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50 disabled:opacity-50"
@@ -695,22 +705,22 @@ export default function Bills({ personScope = "self", isOnline = true }) {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="text-surface-500 hover:text-surface-900 px-2"
+                                className="px-2"
                                 onClick={() => handleOpenEdit(item)}
                                 disabled={isOffline}
+                                icon={Pencil}
                               >
-                                <Pencil size={14} />
                                 Edit
                               </Button>
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="text-danger-500 hover:text-danger-600 px-2"
+                                className="px-2 text-danger-600"
                                 onClick={() => handleDelete(item)}
                                 disabled={isOffline}
+                                icon={Trash2}
                               >
-                                <Trash2 size={14} />
                                 Delete
                               </Button>
                             </div>

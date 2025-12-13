@@ -1,9 +1,35 @@
+import defaultTheme from "tailwindcss/defaultTheme";
+
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
+    "./tests/**/*.{js,ts,jsx,tsx}",
+    "./public/**/*.{html,js}",
+    "./docs/**/*.{md,mdx}",
+  ],
   darkMode: "class",
   theme: {
     extend: {
+      spacing: {
+        "0.5": "0.125rem",
+        "1": "0.25rem",
+        "1.5": "0.375rem",
+        "2": "0.5rem",
+        "2.5": "0.625rem",
+        "3": "0.75rem",
+        "3.5": "0.875rem",
+        "4": "1rem",
+        "5": "1.25rem",
+        "6": "1.5rem",
+        "8": "2rem",
+        "10": "2.5rem",
+        "12": "3rem",
+        "16": "4rem",
+        "20": "5rem",
+        "24": "6rem",
+      },
       colors: {
         primary: {
           50: "rgb(var(--primary-50))",
@@ -29,7 +55,7 @@ export default {
         warning: { 500: "rgb(var(--warning-500))" },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Inter", ...defaultTheme.fontFamily.sans],
       },
       fontSize: {
         "title-2xl": [

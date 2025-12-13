@@ -8,19 +8,15 @@
 // subtract any goal contributions when computing the end-of-month balance
 // and the available discretionary cash.  See QA bug #3 for details.
 
-import React, {
-  useState,
-  useCallback,
-  useMemo,
-  useEffect,
-  useRef,
-} from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Wallet, TrendingUp, AlertCircle, CheckCircle2 } from "lucide-react";
 import { auth, db } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { projectCashflow, fromCents } from "./lib/cashflow/index.js";
 import { getDefaultPlannerStartDate } from "./lib/cashflow/index.js";
 import { safeLocalStorage, makeScopedKey } from "./lib/safeLocalStorage";
+import { useToast } from "./components/ui/toast/useToast";
+import { useCashflowStore } from "./store/useCashflowStore";
 
 const LOCAL_STORAGE_BASE_KEY = "cashFlowData";
 
@@ -139,7 +135,7 @@ function computeGoalContributions(goals = []) {
     if (!perMonth) return;
 
     const owner = goal.owner || goal.payer || "H";
-    const scope = goal.scope || "personal"; // "shared" | "personal"
+    const scope = goal.scope || "shared"; // "shared" | "personal"
 
     if (scope === "shared") {
       contributions.household += perMonth;
@@ -262,6 +258,9 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     liveExpenses,
     residualAccountId: residualAccountIdProp,
   } = props;
+
+  const { showToast } = useToast();
+  const setConfirmedDiscretionaryStore = useCashflowStore((state) => state.setConfirmedDiscretionary);
 
   // Planning state (kept mostly for persistence / FS mirror,
   // but starting balance is now driven from liveAccounts/liveStartingBalance).
@@ -747,41 +746,41 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     if (totalEnd > 2000)
       return {
         label: "Comfortable",
-        color: "emerald",
-        bg: "bg-emerald-50",
-        border: "border-emerald-200",
-        borderLeft: "border-l-emerald-500",
-        text: "text-emerald-700",
-        dot: "bg-emerald-500",
+        color: "success",
+        bg: "bg-success-50",
+        border: "border-success-200",
+        borderLeft: "border-l-success-500",
+        text: "text-success-700",
+        dot: "bg-success-500",
       };
     if (totalEnd < 0)
       return {
         label: "Overstretched",
-        color: "rose",
-        bg: "bg-rose-50",
-        border: "border-rose-200",
-        borderLeft: "border-l-rose-500",
-        text: "text-rose-700",
-        dot: "bg-rose-500",
+        color: "danger",
+        bg: "bg-danger-50",
+        border: "border-danger-200",
+        borderLeft: "border-l-danger-500",
+        text: "text-danger-700",
+        dot: "bg-danger-500",
       };
     if (totalEnd < 200)
       return {
         label: "Tight",
-        color: "amber",
-        bg: "bg-amber-50",
-        border: "border-amber-200",
-        borderLeft: "border-l-amber-500",
-        text: "text-amber-700",
-        dot: "bg-amber-500",
+        color: "warning",
+        bg: "bg-warning-50",
+        border: "border-warning-200",
+        borderLeft: "border-l-warning-500",
+        text: "text-warning-700",
+        dot: "bg-warning-500",
       };
     return {
       label: "On track",
-      color: "sky",
-      bg: "bg-sky-50",
-      border: "border-sky-200",
-      borderLeft: "border-l-sky-500",
-      text: "text-sky-700",
-      dot: "bg-sky-500",
+      color: "primary",
+      bg: "bg-primary-50",
+      border: "border-primary-200",
+      borderLeft: "border-l-primary-500",
+      text: "text-primary-700",
+      dot: "bg-primary-500",
     };
   }, [totalEndBalance]);
 
@@ -857,7 +856,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
 
   const totalEnd = totalEndBalance || 0;
 
-  const handleConfirmDiscretionary = useCallback(() => {
+  const handleConfirmDiscretionary = useCallback(async () => {
     const key =
       personScope === "both" ? "household" : role === "W" ? "W" : "H";
     const current = discretionaryView[
@@ -868,7 +867,14 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       [key]: current.leftover,
     };
     setConfirmedDiscretionary(next);
-    mergeWrite({ confirmedDiscretionary: next });
+    setConfirmedDiscretionaryStore?.(next);
+    try {
+      await Promise.resolve(mergeWrite({ confirmedDiscretionary: next }));
+      showToast({ type: "success", message: "Plan locked for this scope." });
+    } catch (err) {
+      console.warn("Lock plan failed", err);
+      showToast({ type: "error", message: "Unable to lock plan. Please try again." });
+    }
   }, [
     discretionaryView,
     personScope,
@@ -876,227 +882,232 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     confirmedDiscretionary,
     setConfirmedDiscretionary,
     mergeWrite,
+    setConfirmedDiscretionaryStore,
+    showToast,
   ]);
 
-  const handleResetDiscretionary = useCallback(() => {
+  const handleResetDiscretionary = useCallback(async () => {
     const key =
       personScope === "both" ? "household" : role === "W" ? "W" : "H";
     const next = { ...confirmedDiscretionary };
     delete next[key];
     setConfirmedDiscretionary(next);
-    mergeWrite({ confirmedDiscretionary: next });
+    setConfirmedDiscretionaryStore?.(next);
+    try {
+      await Promise.resolve(mergeWrite({ confirmedDiscretionary: next }));
+      showToast({ type: "success", message: "Plan lock cleared." });
+    } catch (err) {
+      console.warn("Unlock plan failed", err);
+      showToast({ type: "error", message: "Unable to clear lock. Please try again." });
+    }
   }, [
     personScope,
     role,
     confirmedDiscretionary,
     setConfirmedDiscretionary,
     mergeWrite,
+    setConfirmedDiscretionaryStore,
+    showToast,
   ]);
 
   // --- Render ---
 
   return (
-    <div className="bg-slate-50 min-h-full pb-24">
-      <div className="max-w-md mx-auto px-4 pt-4 space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <div className="text-[11px] uppercase tracking-wide text-slate-400">
-              Monthly cash flow
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <div className="text-caption uppercase tracking-wide text-surface-500">
+            Monthly cash flow
+          </div>
+          <div className="flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-surface-500" />
+            <span className="text-body font-semibold text-surface-900">
+              {engineFirstMonth?.label || "Your plan"}
+            </span>
+          </div>
+        </div>
+        <div className="inline-flex items-center rounded-full bg-surface-100 border border-surface-200 p-0.5">
+          <button
+            type="button"
+            onClick={() => setMode("projected")}
+            className={`px-2.5 py-1 text-[10px] rounded-full font-medium ${
+              mode === "projected"
+                ? "bg-surface-50 border border-surface-200 shadow-soft text-surface-900"
+                : "text-surface-500 hover:text-surface-900"
+            }`}
+          >
+            Projected
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("actual")}
+            className={`px-2.5 py-1 text-[10px] rounded-full font-medium ${
+              mode === "actual"
+                ? "bg-surface-50 border border-surface-200 shadow-soft text-surface-900"
+                : "text-surface-500 hover:text-surface-900"
+            }`}
+          >
+            Actual
+          </button>
+        </div>
+      </div>
+
+      {/* Summary strip */}
+      <div className="bg-surface-100 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-3">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <div className="px-4 py-2 rounded-2xl bg-surface-50 border border-surface-200">
+            <div className="text-surface-500 font-medium uppercase tracking-wider text-caption mb-0.5">
+              Starting Balance
             </div>
-            <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-slate-600" />
-              <span className="text-sm font-semibold text-slate-900">
-                {engineFirstMonth?.label || "Your plan"}
+            <div className="font-bold text-surface-900 text-base">
+              {fmt(totalStartBalance)}
+            </div>
+          </div>
+          <div className="px-4 py-2 rounded-2xl bg-surface-50 border border-surface-200">
+            <div className="text-surface-500 font-medium uppercase tracking-wider text-caption mb-0.5">
+              Projected End Balance
+            </div>
+            <div className="font-bold text-surface-900 text-base">
+              {fmt(totalEnd)}
+            </div>
+          </div>
+          <div
+            className={`flex items-center gap-2 px-3 py-2 rounded-2xl border-l-4 ${healthDescriptor.bg} ${healthDescriptor.border} ${healthDescriptor.borderLeft}`}
+          >
+            <span className={`w-2 h-2 rounded-full ${healthDescriptor.dot}`} />
+            <div className="flex flex-col">
+              <span
+                className={`text-[11px] font-semibold ${healthDescriptor.text}`}
+              >
+                {healthDescriptor.label}
+              </span>
+              <span className="text-caption text-surface-500">
+                Based on end-of-month cash
               </span>
             </div>
           </div>
-          <div className="inline-flex items-center rounded-full bg-slate-100 p-0.5">
-            <button
-              type="button"
-              onClick={() => setMode("projected")}
-              className={`px-2.5 py-1 text-[10px] rounded-full font-medium ${
-                mode === "projected"
-                  ? "bg-white shadow-sm text-slate-900"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              Projected
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("actual")}
-              className={`px-2.5 py-1 text-[10px] rounded-full font-medium ${
-                mode === "actual"
-                  ? "bg-white shadow-sm text-slate-900"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              Actual
-            </button>
-          </div>
         </div>
 
-        {/* Summary strip */}
-        <div className="bg-white border border-slate-200 rounded-3xl shadow-sm p-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100">
-              <div className="text-slate-400 font-medium uppercase tracking-wider text-[10px] mb-0.5">
-                Starting Balance
-              </div>
-              <div className="font-bold text-slate-700 text-base">
-                {fmt(totalStartBalance)}
-              </div>
+        {/* Discretionary view */}
+        <div className="mt-2 border-t border-surface-200 pt-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1 text-caption text-surface-500">
+              <TrendingUp className="w-3 h-3" />
+              <span>Available to spend</span>
             </div>
-            <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100">
-              <div className="text-slate-400 font-medium uppercase tracking-wider text-[10px] mb-0.5">
-                Projected End Balance
-              </div>
-              <div className="font-bold text-slate-700 text-base">
-                {fmt(totalEnd)}
-              </div>
-            </div>
-            <div
-              className={`flex items-center gap-2 px-3 py-2 rounded-2xl border-l-4 ${healthDescriptor.bg} ${healthDescriptor.border}`}
-            >
-              <span
-                className={`w-2 h-2 rounded-full ${healthDescriptor.dot}`}
-              />
-              <div className="flex flex-col">
-                <span
-                  className={`text-[11px] font-semibold ${healthDescriptor.text}`}
-                >
-                  {healthDescriptor.label}
-                </span>
-                <span className="text-[10px] text-slate-500">
-                  Based on end-of-month cash
-                </span>
-              </div>
+            <div className="flex items-center gap-1 text-caption text-surface-500">
+              <span className="inline-flex items-center rounded-full border border-surface-200 px-2 py-0.5">
+                <span className="w-2 h-2 rounded-full bg-success-500 mr-1" />
+                Confirmed plan
+              </span>
             </div>
           </div>
 
-          {/* Discretionary view */}
-          <div className="mt-2 border-t border-slate-100 pt-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1 text-xs text-slate-600">
-                <TrendingUp className="w-3 h-3" />
-                <span>Available to spend</span>
+          <div className="flex items-center justify-between text-xs">
+            <div className="space-y-0.5">
+              <div className="text-caption text-surface-500">
+                After bills &amp; goal savings
               </div>
-              <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-0.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1" />
-                  Confirmed plan
-                </span>
+              <div className="text-2xl font-semibold text-surface-900">
+                {fmt(discretionaryForRole.leftover)}
               </div>
             </div>
-
-            <div className="flex items-center justify-between text-xs">
-              <div className="space-y-0.5">
-                <div className="text-[11px] text-slate-500">
-                  After bills &amp; goal savings
-                </div>
-                <div className="text-2xl font-semibold text-slate-900">
-                  {fmt(discretionaryForRole.leftover)}
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-col items-end gap-1">
+              <button
+                type="button"
+                onClick={handleConfirmDiscretionary}
+                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-success-600 text-white text-[11px] font-medium hover:bg-success-700 shadow-sm transition-colors"
+              >
+                <CheckCircle2 className="w-3 h-3 mr-1" />
+                Lock this plan
+              </button>
+              {confirmedDiscretionary[
+                personScope === "both"
+                  ? "household"
+                  : role === "W"
+                  ? "W"
+                  : "H"
+              ] && (
                 <button
                   type="button"
-                  onClick={handleConfirmDiscretionary}
-                  className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700"
+                  onClick={handleResetDiscretionary}
+                  className="inline-flex items-center px-2.5 py-1 rounded-lg bg-surface-100 border border-surface-200 text-surface-900 text-[11px] font-medium hover:bg-surface-200 transition-colors"
                 >
-                  <CheckCircle2 className="w-3 h-3 mr-1" />
-                  Lock this plan
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  Clear confirmed amount
                 </button>
-                {confirmedDiscretionary[
-                  personScope === "both"
-                    ? "household"
-                    : role === "W"
-                    ? "W"
-                    : "H"
-                ] && (
-                  <button
-                    type="button"
-                    onClick={handleResetDiscretionary}
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] text-slate-500 hover:text-slate-700"
-                  >
-                    <AlertCircle className="w-3 h-3 mr-1" />
-                    Clear confirmed amount
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Weekly breakdown */}
-        <div className="bg-white border border-slate-200 rounded-3xl shadow-sm p-4 space-y-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-semibold text-slate-900">
-              Weekly flow
-            </div>
-            <div className="text-[11px] text-slate-500">
-              {mode === "actual"
-                ? "Using realized income, bills, and expenses"
-                : "Using planned income, bills, and goals"}
-            </div>
+      {/* Weekly breakdown */}
+      <div className="bg-surface-100 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-semibold text-surface-900">Weekly flow</div>
+          <div className="text-[11px] text-surface-500">
+            {mode === "actual"
+              ? "Using realized income, bills, and expenses"
+              : "Using planned income, bills, and goals"}
           </div>
+        </div>
 
-          {weeksView.weeks && weeksView.weeks.length > 0 ? (
-            <div className="space-y-2">
-              {weeksView.weeks.map((w) => (
-                <div
-                  key={w.label}
-                  className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-[11px]"
-                >
-                  <div className="flex flex-col">
-                    <span className="text-slate-500">{w.label}</span>
-                    <span className="text-[10px] text-slate-400">
-                      Income vs. bills
+        {weeksView.weeks && weeksView.weeks.length > 0 ? (
+          <div className="space-y-2">
+            {weeksView.weeks.map((w) => (
+              <div
+                key={w.label}
+                className="flex items-center justify-between rounded-2xl border border-surface-200 bg-surface-50 px-3 py-2 text-[11px]"
+              >
+                <div className="flex flex-col">
+                  <span className="text-surface-500">{w.label}</span>
+                  <span className="text-[10px] text-surface-400">
+                    Income vs. bills
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col text-right">
+                    <span className="text-surface-500">Income</span>
+                    <span className="font-semibold text-surface-900">
+                      {fmt(w.income)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col text-right">
-                      <span className="text-slate-500">Income</span>
-                      <span className="font-semibold text-slate-900">
-                        {fmt(w.income)}
-                      </span>
-                    </div>
-                    <div className="flex flex-col text-right">
-                      <span className="text-slate-500">Bills</span>
-                      <span className="font-semibold text-slate-900">
-                        {fmt(w.bills)}
-                      </span>
-                    </div>
-                    <div className="flex flex-col text-right">
-                      <span className="text-slate-500">Net</span>
-                      <span
-                        className={`font-semibold ${
-                          w.net >= 0 ? "text-emerald-600" : "text-rose-600"
-                        }`}
-                      >
-                        {fmt(w.net)}
-                      </span>
-                    </div>
+                  <div className="flex flex-col text-right">
+                    <span className="text-surface-500">Bills</span>
+                    <span className="font-semibold text-surface-900">
+                      {fmt(w.bills)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col text-right">
+                    <span className="text-surface-500">Net</span>
+                    <span
+                      className={`font-semibold ${
+                        w.net >= 0 ? "text-success-600" : "text-danger-600"
+                      }`}
+                    >
+                      {fmt(w.net)}
+                    </span>
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-[11px] text-slate-500">
-              Add income and bills to see a weekly breakdown.
-            </div>
-          )}
-        </div>
-
-        {/* Error callout if Firestore failed */}
-        {fsError && (
-          <div className="rounded-3xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 flex items-center gap-2">
-            <AlertCircle className="w-3 h-3" />
-            <span>{fsError}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-[11px] text-surface-500">
+            Add income and bills to see a weekly breakdown.
           </div>
         )}
       </div>
+
+      {/* Error callout if Firestore failed */}
+      {fsError && (
+        <div className="rounded-2xl border border-warning-200 bg-warning-50 px-3 py-2 text-[11px] text-warning-800 flex items-center gap-2">
+          <AlertCircle className="w-3 h-3" />
+          <span>{fsError}</span>
+        </div>
+      )}
     </div>
   );
 }
