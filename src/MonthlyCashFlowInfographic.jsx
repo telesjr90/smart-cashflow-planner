@@ -1,3 +1,5 @@
+// src/MonthlyCashFlowInfographic.jsx
+
 // Updated to fix starting balance + actual mode wiring
 // Updated in Step 4 – Dashboard starting balances from real data
 //
@@ -149,10 +151,66 @@ function computeGoalContributions(goals = []) {
   return contributions;
 }
 
+function pickFirstDefined(obj, keys) {
+  for (const k of keys) {
+    if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) {
+      return { key: k, value: obj[k] };
+    }
+  }
+  return { key: null, value: undefined };
+}
+
+function coerceNumber(value) {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^0-9.-]/g, "");
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  return NaN;
+}
+
+/**
+ * Normalize a currency-like field that may be provided in cents or dollars.
+ *
+ * We prefer explicit "*Cents" keys when available. Otherwise, we choose the
+ * safest interpretation using a small heuristic against the month total so we
+ * don't double-convert dollar values or show absurdly large "dollar" numbers.
+ */
+function normalizeCurrencyField(obj, candidateKeys, monthTotalDollars) {
+  const { key, value } = pickFirstDefined(obj, candidateKeys);
+  const raw = coerceNumber(value);
+  if (!Number.isFinite(raw)) return 0;
+
+  const keySuggestsCents = !!key && /cents/i.test(String(key));
+  if (keySuggestsCents) return Number(fromCents(raw));
+
+  // If it has decimals, it's almost certainly already dollars.
+  if (!Number.isInteger(raw)) return raw;
+
+  const dollars = raw;
+  const centsAsDollars = Number(fromCents(raw));
+
+  // If we have a usable month total, pick the interpretation that isn't wildly larger.
+  if (Number.isFinite(monthTotalDollars) && monthTotalDollars > 0) {
+    const maxReasonable = monthTotalDollars * 1.25;
+    const dollarsPlausible = Math.abs(dollars) <= maxReasonable;
+    const centsPlausible = Math.abs(centsAsDollars) <= maxReasonable;
+
+    if (centsPlausible && !dollarsPlausible) return centsAsDollars;
+    if (dollarsPlausible && !centsPlausible) return dollars;
+
+    // If both (or neither) are plausible, pick the smaller magnitude to avoid huge misreads.
+    return Math.abs(centsAsDollars) < Math.abs(dollars) ? centsAsDollars : dollars;
+  }
+
+  // No month context: fall back to a conservative heuristic.
+  // Integers >= 10,000 are very often cents (>= $100.00).
+  if (Math.abs(raw) >= 10000) return centsAsDollars;
+  return dollars;
+}
+
 // Reducer to take raw engine results and produce infographic-friendly rows.
-// NOTE: Our engine currently does not attach per-week data to monthlySummary;
-// this helper is kept for compatibility with the upstream shape and will
-// gracefully no-op when weeks are absent.
 function buildWeeklyView({ monthlySummary }) {
   if (!monthlySummary || !monthlySummary.length)
     return {
@@ -171,28 +229,76 @@ function buildWeeklyView({ monthlySummary }) {
     net: Number(fromCents(firstMonth.net)),
   };
 
-  const weeks = firstMonth.weeks || [];
-  // Always render a continuous set of week rows (5 weeks max).
-  // The upstream engine may omit weeks that have no events, which causes the
-  // planner to skip week numbers (e.g. jump from Week 1 to Week 3).  To make
-  // the UI easier to scan, build a fixed number of week objects and fill
-  // missing entries with zero values and a placeholder label.  Each week
-  // retains any existing data from the engine and coerces income/bills/net
-  // from cents into numbers.
-  const maxWeeks = 5;
-  const resultWeeks = [];
-  for (let i = 0; i < maxWeeks; i++) {
-    const original = weeks[i] || {};
-    const weekNumber =
-      original.weekNumber || original.week || original.weekNum || i + 1;
-    resultWeeks.push({
-      ...original,
-      weekNumber,
-      income: Number(fromCents(original.income || 0)),
-      bills: Number(fromCents(original.bills || 0)),
-      net: Number(fromCents(original.net || 0)),
-    });
+  // NOTE: We intentionally avoid rendering "fake" weeks (e.g., Weeks 1–5 of $0.00)
+  // when the engine provides no weekly breakdown. Showing fabricated rows looks like
+  // real data and confuses users, so an empty-state is preferable.
+  const rawWeeks = firstMonth.weeks;
+  let weeksArray = [];
+
+  if (Array.isArray(rawWeeks)) {
+    weeksArray = rawWeeks;
+  } else if (rawWeeks && typeof rawWeeks === "object") {
+    // Some engines/data sources may return an object keyed by week.
+    weeksArray = Object.values(rawWeeks);
   }
+
+  weeksArray = weeksArray.filter(Boolean);
+  if (!weeksArray.length) {
+    return {
+      weeks: [],
+      summary: base,
+    };
+  }
+
+  const sortedWeeks = weeksArray
+    .map((w, idx) => ({ ...w, __idx: idx }))
+    .sort((a, b) => {
+      const aNum = coerceNumber(a.weekNumber ?? a.week ?? a.weekNum);
+      const bNum = coerceNumber(b.weekNumber ?? b.week ?? b.weekNum);
+      const aHas = Number.isFinite(aNum);
+      const bHas = Number.isFinite(bNum);
+      if (aHas && bHas) return aNum - bNum;
+      if (aHas) return -1;
+      if (bHas) return 1;
+      return (a.__idx ?? 0) - (b.__idx ?? 0);
+    });
+
+  const resultWeeks = sortedWeeks.map((original, i) => {
+    const displayWeekNumber = i + 1;
+
+    const income = normalizeCurrencyField(
+      original,
+      ["incomeCents", "totalIncomeCents", "income", "totalIncome"],
+      base.income
+    );
+
+    const bills = normalizeCurrencyField(
+      original,
+      ["billCents", "billsCents", "totalBillsCents", "bills", "totalBills", "bill", "totalBill"],
+      base.bills
+    );
+
+    const netFromField = normalizeCurrencyField(
+      original,
+      ["netCents", "net", "totalNetCents", "totalNet"],
+      base.net
+    );
+
+    const hasExplicitNet = (() => {
+      const found = pickFirstDefined(original, ["netCents", "net", "totalNetCents", "totalNet"]);
+      return found.key != null && found.value != null;
+    })();
+
+    return {
+      ...original,
+      weekNumber: displayWeekNumber,
+      label: `Week ${displayWeekNumber}`,
+      income,
+      bills,
+      net: hasExplicitNet ? netFromField : income - bills,
+    };
+  });
+
   return {
     weeks: resultWeeks,
     summary: base,
@@ -234,8 +340,8 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     confirmedDiscretionary: confirmedDiscretionaryProp,
     setConfirmedDiscretionary: setConfirmedDiscretionaryProp,
     mergeWrite: mergeWriteProp,
-    personScope,
-    role,
+    personScope = "self", // Default to self view if not provided
+    role = "H",
     // live data from App / myData
     liveStartDate,
     liveIncome,
@@ -260,7 +366,10 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   } = props;
 
   const { showToast } = useToast();
-  const setConfirmedDiscretionaryStore = useCashflowStore((state) => state.setConfirmedDiscretionary);
+  const setConfirmedDiscretionaryStore = useCashflowStore(
+    (state) => state.setConfirmedDiscretionary
+  );
+  const billSharing = useCashflowStore((state) => state.billSharing);
 
   // Planning state (kept mostly for persistence / FS mirror,
   // but starting balance is now driven from liveAccounts/liveStartingBalance).
@@ -427,7 +536,10 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       if (saved.categoryBudgets) setCategoryBudgets(saved.categoryBudgets);
       if (saved.cashFlowMode) setInternalMode(saved.cashFlowMode);
     } catch (e) {
-      console.warn("[MonthlyCashFlowInfographic] load from localStorage failed", e);
+      console.warn(
+        "[MonthlyCashFlowInfographic] load from localStorage failed",
+        e
+      );
     }
   }, [storageKey, liveExtraIncomes]);
 
@@ -490,7 +602,10 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       safeLocalStorage.setItem(storageKey, JSON.stringify(toSave));
     } catch (e) {
       // JSON.stringify itself can theoretically throw; be defensive.
-      console.warn("[MonthlyCashFlowInfographic] save to localStorage failed", e);
+      console.warn(
+        "[MonthlyCashFlowInfographic] save to localStorage failed",
+        e
+      );
     }
   }, [
     storageKey,
@@ -591,18 +706,20 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   // Engine projection re-runs any time planning inputs or mode change
   const enginePaidBills = useMemo(() => paidBills || {}, [paidBills]);
 
+  // --- CORE PROJECTION LOGIC ---
   const engineProjection = useMemo(() => {
     if (!startDate) {
       return { monthlySummary: [], finalBalancesByAccount: {} };
     }
     try {
-      // Build accounts for engine from liveAccounts (single source of truth).
+      // 1. Build accounts for engine from liveAccounts
       const accountsForEngine =
         Array.isArray(liveAccounts) && liveAccounts.length
           ? liveAccounts.map((a, idx) => ({
               id: a.id || `acc-${idx}`,
               type: a.type || "checking",
               openingBalance: clampNumber(a.openingBalance || 0),
+              ownerRole: a.ownerRole,
             }))
           : [
               {
@@ -616,36 +733,83 @@ export default function MonthlyCashFlowInfographic(props = {}) {
               },
             ];
 
-      // Choose a safe residual account ID
+      // 2. Filter Accounts based on Scope
+      // If "self", only use MY accounts + Shared. If "both", use all.
+      const filteredAccounts =
+        personScope === "self"
+          ? accountsForEngine.filter(
+              (a) =>
+                a.ownerRole === role ||
+                a.ownerRole === "Joint" ||
+                !a.ownerRole
+            )
+          : accountsForEngine;
+
+      // Choose a safe residual account ID from the FILTERED list
       const safeResidualId =
         residualAccountIdProp &&
-        accountsForEngine.some((a) => a.id === residualAccountIdProp)
+        filteredAccounts.some((a) => a.id === residualAccountIdProp)
           ? residualAccountIdProp
-          : accountsForEngine[0]?.id;
+          : filteredAccounts[0]?.id;
 
-      // Use liveBills as the engine's bill source so accountId wiring is preserved.
+      // 3. Filter Bills based on Scope & Split Logic
       const sourceBills = Array.isArray(liveBills) ? liveBills : [];
-      const engineBills = sourceBills.map((b, idx) => ({
-        id: b.id || `b${idx}`,
-        name: b.name || "Bill",
-        amount: Number(b.amount || 0),
-        dueDay: b.dueDay != null ? b.dueDay : 1,
-        accountId:
-          (b.accountId &&
-            accountsForEngine.some((a) => a.id === b.accountId) &&
-            b.accountId) ||
-          safeResidualId,
-        status: b.status || "active",
-      }));
+      let engineBills = [];
+
+      // Get split percentages from store, or default to equal
+      const hPercent = billSharing?.percentageSplit?.H ?? 0.5;
+      const wPercent = billSharing?.percentageSplit?.W ?? 0.5;
+
+      sourceBills.forEach((b, idx) => {
+        let amount = Number(b.amount || 0);
+        let shouldInclude = false;
+
+        if (personScope === "both") {
+          shouldInclude = true; // Include everything in household view
+        } else {
+          // "Self" Scope Logic
+          if (b.payer === role) {
+            shouldInclude = true; // I pay 100%
+          } else if (b.payer === "Shared" || !b.payer || b.payer === "AUTO") {
+            // I pay my % share
+            const myPercent = role === "H" ? hPercent : wPercent;
+            amount = amount * myPercent;
+            shouldInclude = true;
+          }
+          // If payer is explicitly partner, exclude entirely (shouldInclude remains false)
+        }
+
+        if (shouldInclude) {
+          engineBills.push({
+            id: b.id || `b${idx}`,
+            name: b.name || "Bill",
+            amount: amount,
+            dueDay: b.dueDay != null ? b.dueDay : 1,
+            // Ensure the account ID is valid for the filtered list, else use residual
+            accountId:
+              (b.accountId &&
+                filteredAccounts.some((a) => a.id === b.accountId) &&
+                b.accountId) ||
+              safeResidualId,
+            status: b.status || "active",
+          });
+        }
+      });
+
+      // 4. Filter Income based on Scope
+      const incomeForEngine = {
+        husband: personScope === "both" || role === "H" ? hIncome || 0 : 0,
+        wife: personScope === "both" || role === "W" ? wIncome || 0 : 0,
+      };
 
       const safeExpenses = Array.isArray(liveExpenses) ? liveExpenses : [];
 
       const { monthlySummary, finalBalancesByAccount } = projectCashflow({
         startDate,
         months: 14,
-        accounts: accountsForEngine,
+        accounts: filteredAccounts,
         bills: engineBills,
-        income: { husband: hIncome || 0, wife: wIncome || 0 },
+        income: incomeForEngine,
         extraIncomes: extraIncomes,
         expenses: safeExpenses,
         paySchedule:
@@ -659,10 +823,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       });
       return { monthlySummary, finalBalancesByAccount };
     } catch (e) {
-      console.warn(
-        "MonthlyCashFlowInfographic: engine projection failed",
-        e
-      );
+      console.warn("MonthlyCashFlowInfographic: engine projection failed", e);
       return { monthlySummary: [], finalBalancesByAccount: {} };
     }
   }, [
@@ -680,6 +841,9 @@ export default function MonthlyCashFlowInfographic(props = {}) {
     inferredStartingBalance,
     startingBalance,
     residualAccountIdProp,
+    personScope, // Dependency needed for re-calc
+    role, // Dependency needed for re-calc
+    billSharing, // Dependency needed for split math
   ]);
 
   const engineFirstMonth = useMemo(() => {
@@ -844,8 +1008,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
         : role === "W"
         ? discretionaryView.W
         : discretionaryView.H;
-    const key =
-      personScope === "both" ? "household" : role === "W" ? "W" : "H";
+    const key = personScope === "both" ? "household" : role === "W" ? "W" : "H";
     const confirmed = confirmedDiscretionary[key];
     if (!confirmed) return base;
     return {
@@ -857,11 +1020,11 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   const totalEnd = totalEndBalance || 0;
 
   const handleConfirmDiscretionary = useCallback(async () => {
-    const key =
-      personScope === "both" ? "household" : role === "W" ? "W" : "H";
-    const current = discretionaryView[
-      personScope === "both" ? "household" : role === "W" ? "W" : "H"
-    ];
+    const key = personScope === "both" ? "household" : role === "W" ? "W" : "H";
+    const current =
+      discretionaryView[
+        personScope === "both" ? "household" : role === "W" ? "W" : "H"
+      ];
     const next = {
       ...confirmedDiscretionary,
       [key]: current.leftover,
@@ -873,7 +1036,10 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       showToast({ type: "success", message: "Plan locked for this scope." });
     } catch (err) {
       console.warn("Lock plan failed", err);
-      showToast({ type: "error", message: "Unable to lock plan. Please try again." });
+      showToast({
+        type: "error",
+        message: "Unable to lock plan. Please try again.",
+      });
     }
   }, [
     discretionaryView,
@@ -887,8 +1053,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
   ]);
 
   const handleResetDiscretionary = useCallback(async () => {
-    const key =
-      personScope === "both" ? "household" : role === "W" ? "W" : "H";
+    const key = personScope === "both" ? "household" : role === "W" ? "W" : "H";
     const next = { ...confirmedDiscretionary };
     delete next[key];
     setConfirmedDiscretionary(next);
@@ -898,7 +1063,10 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       showToast({ type: "success", message: "Plan lock cleared." });
     } catch (err) {
       console.warn("Unlock plan failed", err);
-      showToast({ type: "error", message: "Unable to clear lock. Please try again." });
+      showToast({
+        type: "error",
+        message: "Unable to clear lock. Please try again.",
+      });
     }
   }, [
     personScope,
@@ -1023,11 +1191,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
                 Lock this plan
               </button>
               {confirmedDiscretionary[
-                personScope === "both"
-                  ? "household"
-                  : role === "W"
-                  ? "W"
-                  : "H"
+                personScope === "both" ? "household" : role === "W" ? "W" : "H"
               ] && (
                 <button
                   type="button"
@@ -1046,7 +1210,9 @@ export default function MonthlyCashFlowInfographic(props = {}) {
       {/* Weekly breakdown */}
       <div className="bg-surface-100 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-3">
         <div className="flex items-center justify-between mb-2">
-          <div className="text-xs font-semibold text-surface-900">Weekly flow</div>
+          <div className="text-xs font-semibold text-surface-900">
+            Weekly flow
+          </div>
           <div className="text-[11px] text-surface-500">
             {mode === "actual"
               ? "Using realized income, bills, and expenses"
@@ -1058,7 +1224,7 @@ export default function MonthlyCashFlowInfographic(props = {}) {
           <div className="space-y-2">
             {weeksView.weeks.map((w) => (
               <div
-                key={w.label}
+                key={`week-${w.weekNumber}`}
                 className="flex items-center justify-between rounded-2xl border border-surface-200 bg-surface-50 px-3 py-2 text-[11px]"
               >
                 <div className="flex flex-col">
@@ -1096,7 +1262,8 @@ export default function MonthlyCashFlowInfographic(props = {}) {
           </div>
         ) : (
           <div className="text-[11px] text-surface-500">
-            Add income and bills to see a weekly breakdown.
+            No weekly breakdown available for this month yet. Add income and
+            bills to see a weekly breakdown.
           </div>
         )}
       </div>

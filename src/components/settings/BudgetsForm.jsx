@@ -1,11 +1,13 @@
 // File: src/components/settings/BudgetsForm.jsx
 import React from "react";
 import { PieChart, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { Input } from "../ui/Input";
+import { Select } from "../ui/Select";
+import { Button } from "../ui/Button";
 
 /**
  * Budgets configuration card content.
- *
- * Controlled by the parent (Settings). It assumes it is wrapped by a Card.
+ * Refactored to use UI Kit components.
  */
 export default function BudgetsForm({
   visibleBudgets,
@@ -19,167 +21,147 @@ export default function BudgetsForm({
 }) {
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <PieChart className="text-indigo-500" size={18} />
-          <div className="text-sm font-semibold text-slate-900">Budgets</div>
+          <PieChart className="text-primary-600" size={20} />
+          <h3 className="text-body font-semibold text-surface-900">Budgets</h3>
         </div>
-        <button
-          type="button"
+        <Button
           onClick={onAddBudgetCategory}
-          className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+          size="sm"
+          variant="primary"
+          icon={Plus}
         >
-          <Plus size={12} /> Add category
-        </button>
+          Add Category
+        </Button>
       </div>
 
-      {/* Helper text */}
-      <p className="text-[11px] text-slate-500 mb-2">
-        These category budgets are shared across your household. If you and your
-        partner use different spending cards, you can still track them together
-        here.
-      </p>
+      <div className="bg-surface-50 border border-primary-100 rounded-xl p-3 mb-4">
+        <p className="text-caption text-surface-600">
+          These budgets track monthly spending limits for transaction categories. They are shared across the household by default.
+        </p>
+      </div>
 
       {visibleBudgets.length === 0 && (
-        <p className="text-xs text-slate-500">
+        <p className="text-caption text-surface-500 py-4 text-center border border-dashed border-surface-200 rounded-2xl">
           No budget categories defined yet.
         </p>
       )}
 
       <div className="space-y-3">
-        {visibleBudgets.map(
-          ({ key, label, amount, scope, owner, accountId }) => (
-            <div
-              key={key}
-              className="p-2 border border-slate-200 rounded-lg bg-slate-50"
-            >
-              <div className="grid grid-cols-4 gap-2 items-center">
-                {/* Category name */}
-                <label className="flex flex-col text-[10px] text-slate-500">
-                  <span>Category</span>
-                  <input
-                    type="text"
-                    className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                    value={label}
-                    onChange={(e) =>
-                      onBudgetChange(key, { label: e.target.value })
-                    }
-                    placeholder="Category name"
-                  />
-                </label>
-
-                {/* Amount */}
-                <label className="flex flex-col text-[10px] text-slate-500">
-                  <span>Amount</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                    value={amount}
-                    onChange={(e) =>
-                      onBudgetChange(key, {
-                        amount:
-                          e.target.value === "" ? "" : parseFloat(e.target.value),
-                      })
-                    }
-                    placeholder="0.00"
-                  />
-                </label>
-
-                {/* Scope + owner (for personal) */}
-                <div className="flex flex-col gap-1 text-[10px] text-slate-500">
-                  <label className="flex flex-col">
-                    <span>Scope</span>
-                    <select
-                      className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                      value={scope || "shared"}
-                      onChange={(e) => {
-                        const nextScope = e.target.value;
-                        const updates =
-                          nextScope === "personal"
-                            ? {
-                                scope: "personal",
-                                owner:
-                                  owner ||
-                                  (localRole === "H" || localRole === "W"
-                                    ? localRole
-                                    : "H"),
-                              }
-                            : {
-                                scope: "shared",
-                                owner: null,
-                              };
-                        onBudgetChange(key, updates);
-                      }}
-                    >
-                      <option value="shared">Shared</option>
-                      <option value="personal">Personal</option>
-                    </select>
-                  </label>
-                  {scope === "personal" && (
-                    <label className="flex flex-col">
-                      <span>Owner</span>
-                      <select
-                        className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                        value={owner || ""}
-                        onChange={(e) =>
-                          onBudgetChange(key, {
-                            owner: e.target.value || null,
-                          })
-                        }
-                      >
-                        <option value="">Select</option>
-                        <option value="H">Partner H</option>
-                        <option value="W">Partner W</option>
-                      </select>
-                    </label>
-                  )}
-                </div>
-
-                {/* Account + delete */}
-                <div className="flex flex-col items-end justify-between gap-1">
-                  <label className="flex flex-col text-[10px] text-slate-500 w-full">
-                    <span>Account</span>
-                    <select
-                      className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                      value={accountId || ""}
-                      onChange={(e) =>
-                        onBudgetChange(key, {
-                          accountId: e.target.value || null,
-                        })
-                      }
-                    >
-                      <option value="">None</option>
-                      {localAccounts.map((acct) => (
-                        <option key={acct.id} value={acct.id}>
-                          {acct.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
-                    onClick={() => onDeleteBudget(key)}
-                  >
-                    <Trash2 size={12} /> Delete
-                  </button>
-                </div>
-              </div>
+        {visibleBudgets.map(({ key, label, amount, scope, owner, accountId }) => (
+          <div
+            key={key}
+            className="p-4 border border-surface-200 rounded-2xl bg-white shadow-sm space-y-3 transition-all hover:border-primary-200"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Category Name"
+                value={label}
+                onChange={(e) => onBudgetChange(key, { label: e.target.value })}
+                placeholder="e.g. Groceries"
+              />
+              
+              <Input
+                label="Monthly Limit"
+                type="number"
+                step="0.01"
+                prefix="$"
+                value={amount}
+                onChange={(e) =>
+                  onBudgetChange(key, {
+                    amount: e.target.value === "" ? "" : parseFloat(e.target.value),
+                  })
+                }
+                placeholder="0.00"
+              />
             </div>
-          )
-        )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Select
+                label="Scope"
+                value={scope || "shared"}
+                onChange={(e) => {
+                  const nextScope = e.target.value;
+                  const updates =
+                    nextScope === "personal"
+                      ? {
+                          scope: "personal",
+                          owner:
+                            owner ||
+                            (localRole === "H" || localRole === "W"
+                              ? localRole
+                              : "H"),
+                        }
+                      : {
+                          scope: "shared",
+                          owner: null,
+                        };
+                  onBudgetChange(key, updates);
+                }}
+              >
+                <option value="shared">Shared</option>
+                <option value="personal">Personal</option>
+              </Select>
+
+              {scope === "personal" && (
+                <Select
+                  label="Owner"
+                  value={owner || ""}
+                  onChange={(e) =>
+                    onBudgetChange(key, {
+                      owner: e.target.value || null,
+                    })
+                  }
+                >
+                  <option value="">Select</option>
+                  <option value="H">Partner H</option>
+                  <option value="W">Partner W</option>
+                </Select>
+              )}
+
+              <Select
+                label="Linked Account"
+                value={accountId || ""}
+                onChange={(e) =>
+                  onBudgetChange(key, {
+                    accountId: e.target.value || null,
+                  })
+                }
+              >
+                <option value="">None</option>
+                {localAccounts.map((acct) => (
+                  <option key={acct.id} value={acct.id}>
+                    {acct.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-surface-100">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-danger-500 hover:bg-danger-50 hover:text-danger-600"
+                onClick={() => onDeleteBudget(key)}
+                icon={Trash2}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {dirtyBudgets && (
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
+        <div className="mt-4 flex justify-end">
+          <Button
             onClick={onSaveBudgets}
-            className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+            variant="primary"
+            icon={CheckCircle2}
           >
-            <CheckCircle2 size={12} /> Save budgets
-          </button>
+            Save Budgets
+          </Button>
         </div>
       )}
     </>

@@ -3,11 +3,14 @@ import React, { useState } from "react";
 import { ArrowRightLeft, Plus, Trash2, CheckCircle2 } from "lucide-react";
 import ConfirmModal from "../ui/modals/ConfirmModal";
 import { useToast } from "../ui/toast/useToast";
+// [!code ++] Import UI Kit components
+import { Input } from "../ui/Input";
+import { Select } from "../ui/Select";
+import { Button } from "../ui/Button";
 
 /**
  * Income allocation rules configuration card content.
- *
- * Controlled by the parent Settings component.
+ * Refactored to use UI Kit components for consistent styling.
  */
 export default function AllocationRulesForm({
   rules,
@@ -47,57 +50,66 @@ export default function AllocationRulesForm({
 
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <ArrowRightLeft className="text-indigo-500" size={18} />
-          <div className="text-sm font-semibold text-slate-900">
+          <ArrowRightLeft className="text-primary-600" size={20} />
+          <h3 className="text-body font-semibold text-surface-900">
             Income allocation rules
-          </div>
+          </h3>
         </div>
-        <button
-          type="button"
+        <Button
           onClick={onAddRule}
-          className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+          size="sm"
+          variant="primary"
+          icon={Plus}
         >
-          <Plus size={12} /> Add rule
-        </button>
+          Add Rule
+        </Button>
+      </div>
+
+      <div className="bg-surface-50 border border-primary-100 rounded-xl p-3 mb-4">
+        <p className="text-caption text-surface-600">
+          Automatically distribute income into different accounts when paychecks arrive.
+        </p>
       </div>
 
       {rules.length === 0 && (
-        <p className="text-xs text-slate-500">No rules defined yet.</p>
+        <p className="text-caption text-surface-500 py-4 text-center border border-dashed border-surface-200 rounded-2xl">
+          No allocation rules defined yet.
+        </p>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {rules.map((rule) => (
           <div
             key={rule.id}
-            className="p-2 border border-slate-200 rounded-lg bg-slate-50"
+            // [!code highlight] Using white background + rounded-2xl to match other forms
+            className="p-4 border border-surface-200 rounded-2xl bg-white shadow-sm space-y-3 transition-all hover:border-primary-200"
           >
-            <div className="grid grid-cols-6 gap-2 items-center">
-              {/* Account selection */}
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>Account</span>
-                <select
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-start">
+              
+              {/* Account selection (Wide) */}
+              <div className="sm:col-span-2 lg:col-span-4">
+                <Select
+                  label="Account"
                   value={rule.accountId || ""}
                   onChange={(e) =>
                     onRuleChange(rule.id, { accountId: e.target.value })
                   }
                 >
-                  <option value="">Select</option>
+                  <option value="">Select Account</option>
                   {accounts.map((acct) => (
                     <option key={acct.id} value={acct.id}>
                       {acct.name}
                     </option>
                   ))}
-                </select>
-              </label>
+                </Select>
+              </div>
 
               {/* Type selection */}
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>Type</span>
-                <select
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+              <div className="sm:col-span-1 lg:col-span-2">
+                <Select
+                  label="Type"
                   value={rule.type}
                   onChange={(e) =>
                     onRuleChange(rule.id, { type: e.target.value })
@@ -105,81 +117,81 @@ export default function AllocationRulesForm({
                 >
                   <option value="percent">Percent</option>
                   <option value="amount">Amount</option>
-                </select>
-              </label>
+                </Select>
+              </div>
 
               {/* Value input */}
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>{rule.type === "percent" ? "Percent" : "Amount"}</span>
-                <input
+              <div className="sm:col-span-1 lg:col-span-2">
+                <Input
+                  label={rule.type === "percent" ? "Percent" : "Amount"}
                   type="number"
                   step="0.01"
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+                  // Dynamic prefix/suffix based on type
+                  prefix={rule.type === "amount" ? "$" : undefined}
+                  rightElement={rule.type === "percent" ? "%" : undefined}
                   value={rule.value}
                   onChange={(e) =>
                     onRuleChange(rule.id, {
-                      value:
-                        e.target.value === "" ? "" : parseFloat(e.target.value),
+                      value: e.target.value === "" ? "" : parseFloat(e.target.value),
                     })
                   }
                   placeholder={rule.type === "percent" ? "0" : "0.00"}
                 />
-              </label>
+              </div>
 
               {/* Frequency selection */}
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>Frequency</span>
-                <select
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+              <div className="sm:col-span-1 lg:col-span-2">
+                <Select
+                  label="Frequency"
                   value={rule.frequency}
                   onChange={(e) =>
                     onRuleChange(rule.id, { frequency: e.target.value })
                   }
                 >
-                  <option value="each">Each</option>
-                  <option value="first">First</option>
-                  <option value="second">Second</option>
-                </select>
-              </label>
+                  <option value="each">Every Pay</option>
+                  <option value="first">1st Pay</option>
+                  <option value="second">2nd Pay</option>
+                </Select>
+              </div>
 
               {/* Label */}
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>Label</span>
-                <input
-                  type="text"
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
+              <div className="sm:col-span-1 lg:col-span-2">
+                <Input
+                  label="Label"
                   value={rule.label || ""}
                   onChange={(e) =>
                     onRuleChange(rule.id, { label: e.target.value })
                   }
-                  placeholder="Description"
+                  placeholder="New rule"
                 />
-              </label>
-
-              {/* Delete button */}
-              <div className="flex items-center justify-end">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
-                  onClick={() => handleDeleteRequest(rule)}
-                >
-                  <Trash2 size={12} /> Delete
-                </button>
               </div>
+            </div>
+
+            {/* Delete Action Footer */}
+            <div className="flex justify-end pt-2 border-t border-surface-100">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-danger-500 hover:bg-danger-50 hover:text-danger-600"
+                onClick={() => handleDeleteRequest(rule)}
+                icon={Trash2}
+              >
+                Delete
+              </Button>
             </div>
           </div>
         ))}
       </div>
 
       {dirtyRules && (
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
+        <div className="mt-4 flex justify-end">
+          <Button
             onClick={onSaveRules}
-            className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+            variant="primary"
+            icon={CheckCircle2}
           >
-            <CheckCircle2 size={12} /> Save rules
-          </button>
+            Save Rules
+          </Button>
         </div>
       )}
 

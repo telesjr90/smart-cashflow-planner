@@ -1,15 +1,16 @@
 // File: src/components/settings/GoalsForm.jsx
 import React, { useState } from "react";
 import { Target, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { Input } from "../ui/Input";
+import { Select } from "../ui/Select";
+import { Button } from "../ui/Button";
+import { DateInput } from "../ui/DateInput";
 
 /**
  * Goals configuration card content.
+ * Refactored to use UI Kit components.
  *
- * This component is fully controlled by the parent (Settings).
- * It assumes it is wrapped by a Card with padding.
- *
- * onAddGoal is expected to insert a fully initialized goal object with:
- * { id, name, targetAmount, perMonth, scope, owner, accountId, contributions, startDate, endDate }
+ * onAddGoal is expected to insert a fully initialized goal object.
  */
 export default function GoalsForm({
   visibleGoals,
@@ -70,254 +71,193 @@ export default function GoalsForm({
 
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Target className="text-indigo-500" size={18} />
-          <div className="text-sm font-semibold text-slate-900">Goals</div>
+          <Target className="text-indigo-500" size={20} />
+          <h3 className="text-body font-semibold text-surface-900">Goals</h3>
         </div>
-        <button
-          type="button"
+        <Button
           onClick={handleAddGoal}
-          className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-indigo-700"
+          size="sm"
+          variant="primary"
+          icon={Plus}
         >
-          <Plus size={12} /> Add goal
-        </button>
+          Add Goal
+        </Button>
       </div>
 
       {visibleGoals.length === 0 && (
-        <p className="text-xs text-slate-500">No goals defined yet.</p>
+        <p className="text-caption text-surface-500 py-4 text-center border border-dashed border-surface-200 rounded-2xl">
+          No goals defined yet. Add one to start tracking.
+        </p>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {visibleGoals.map((goal) => (
           <div
             key={goal.id}
-            className="p-2 border border-slate-200 rounded-lg bg-slate-50 space-y-2"
+            className="p-4 border border-surface-200 rounded-2xl bg-surface-50 space-y-4 transition-all hover:border-primary-200"
           >
-            {/* First row: name, target amount, contribution/perMonth display and delete */}
-            <div className="grid grid-cols-4 gap-2 items-center">
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>Name</span>
-                <input
-                  type="text"
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                  value={goal.name}
-                  onChange={(e) =>
-                    onGoalChange(goal.id, { name: e.target.value })
-                  }
-                  onBlur={(e) => validateField(goal.id, "name", e.target.value)}
-                  placeholder="Goal name"
-                  aria-invalid={errors[goal.id]?.name ? "true" : undefined}
-                />
-                {errors[goal.id]?.name && (
-                  <span className="text-[10px] text-rose-600 mt-1">{errors[goal.id].name}</span>
-                )}
-              </label>
+            {/* Top Row: Name, Target, Monthly */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Input
+                label="Name"
+                value={goal.name}
+                onChange={(e) => onGoalChange(goal.id, { name: e.target.value })}
+                onBlur={(e) => validateField(goal.id, "name", e.target.value)}
+                placeholder="e.g. New Car"
+                error={errors[goal.id]?.name}
+              />
 
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>Target amount</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                  value={goal.targetAmount}
-                  onChange={(e) =>
-                    onGoalChange(goal.id, {
-                      targetAmount:
-                        e.target.value === "" ? 0 : parseFloat(e.target.value),
-                    })
-                  }
-                  onBlur={(e) => validateField(goal.id, "targetAmount", parseFloat(e.target.value))}
-                  placeholder="0.00"
-                  aria-invalid={errors[goal.id]?.targetAmount ? "true" : undefined}
-                />
-                {errors[goal.id]?.targetAmount && (
-                  <span className="text-[10px] text-rose-600 mt-1">
-                    {errors[goal.id].targetAmount}
-                  </span>
-                )}
-              </label>
+              <Input
+                label="Target Amount"
+                type="number"
+                step="0.01"
+                prefix="$"
+                value={goal.targetAmount}
+                onChange={(e) =>
+                  onGoalChange(goal.id, {
+                    targetAmount: e.target.value === "" ? 0 : parseFloat(e.target.value),
+                  })
+                }
+                onBlur={(e) => validateField(goal.id, "targetAmount", parseFloat(e.target.value))}
+                placeholder="0.00"
+                error={errors[goal.id]?.targetAmount}
+              />
 
               {goal.scope === "personal" ? (
-                <label className="flex flex-col text-[10px] text-slate-500">
-                  <span>Monthly contribution</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                    value={goal.perMonth}
-                    onChange={(e) =>
-                      onGoalPerMonthChange(goal.id, e.target.value)
-                    }
-                    placeholder="0.00"
-                  />
-                </label>
+                <Input
+                  label="Monthly Contribution"
+                  type="number"
+                  step="0.01"
+                  prefix="$"
+                  value={goal.perMonth}
+                  onChange={(e) => onGoalPerMonthChange(goal.id, e.target.value)}
+                  placeholder="0.00"
+                />
               ) : (
-                <div className="flex flex-col text-[10px] text-slate-500">
-                  <span>Monthly total</span>
-                  <span className="text-[11px] text-slate-800">
-                    {goal.perMonth ?? 0}
+                <div className="space-y-1">
+                  <span className="block text-tiny font-semibold uppercase tracking-wide text-surface-500">
+                    Monthly Total
                   </span>
+                  <div className="h-11 px-4 flex items-center bg-surface-100 rounded-2xl text-body font-semibold text-surface-700">
+                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(goal.perMonth ?? 0)}
+                  </div>
                 </div>
               )}
-
-              <div className="flex items-center justify-end space-x-1">
-                {/* Accept / reject for pending goals when applicable */}
-                {goal.status === "pending" && goal.pendingFor === localRole ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onGoalApproval(goal.id, "accept")}
-                      className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-emerald-700"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onGoalApproval(goal.id, "reject")}
-                      className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-rose-700"
-                    >
-                      Reject
-                    </button>
-                  </>
-                ) : null}
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-700"
-                  onClick={() => onDeleteGoal(goal.id)}
-                >
-                  <Trash2 size={12} /> Delete
-                </button>
-              </div>
             </div>
 
-            {/* Second row: scope, owner (for personal), account, dates, and partner contributions if shared */}
-            <div className="grid grid-cols-6 gap-2 items-center">
-              {/* Scope selector */}
-              <label className="flex flex-col text-[10px] text-slate-500 col-span-2">
-                <span>Scope</span>
-                <select
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                  value={goal.scope}
-                  onChange={(e) =>
-                    onGoalScopeChange(goal.id, e.target.value)
-                  }
-                >
-                  <option value="personal">Personal</option>
-                  <option value="shared">Shared</option>
-                </select>
-              </label>
+            {/* Middle Row: Scope, Account, Dates */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Select
+                label="Scope"
+                value={goal.scope}
+                onChange={(e) => onGoalScopeChange(goal.id, e.target.value)}
+              >
+                <option value="personal">Personal</option>
+                <option value="shared">Shared</option>
+              </Select>
 
-              {/* Owner selector for personal goals */}
               {goal.scope === "personal" && (
-                <label className="flex flex-col text-[10px] text-slate-500">
-                  <span>Owner</span>
-                  <select
-                    className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                    value={goal.owner || ""}
-                    onChange={(e) =>
-                      onGoalChange(goal.id, {
-                        owner: e.target.value || null,
-                      })
-                    }
-                  >
-                    <option value="">Select</option>
-                    <option value="H">Partner H</option>
-                    <option value="W">Partner W</option>
-                  </select>
-                </label>
+                <Select
+                  label="Owner"
+                  value={goal.owner || ""}
+                  onChange={(e) => onGoalChange(goal.id, { owner: e.target.value || null })}
+                >
+                  <option value="">Select Owner</option>
+                  <option value="H">Partner H</option>
+                  <option value="W">Partner W</option>
+                </Select>
               )}
 
-              {/* Account attachment */}
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>Account</span>
-                <select
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                  value={goal.accountId || ""}
-                  onChange={(e) =>
-                    onGoalChange(goal.id, { accountId: e.target.value || null })
-                  }
-                >
-                  <option value="">None</option>
-                  {localAccounts.map((acct) => (
-                    <option key={acct.id} value={acct.id}>
-                      {acct.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                label="Link Account"
+                value={goal.accountId || ""}
+                onChange={(e) => onGoalChange(goal.id, { accountId: e.target.value || null })}
+              >
+                <option value="">None (Virtual)</option>
+                {localAccounts.map((acct) => (
+                  <option key={acct.id} value={acct.id}>
+                    {acct.name}
+                  </option>
+                ))}
+              </Select>
 
-              {/* Start date */}
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>Start date</span>
-                <input
-                  type="date"
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                  value={goal.startDate || ""}
-                  onChange={(e) =>
-                    onGoalChange(goal.id, { startDate: e.target.value })
-                  }
+              <DateInput
+                label="Target Date"
+                value={goal.endDate || ""}
+                onChange={(val) => onGoalChange(goal.id, { endDate: val })}
+              />
+            </div>
+
+            {/* Shared Contributions Row */}
+            {goal.scope === "shared" && (
+              <div className="grid grid-cols-2 gap-4 p-3 bg-surface-100/50 rounded-xl border border-surface-200/50">
+                <Input
+                  label="Partner H Contribution"
+                  type="number"
+                  step="0.01"
+                  prefix="$"
+                  size="sm"
+                  value={goal.contributions?.H ?? 0}
+                  onChange={(e) => onGoalContributionChange(goal.id, "H", e.target.value)}
                 />
-              </label>
-
-              {/* End/target date */}
-              <label className="flex flex-col text-[10px] text-slate-500">
-                <span>Target date</span>
-                <input
-                  type="date"
-                  className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                  value={goal.endDate || ""}
-                  onChange={(e) =>
-                    onGoalChange(goal.id, { endDate: e.target.value })
-                  }
+                <Input
+                  label="Partner W Contribution"
+                  type="number"
+                  step="0.01"
+                  prefix="$"
+                  size="sm"
+                  value={goal.contributions?.W ?? 0}
+                  onChange={(e) => onGoalContributionChange(goal.id, "W", e.target.value)}
                 />
-              </label>
+              </div>
+            )}
 
-              {/* Shared contributions (only when shared) */}
-              {goal.scope === "shared" && (
+            {/* Actions Footer */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-surface-200/50">
+              {goal.status === "pending" && goal.pendingFor === localRole && (
                 <>
-                  <label className="flex flex-col text-[10px] text-slate-500">
-                    <span>Partner H share</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                      value={goal.contributions?.H ?? 0}
-                      onChange={(e) =>
-                        onGoalContributionChange(goal.id, "H", e.target.value)
-                      }
-                      placeholder="0.00"
-                    />
-                  </label>
-                  <label className="flex flex-col text-[10px] text-slate-500">
-                    <span>Partner W share</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="border border-slate-200 rounded-md px-2 py-1 text-[11px]"
-                      value={goal.contributions?.W ?? 0}
-                      onChange={(e) =>
-                        onGoalContributionChange(goal.id, "W", e.target.value)
-                      }
-                      placeholder="0.00"
-                    />
-                  </label>
+                  <Button
+                    size="sm"
+                    variant="primary" // Changed to primary for accept to match UI Kit better, or define a 'success' variant if available
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => onGoalApproval(goal.id, "accept")}
+                  >
+                    Accept
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => onGoalApproval(goal.id, "reject")}
+                  >
+                    Reject
+                  </Button>
                 </>
               )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-danger-500 hover:bg-danger-50 hover:text-danger-600"
+                onClick={() => onDeleteGoal(goal.id)}
+                icon={Trash2}
+              >
+                Delete
+              </Button>
             </div>
           </div>
         ))}
       </div>
 
       {dirtyGoals && (
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
+        <div className="mt-4 flex justify-end">
+          <Button
             onClick={onSaveGoals}
-            className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+            variant="primary"
+            icon={CheckCircle2}
           >
-            <CheckCircle2 size={12} /> Save goals
-          </button>
+            Save Goals
+          </Button>
         </div>
       )}
     </>

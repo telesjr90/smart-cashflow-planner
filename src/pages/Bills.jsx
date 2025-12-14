@@ -1,3 +1,4 @@
+// src/pages/Bills.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ListChecks,
@@ -9,6 +10,8 @@ import {
   Trash2,
   Pencil,
   Plus,
+  Search,
+  MoreVertical,
 } from "lucide-react";
 import { safeLocalStorage, makeScopedKey } from "../lib/safeLocalStorage";
 import BillFormSheet from "../components/bills/BillFormSheet";
@@ -59,7 +62,9 @@ function currentMonthIndex(startDate) {
 function getMonthIndexFromStart(startDate, dateStr) {
   const s = new Date(startDate + "T00:00:00");
   const d = new Date(dateStr + "T00:00:00");
-  return (d.getFullYear() - s.getFullYear()) * 12 + (d.getMonth() - s.getMonth());
+  return (
+    (d.getFullYear() - s.getFullYear()) * 12 + (d.getMonth() - s.getMonth())
+  );
 }
 
 // ---------- small UI blocks ----------
@@ -101,7 +106,9 @@ function MonthScroller({ months, selected, onChange }) {
             key={label}
             onClick={() => onChange(idx)}
             className={`px-3 py-1.5 rounded-pill text-caption whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50 ${
-              idx === selected ? "bg-primary-600 text-white shadow-soft" : "bg-surface-100 text-surface-600 hover:bg-surface-200"
+              idx === selected
+                ? "bg-primary-600 text-white shadow-soft"
+                : "bg-surface-100 text-surface-600 hover:bg-surface-200"
             }`}
             type="button"
           >
@@ -125,14 +132,22 @@ function SummaryTile({ label, value, danger }) {
   return (
     <Card variant="flat" className="h-full">
       <CardBody className="px-3 py-2 space-y-1">
-        <div className="text-tiny uppercase tracking-wide text-surface-500">{label}</div>
-        <div className={`text-body font-semibold ${danger ? "text-danger-500" : "text-surface-900"}`}>{value}</div>
+        <div className="text-tiny uppercase tracking-wide text-surface-500">
+          {label}
+        </div>
+        <div
+          className={`text-body font-semibold ${
+            danger ? "text-danger-500" : "text-surface-900"
+          }`}
+        >
+          {value}
+        </div>
       </CardBody>
     </Card>
   );
 }
 
-function PastDueBanner({ items, memberNames }) {
+function PastDueBanner({ items, memberNames, bannerLabel }) {
   if (!items.length) return null;
   const preview = items.slice(0, 3);
   const ownerName = (payer) =>
@@ -147,20 +162,27 @@ function PastDueBanner({ items, memberNames }) {
         <div className="flex items-center gap-2 text-danger-500">
           <AlertTriangle size={16} aria-hidden="true" />
           <div className="text-body font-semibold">
-            {items.length} overdue bill{items.length > 1 ? "s" : ""} in this household
+            {items.length} overdue bill{items.length > 1 ? "s" : ""}{" "}
+            {bannerLabel}
           </div>
         </div>
+
+        {/* Keep overdue preview readable: stacked rows with proper truncation. */}
         <div className="space-y-1">
           {preview.map((it) => (
             <div
               key={`${it.id}-${it.monthIndex}`}
-              className="text-caption text-danger-600 flex items-center justify-between gap-2"
+              className="flex items-start justify-between gap-3 text-caption text-danger-600"
             >
-              <div className="truncate">
-                <span className="font-semibold">{it.name}</span> · Due {String(it.dueDay).padStart(2, "0")} ·{" "}
-                {ownerName(it.payer)}
+              <div className="min-w-0 flex-1">
+                <div className="min-w-0 truncate">
+                  <span className="font-semibold">{it.name}</span>
+                </div>
+                <div className="mt-0.5 text-[11px] text-danger-700/80">
+                  Due {String(it.dueDay).padStart(2, "0")} · {ownerName(it.payer)}
+                </div>
               </div>
-              <div className="font-semibold">{fmt(it.amount)}</div>
+              <div className="shrink-0 font-semibold">{fmt(it.amount)}</div>
             </div>
           ))}
         </div>
@@ -172,13 +194,91 @@ function PastDueBanner({ items, memberNames }) {
 function BulkActions({ disabled, onMarkAllPaid, onMarkAllUnpaid }) {
   if (disabled) return null;
   return (
-    <div className="px-4 mt-3 flex items-center justify-end gap-2">
+    <div className="px-4 mt-3 mb-6 flex items-center justify-end gap-2">
       <Button variant="outline" size="sm" onClick={onMarkAllUnpaid}>
         Mark all unpaid
       </Button>
       <Button variant="primary" size="sm" onClick={onMarkAllPaid}>
         Mark all paid
       </Button>
+    </div>
+  );
+}
+
+// ---------- compact row actions ----------
+function RowActions({ item, isOffline, onEdit, onDelete }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      // Close when clicking outside the menu
+      if (!e.target.closest?.(`[data-actions-for="${item.id}"]`)) {
+        setOpen(false);
+      }
+    };
+    const onEsc = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [open, item.id]);
+
+  return (
+    <div
+      className="relative shrink-0"
+      data-actions-for={item.id}
+      aria-label="Bill actions"
+    >
+      <button
+        type="button"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-surface-200 bg-surface-50 text-surface-700 hover:bg-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50 disabled:opacity-50"
+        onClick={() => setOpen((v) => !v)}
+        disabled={isOffline}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`More actions for ${item.name}`}
+      >
+        <MoreVertical size={16} aria-hidden="true" />
+      </button>
+
+      {open && !isOffline && (
+        <div
+          role="menu"
+          className="absolute right-0 top-9 z-20 w-40 overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-soft"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full px-3 py-2 text-left text-caption text-surface-900 hover:bg-surface-50 flex items-center gap-2"
+            onClick={() => {
+              setOpen(false);
+              onEdit?.(item);
+            }}
+            aria-label={`Edit ${item.name}`}
+          >
+            <Pencil size={14} aria-hidden="true" />
+            Edit
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full px-3 py-2 text-left text-caption text-danger-600 hover:bg-danger-500/5 flex items-center gap-2"
+            onClick={() => {
+              setOpen(false);
+              onDelete?.(item);
+            }}
+            aria-label={`Delete ${item.name}`}
+          >
+            <Trash2 size={14} aria-hidden="true" />
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -199,8 +299,16 @@ export default function Bills({ personScope = "self", isOnline = true }) {
   const householdId = userProfile.householdId || "";
   const memberNames = { H: "Partner H", W: "Partner W" };
 
-  const { handleUpdateBills, handleTogglePaid, handleBulkMark, handleChangeBillAccount } = useCashflowData();
+  const {
+    handleUpdateBills,
+    handleTogglePaid,
+    handleBulkMark,
+    handleChangeBillAccount,
+  } = useCashflowData();
   const { showToast } = useToast();
+
+  // [!code highlight:2] Added search state
+  const [searchTerm, setSearchTerm] = useState("");
 
   if (!startDate) {
     return (
@@ -244,7 +352,9 @@ export default function Bills({ personScope = "self", isOnline = true }) {
       owner: cfg.owner || null,
     }));
     if (!arr.length) {
-      return [{ key: "uncategorized", label: "Uncategorized", scope: "shared", owner: null }];
+      return [
+        { key: "uncategorized", label: "Uncategorized", scope: "shared", owner: null },
+      ];
     }
     if (role !== "H" && role !== "W") return arr;
     const filtered = arr.filter((b) => {
@@ -253,7 +363,9 @@ export default function Bills({ personScope = "self", isOnline = true }) {
       if (!b.owner) return true;
       return b.owner === role;
     });
-    return filtered.length ? filtered : [{ key: "uncategorized", label: "Uncategorized", scope: "shared", owner: null }];
+    return filtered.length
+      ? filtered
+      : [{ key: "uncategorized", label: "Uncategorized", scope: "shared", owner: null }];
   }, [categoryBudgets, role]);
 
   const defaultCategoryKey = budgetOptions.length ? budgetOptions[0].key : "";
@@ -332,7 +444,9 @@ export default function Bills({ personScope = "self", isOnline = true }) {
       if (!editingBill) {
         const id =
           billDraft.id ||
-          `${(billDraft.name || "bill").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${cleanDueDay}-${Date.now().toString(36)}`;
+          `${(billDraft.name || "bill")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")}-${cleanDueDay}-${Date.now().toString(36)}`;
 
         const newBill = {
           id,
@@ -398,7 +512,10 @@ export default function Bills({ personScope = "self", isOnline = true }) {
     }
   }, [startDate]);
 
-  const storageKey = useMemo(() => makeScopedKey("billsSelectedMonth", { householdId }), [householdId]);
+  const storageKey = useMemo(
+    () => makeScopedKey("billsSelectedMonth", { householdId }),
+    [householdId]
+  );
 
   const [selectedMonth, setSelectedMonth] = useState(() => {
     let initial = defaultMonth;
@@ -424,11 +541,6 @@ export default function Bills({ personScope = "self", isOnline = true }) {
   }, [defaultMonth, storageKey]);
 
   const [status, setStatus] = useState("all");
-  const [owner, setOwner] = useState(personScope === "combined" ? "both" : personScope === "self" ? "mine" : "other");
-
-  useEffect(() => {
-    setOwner(personScope === "combined" ? "both" : personScope === "self" ? "mine" : "other");
-  }, [personScope]);
 
   const monthItems = useMemo(() => {
     if (!startDate) return [];
@@ -445,8 +557,12 @@ export default function Bills({ personScope = "self", isOnline = true }) {
     return (bills || [])
       .map((b) => {
         const safeDueDay = clampDueDayToMonth(year, monthIndex0, b.dueDay);
-        const paid = !!(paidFlags?.[b.id]?.[selectedMonth]);
-        const overdue = !paid && year === todayYear && monthIndex0 === todayMonth && safeDueDay < todayDay;
+        const paid = !!paidFlags?.[b.id]?.[selectedMonth];
+        const overdue =
+          !paid &&
+          year === todayYear &&
+          monthIndex0 === todayMonth &&
+          safeDueDay < todayDay;
         return {
           ...b,
           dueDay: safeDueDay,
@@ -459,17 +575,28 @@ export default function Bills({ personScope = "self", isOnline = true }) {
   }, [bills, paidFlags, startDate, selectedMonth]);
 
   const ownerFiltered = useMemo(() => {
-    if (owner === "both") return monthItems;
-    const isMine = (payer) => {
-      if (payer === "AUTO") return true;
-      return payer === role;
-    };
-    return monthItems.filter((it) => {
-      if (owner === "mine") return isMine(it.payer);
-      if (owner === "other") return !isMine(it.payer) && it.payer !== "AUTO";
-      return true;
+    // 1. Pre-filter based on Search Term
+    let baseItems = monthItems;
+    if (searchTerm.trim()) {
+      const lower = searchTerm.toLowerCase();
+      baseItems = baseItems.filter(
+        (it) =>
+          it.name.toLowerCase().includes(lower) ||
+          (it.category && it.category.toLowerCase().includes(lower))
+      );
+    }
+
+    // 2. Visibility Filter
+    // Smallest truthy fix: this page currently shows "bills you're responsible for"
+    // (your own + shared/auto/unassigned). Keep behavior and align the copy.
+    return baseItems.filter((it) => {
+      if (it.payer === role) return true; // My bills
+      if (it.payer === "Shared") return true; // Shared bills
+      if (it.payer === "AUTO") return true; // Unassigned bills
+      if (!it.payer) return true; // Legacy/Undefined
+      return false; // Hides partner's bills
     });
-  }, [monthItems, owner, role]);
+  }, [monthItems, role, searchTerm]);
 
   const filtered = useMemo(() => {
     return ownerFiltered.filter((it) => {
@@ -493,7 +620,10 @@ export default function Bills({ personScope = "self", isOnline = true }) {
     };
   }, [ownerFiltered]);
 
-  const overdueItems = useMemo(() => ownerFiltered.filter((it) => it.overdue), [ownerFiltered]);
+  const overdueItems = useMemo(
+    () => ownerFiltered.filter((it) => it.overdue),
+    [ownerFiltered]
+  );
 
   const handleToggle = (item) => {
     if (isOffline) return;
@@ -543,29 +673,57 @@ export default function Bills({ personScope = "self", isOnline = true }) {
     setPendingDelete(null);
   };
 
+  const bannerLabel = "you’re responsible for";
+
   return (
-    <div className="pb-24 px-4 space-y-6" data-testid="bills-page">
-      <header className="flex items-center justify-between pt-4" data-testid="bills-header">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-600">
-            <ListChecks size={18} aria-hidden="true" />
+    <div
+      className="pb-32 px-4 space-y-6"
+      data-testid="bills-page"
+    >
+      <header className="pt-4 space-y-4" data-testid="bills-header">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-600">
+              <ListChecks size={18} aria-hidden="true" />
+            </div>
+            <div>
+              <div className="text-tiny font-semibold uppercase tracking-wide text-surface-500">
+                Bills
+              </div>
+              <div className="text-body font-semibold text-surface-900">
+                Monthly commitments
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="text-tiny font-semibold uppercase tracking-wide text-surface-500">Bills</div>
-            <div className="text-body font-semibold text-surface-900">Monthly commitments</div>
-          </div>
+          {!isEmpty && (
+            <Button
+              onClick={handleOpenAdd}
+              disabled={isOffline}
+              variant="primary"
+              size="md"
+              icon={Plus}
+              aria-label="Add bill"
+            >
+              Add Bill
+            </Button>
+          )}
         </div>
+
+        {/* Search Bar (Added) */}
         {!isEmpty && (
-          <Button
-            onClick={handleOpenAdd}
-            disabled={isOffline}
-            variant="primary"
-            size="md"
-            icon={Plus}
-            aria-label="Add bill"
-          >
-            Add Bill
-          </Button>
+          <div className="relative">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400"
+              size={18}
+            />
+            <input
+              type="text"
+              placeholder="Search bills..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-200 bg-white text-body focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+            />
+          </div>
         )}
       </header>
 
@@ -584,8 +742,12 @@ export default function Bills({ personScope = "self", isOnline = true }) {
           data-testid="bills-empty"
         >
           <CardBody className="text-center space-y-3 p-6 md:p-8">
-            <div className="text-body font-semibold text-surface-900">You haven't added any bills yet.</div>
-            <p className="text-caption text-surface-500">Add your first bill to start planning your cash flow.</p>
+            <div className="text-body font-semibold text-surface-900">
+              You haven't added any bills yet.
+            </div>
+            <p className="text-caption text-surface-500">
+              Add your first bill to start planning your cash flow.
+            </p>
             <div className="flex justify-center">
               <Button
                 type="button"
@@ -601,7 +763,11 @@ export default function Bills({ personScope = "self", isOnline = true }) {
         </Card>
       ) : (
         <>
-          <MonthScroller months={months} selected={selectedMonth} onChange={setSelectedMonth} />
+          <MonthScroller
+            months={months}
+            selected={selectedMonth}
+            onChange={setSelectedMonth}
+          />
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <Segmented
@@ -614,15 +780,6 @@ export default function Bills({ personScope = "self", isOnline = true }) {
                 { value: "paid", label: "Paid" },
               ]}
             />
-            <Segmented
-              value={owner}
-              onChange={setOwner}
-              options={[
-                { value: "both", label: "Both" },
-                { value: "mine", label: "Mine" },
-                { value: "other", label: "Other" },
-              ]}
-            />
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-4">
@@ -631,21 +788,34 @@ export default function Bills({ personScope = "self", isOnline = true }) {
             <SummaryTile label="Overdue" value={fmt(totals.overdue)} danger />
           </div>
 
-          <PastDueBanner items={overdueItems} memberNames={memberNames} />
+          <PastDueBanner
+            items={overdueItems}
+            memberNames={memberNames}
+            bannerLabel={bannerLabel}
+          />
 
           <div className="mt-4 space-y-3 px-0" data-testid="bills-list">
             {filtered.length === 0 && (
-              <Card variant="flat" className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft">
+              <Card
+                variant="flat"
+                className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft"
+              >
                 <CardBody className="text-caption text-surface-500 p-5 text-center">
                   No bills match this filter for the selected month.
                 </CardBody>
               </Card>
             )}
+
             {filtered.map((item) => {
               const acctId = resolveAccountId(item);
               const acct = hasAccounts ? accountMap[acctId] : null;
-              const accountLabel = hasAccounts ? (acct ? acct.name : acctId || "Unassigned") : item.accountId || "Unassigned";
+              const accountLabel = hasAccounts
+                ? acct
+                  ? acct.name
+                  : acctId || "Unassigned"
+                : item.accountId || "Unassigned";
               const catLabel = categoryLabelForBill(item);
+
               return (
                 <Card key={`${item.id}-${item.monthIndex}`} variant="flat">
                   <CardBody className="flex items-start gap-3 px-3 py-3">
@@ -658,74 +828,94 @@ export default function Bills({ personScope = "self", isOnline = true }) {
                       type="button"
                     >
                       {item.paid ? (
-                        <CheckCircle2 className="text-success-500" size={18} aria-hidden="true" />
+                        <CheckCircle2
+                          className="text-success-500"
+                          size={18}
+                          aria-hidden="true"
+                        />
                       ) : (
-                        <Circle className="text-surface-300" size={18} aria-hidden="true" />
+                        <Circle
+                          className="text-surface-300"
+                          size={18}
+                          aria-hidden="true"
+                        />
                       )}
                     </button>
+
+                    {/* min-w-0 is required for truncation inside flex layouts */}
                     <div className="flex-1 min-w-0 space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="truncate text-body font-semibold text-surface-900">{item.name}</div>
-                        <div className="text-body font-semibold text-surface-900">{fmt(item.amount)}</div>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 text-caption text-surface-500">
-                        <div className="flex items-center gap-2 truncate">
-                          <span>Due {String(item.dueDay).padStart(2, "0")}</span>
-                          <span>· {item.payer === "H" ? memberNames.H : item.payer === "W" ? memberNames.W : "Auto"}</span>
-                          {catLabel && (
-                            <Badge variant="neutral" className="shrink-0">
-                              {catLabel}
-                            </Badge>
-                          )}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="min-w-0 truncate text-body font-semibold text-surface-900">
+                            {item.name}
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-2 text-caption text-surface-500 min-w-0">
+                            <div className="min-w-0 truncate">
+                              <span>
+                                Due {String(item.dueDay).padStart(2, "0")}
+                              </span>
+                              <span>
+                                {" "}
+                                ·{" "}
+                                {item.payer === "H"
+                                  ? memberNames.H
+                                  : item.payer === "W"
+                                  ? memberNames.W
+                                  : "Auto"}
+                              </span>
+                              {catLabel ? <span> · {catLabel}</span> : null}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1">
-                            <span className="text-tiny uppercase tracking-wide text-surface-400">Account</span>
-                            {hasAccounts && handleChangeBillAccount ? (
-                              <Select
-                                size="sm"
-                                value={acctId}
-                                onChange={(e) => handleChangeBillAccount(item.id, e.target.value)}
-                                disabled={isOffline}
-                                className="min-w-[120px]"
-                              >
-                                {accounts.map((a) => (
-                                  <option key={a.id} value={a.id}>
-                                    {a.name}
-                                  </option>
-                                ))}
-                              </Select>
-                            ) : (
-                              <span className="text-caption text-surface-600">{accountLabel}</span>
-                            )}
+
+                        <div className="shrink-0 flex items-start gap-2">
+                          <div className="text-body font-semibold text-surface-900">
+                            {fmt(item.amount)}
                           </div>
                           {handleUpdateBills && (
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="px-2"
-                                onClick={() => handleOpenEdit(item)}
-                                disabled={isOffline}
-                                icon={Pencil}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="px-2 text-danger-600"
-                                onClick={() => handleDelete(item)}
-                                disabled={isOffline}
-                                icon={Trash2}
-                              >
-                                Delete
-                              </Button>
-                            </div>
+                            <RowActions
+                              item={item}
+                              isOffline={isOffline}
+                              onEdit={handleOpenEdit}
+                              onDelete={handleDelete}
+                            />
                           )}
                         </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 text-caption text-surface-500">
+                        <div className="min-w-0 flex items-center gap-2">
+                          <span className="text-tiny uppercase tracking-wide text-surface-400">
+                            Account
+                          </span>
+                          {hasAccounts && handleChangeBillAccount ? (
+                            <Select
+                              size="sm"
+                              value={acctId}
+                              onChange={(e) =>
+                                handleChangeBillAccount(item.id, e.target.value)
+                              }
+                              disabled={isOffline}
+                              className="min-w-[140px]"
+                            >
+                              {accounts.map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {a.name}
+                                </option>
+                              ))}
+                            </Select>
+                          ) : (
+                            <span className="text-caption text-surface-600 min-w-0 truncate">
+                              {accountLabel}
+                            </span>
+                          )}
+                        </div>
+
+                        {catLabel && (
+                          <Badge variant="neutral" className="shrink-0">
+                            {catLabel}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </CardBody>
@@ -733,6 +923,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
               );
             })}
           </div>
+
           <BulkActions
             disabled={!filtered.length || !handleBulkMark || isOffline}
             onMarkAllPaid={() => handleBulk(true)}

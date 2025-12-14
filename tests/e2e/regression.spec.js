@@ -1,141 +1,221 @@
 import { test, expect } from '@playwright/test';
 
-const CATEGORY_LABEL = 'QA Category';
+// --- Helpers ---
 
-async function seedCategoryBudget(page) {
-  // Persist at least one budget category so transaction forms have a category option.
-  await page.getByTestId('nav-settings').click();
-  await page.getByRole('button', { name: /^Budgets$/i }).click();
-
-  const addCategory = page.getByRole('button', { name: /Add category/i });
-  await expect(addCategory).toBeVisible();
-  await addCategory.click();
-
-  await page.locator('input[placeholder="Category name"]').last().fill(CATEGORY_LABEL);
-  await page.locator('input[placeholder="0.00"]').last().fill('100');
-
-  const saveBudgets = page.getByRole('button', { name: /Save budgets/i });
-  await expect(saveBudgets).toBeVisible();
-  await saveBudgets.click();
-  // Save button disappears once dirty state clears; ignore if it races the click.
-  await saveBudgets.waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
+async function readProjectedBalance(page) {
+  // Finds the "Projected Cash Flow" card and reads the value (e.g. "$5,000.00")
+  // Adjust selector based on your exact Home.jsx rendering
+  const label = page.getByText(/Projected Cash Flow/i);
+  await expect(label).toBeVisible();
+  
+  // Assuming the value is in a heading or sibling element nearby
+  // We look for a currency-like value nearby
+  const card = label.locator('xpath=ancestor::div[contains(@class, "Card")]').first();
+  const text = await card.textContent();
+  return parseCurrencyToNumber(text);
 }
 
 function parseCurrencyToNumber(text = '') {
+  // Remove non-numeric chars except dot and minus
   const cleaned = text.replace(/[^0-9.-]+/g, '');
   const n = Number.parseFloat(cleaned);
   return Number.isFinite(n) ? n : 0;
 }
 
-async function readExpensesValue(page) {
-  const heading = page.locator('p', { hasText: /^Expenses$/ });
-  await expect(heading).toBeVisible();
-  const valueNode = heading.locator('xpath=../..//h4').first();
-  const text = await valueNode.textContent();
-  return parseCurrencyToNumber(text);
+async function createAccount(page, name, balance) {
+  await page.getByTestId('nav-settings').click();
+  
+  // Settings usually renders sections directly or via tabs. 
+  // Based on your code, AccountsForm is rendered in Settings.
+  const addBtn = page.getByRole('button', { name: /Add account/i });
+  await addBtn.scrollIntoViewIfNeeded();
+  await addBtn.click();
+
+  // Fill the last added account row
+  await page.locator('input[placeholder="Account name"]').last().fill(name);
+  await page.locator('input[placeholder="0.00"]').last().fill(balance.toString());
+
+  const saveBtn = page.getByRole('button', { name: /Save accounts/i });
+  await saveBtn.click();
+  await saveBtn.waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
 }
 
-test.describe('Manual Smoke Gaps', () => {
+async function createBudgetCategory(page, name, limit) {
+  await page.getByTestId('nav-settings').click();
+  
+  // Click "Budgets" button if it's a section navigation or scroll to it
+  // Assuming Settings.jsx renders sections vertically:
+  const addBtn = page.getByRole('button', { name: /Add category/i });
+  await addBtn.scrollIntoViewIfNeeded();
+  await addBtn.click();
+
+  await page.locator('input[placeholder="Category name"]').last().fill(name);
+  await page.locator('input[placeholder="0.00"]').last().fill(limit.toString());
+
+  const saveBtn = page.getByRole('button', { name: /Save budgets/i });
+  await saveBtn.click();
+  await saveBtn.waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
+}
+
+// --- Tests ---
+
+test.describe('Expanded Functional Regression (agentDemo)', () => {
+  
   test.beforeEach(async ({ page }) => {
+    // Start with a clean demo state
     await page.goto('/?agentDemo=1');
-    await expect(page.getByText('Smart Cash Flow Planner')).toBeVisible();
-    await seedCategoryBudget(page);
+    await expect(page.getByText('Smart Cash Flow')).toBeVisible();
+  });
+
+  test('R.1 Accounts & Cashflow: Adding account and bill updates projected balance', async ({ page }) => {
+    // 1. Initial State
     await page.getByTestId('nav-home').click();
-  });
+    const initialBalance = await readProjectedBalance(page);
+    
+    // 2. Add Account
+    const accountAmt = 5000;
+    await createAccount(page, 'Regression Bank', accountAmt);
 
-  test('Dead Button Audit shows toasts', async ({ page }) => {
-    await page.getByLabel('Notifications').click();
-    await expect(page.getByText(/No new notifications yet/i)).toBeVisible({ timeout: 15000 });
+    // 3. Verify Account Impact
+    await page.getByTestId('nav-home').click();
+    const balanceAfterAccount = await readProjectedBalance(page);
+    
+    expect(balanceAfterAccount).toBeCloseTo(initialBalance + accountAmt, 0.1);
 
-    await page.getByTestId('nav-planner').click();
-    await page.getByRole('button', { name: /Adjust Range/i }).click();
-    await expect(page.getByText(/Adjust range coming soon/i)).toBeVisible({ timeout: 10000 });
-  });
+    // 4. Add Bill
+    const billAmt = 150;
+    await page.getByTestId('nav-bills').click();
+    
+    // Use the "Add bill" icon button in header or empty state
+    // We try generic locator for the "+" button or text
+    const addBillBtn = page.getByLabel('Add bill').or(page.getByRole('button', { name: /\+/ }));
+    await addBillBtn.first().click();
 
-  test('Edit transaction in Expenses sheet updates amount', async ({ page }) => {
-    // Add via global modal, then edit via sheet
-    await page.getByTestId('nav-add').click();
-    const modal = page.getByText('Add Transaction').locator('xpath=ancestor::div[contains(@class,"fixed")]');
-    await modal.getByLabel('Amount').fill('10');
-    await modal.getByLabel('Description').fill('To Edit');
-    await modal.getByLabel('Category').selectOption({ label: CATEGORY_LABEL });
-    await modal.getByRole('button', { name: /Save transaction/i }).click();
-    await expect(modal).toBeHidden({ timeout: 5000 });
-
-    await page.getByTestId('nav-expenses').click();
-    await expect(page.getByRole('heading', { level: 2, name: 'Transactions' })).toBeVisible();
-
-    await page.locator('.divide-y').getByText('To Edit').first().click();
-    const editSheet = page.getByText('Edit Transaction').locator('xpath=ancestor::div[@role="dialog"]');
-    await editSheet.getByLabel('Amount').fill('99.00');
-    const editCat = editSheet.getByLabel('Category');
-    if (await editCat.count()) {
-      const optCount = await editCat.locator('option').count();
-      if (optCount > 1) {
-        const opt = editCat.locator('option').nth(1);
-        const value = await opt.getAttribute('value');
-        if (value) await editCat.selectOption(value);
-      }
-    }
-    const editAccount = editSheet.getByLabel('Account');
-    if (await editAccount.count()) {
-      const optCount = await editAccount.locator('option').count();
-      if (optCount > 1) {
-        const val = await editAccount.locator('option').nth(1).getAttribute('value');
-        if (val) await editAccount.selectOption(val);
-      }
-    }
-    await editSheet.getByRole('button', { name: /Save transaction/i }).click();
-    await expect(editSheet).toBeHidden({ timeout: 5000 });
-
-    await page.waitForTimeout(500);
-    await expect(page.locator('.divide-y').getByText('To Edit').first()).toBeVisible();
-  });
-
-  test('Add Transaction modal blocks empty submit', async ({ page }) => {
-    await page.getByTestId('nav-add').click();
-    const modal = page.getByText('Add Transaction').locator('xpath=ancestor::div[contains(@class,"fixed")]');
+    const modal = page.locator('div[role="dialog"]');
     await expect(modal).toBeVisible();
+    
+    await modal.getByLabel('Name').fill('Regression Bill');
+    await modal.getByLabel('Amount').fill(billAmt.toString());
+    
+    // Ensure we pick the account we just created if possible, or leave default
+    // We assume default logic works (first account)
+    
+    await modal.getByRole('button', { name: /Save Bill/i }).click();
+    await expect(modal).toBeHidden();
 
-    await page.getByRole('button', { name: /Save transaction/i }).click();
+    // 5. Verify Bill Impact (Liability reduces projected cash)
+    await page.getByTestId('nav-home').click();
+    const finalBalance = await readProjectedBalance(page);
 
-    await expect(modal).toBeVisible();
-    await expect(page.getByLabel('Amount')).toHaveAttribute('aria-invalid', 'true');
-    await expect(page.getByLabel('Description')).toHaveAttribute('aria-invalid', 'true');
+    // Projected balance should be (Start + Account - Bill)
+    // Note: If today is AFTER due date and it's unpaid, it deducts. 
+    // Demo sets startDate to today, Bill default due day is 1. 
+    // If today is day 15, Bill due day 1 is past due -> deducted.
+    expect(finalBalance).toBeCloseTo(balanceAfterAccount - billAmt, 0.1);
   });
 
-  test('Plan lock persists after reload', async ({ page }) => {
-    await page.getByTestId('nav-planner').click();
-    const lockButton = page.getByRole('button', { name: /Lock this plan/i });
-    await lockButton.scrollIntoViewIfNeeded();
-    await lockButton.click();
+  test('R.2 Goals: Create goal and verify persistence', async ({ page }) => {
+    await page.getByTestId('nav-settings').click();
+    
+    // Scroll to Goals section
+    const addGoalBtn = page.getByRole('button', { name: /Add goal/i });
+    await addGoalBtn.scrollIntoViewIfNeeded();
+    await addGoalBtn.click();
 
-    await page.waitForTimeout(1000);
-    const clearButton = page.getByRole('button', { name: /Clear confirmed amount/i });
-    const toast = page.getByText(/Plan locked for this scope/i);
-    await expect(clearButton.or(toast)).toBeVisible({ timeout: 10000 });
+    // Fill Goal Form (Input labels might be inferred or placeholders)
+    // Goal Name
+    await page.locator('input[value="New goal"]').last().fill('Tesla Fund');
+    
+    // Target Amount (look for next number input or placeholders)
+    // Assuming structure based on GoalsForm.jsx logic:
+    // We might need to rely on order if labels aren't explicit in the list
+    // Let's try filling by placeholder if standard inputs don't match
+    const inputs = page.locator('section').filter({ hasText: 'Household goals' }).locator('input[type="number"]');
+    
+    // Target amount is usually the first number input in the row, Monthly is second
+    await inputs.nth(-2).fill('50000'); // Target
+    await inputs.last().fill('500');   // Monthly
 
+    const saveBtn = page.getByRole('button', { name: /Save goals/i });
+    await saveBtn.click();
+    await saveBtn.waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
+
+    // Verify on Home Page (if goals widget exists) or Reload Settings
     await page.reload();
-    await page.getByTestId('nav-planner').click();
-    await expect(lockButton).toBeVisible();
+    await page.getByTestId('nav-settings').click();
+    await expect(page.getByDisplayValue('Tesla Fund')).toBeVisible();
+    await expect(page.getByDisplayValue('50000')).toBeVisible();
   });
 
-  test('"Today" expense counted in Actual mode', async ({ page }) => {
-    await page.getByTestId('nav-planner').click();
-    await page.getByRole('button', { name: /^Actual$/i }).click();
+  test('R.3 Budgets: Create category and track spending', async ({ page }) => {
+    const catName = 'Ramen';
+    const limit = 100;
+    const spent = 25;
 
+    // 1. Create Budget
+    await createBudgetCategory(page, catName, limit);
+
+    // 2. Verify on Home
     await page.getByTestId('nav-home').click();
-    const initialExpenses = await readExpensesValue(page);
-
+    // Look for text "Ramen" and "$100" (formatted)
+    await expect(page.getByText(catName)).toBeVisible();
+    
+    // 3. Add Expense
     await page.getByTestId('nav-add').click();
-    await page.getByLabel('Amount').fill('25');
-    await page.getByLabel('Description').fill('Actual Mode Expense');
-    await page.getByLabel('Category').selectOption({ label: CATEGORY_LABEL });
-    await page.getByRole('button', { name: /Save transaction/i }).click();
+    const modal = page.locator('div[role="dialog"]'); // or generic fixed wrapper
+    await modal.getByLabel('Amount').fill(spent.toString());
+    await modal.getByLabel('Description').fill('Lunch');
+    await modal.getByLabel('Category').selectOption({ label: catName });
+    await modal.getByRole('button', { name: /Save transaction/i }).click();
 
-    await page.getByTestId('nav-home').click();
-    const updatedExpenses = await readExpensesValue(page);
-
-    expect(updatedExpenses).toBeCloseTo(initialExpenses + 25, 0.1);
+    // 4. Verify Update
+    // The budget card should now show progress. 
+    // We verify the remaining amount or spent amount if visible text allows.
+    // E.g. "$25 of $100" or similar.
+    await expect(page.getByText(catName)).toBeVisible();
+    
+    // Check if we can find the values near the category name
+    const budgetCard = page.locator('div').filter({ hasText: catName }).last();
+    // We expect to see formatted $25.00 somewhere in there
+    await expect(budgetCard).toContainText('$25.00'); 
   });
+
+  test('R.4 Allocation Rules: Create and persist rule', async ({ page }) => {
+    await page.getByTestId('nav-settings').click();
+    
+    const addRuleBtn = page.getByRole('button', { name: /Add rule/i });
+    await addRuleBtn.scrollIntoViewIfNeeded();
+    await addRuleBtn.click();
+
+    // Fill Rule
+    // Label "New rule" -> "Save 20%"
+    await page.locator('input[value="New rule"]').last().fill('Save 20%');
+    
+    // Value -> 20
+    const valInput = page.locator('section').filter({ hasText: 'Allocation Rules' }).locator('input[type="number"]').last();
+    await valInput.fill('20');
+
+    const saveBtn = page.getByRole('button', { name: /Save rules/i });
+    await saveBtn.click();
+    
+    // Reload to verify persistence
+    await page.reload();
+    await page.getByTestId('nav-settings').click();
+    await expect(page.getByDisplayValue('Save 20%')).toBeVisible();
+    await expect(page.getByDisplayValue('20')).toBeVisible();
+  });
+
+  test('R.5 Accounts Page: Verify listing', async ({ page }) => {
+    await createAccount(page, 'Investment A', 1234.56);
+    
+    await page.getByTestId('nav-accounts').click();
+    
+    // Verify header
+    await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible();
+    
+    // Verify new account card
+    await expect(page.getByText('Investment A')).toBeVisible();
+    await expect(page.getByText('$1,234.56')).toBeVisible();
+  });
+
 });

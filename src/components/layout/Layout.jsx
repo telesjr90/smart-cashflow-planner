@@ -6,6 +6,7 @@ export function Layout({ children, currentTab, onTabChange, onAddPress, user, is
   // Determine title based on tab (for TopBar when profile isn't shown)
   const getTitle = () => {
     switch(currentTab) {
+      case 'accounts': return 'Accounts'; // [!code ++] Handle title
       case 'planner': return 'Financial Analysis';
       case 'bills': return 'My Wallet';
       case 'settings': return 'Profile';
@@ -45,4 +46,3 @@ export function Layout({ children, currentTab, onTabChange, onAddPress, user, is
     </div>
   );
 }
-

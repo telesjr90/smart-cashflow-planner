@@ -1,7 +1,12 @@
 // src/lib/cashflow/projectCashflow.js
 
 import { toCents } from "./formatters";
-import { getDateForMonthIndex, getMonthIndexFromStart, clampDayToMonth, getTodayISODate } from "./dateUtils";
+import {
+  getDateForMonthIndex,
+  getMonthIndexFromStart,
+  clampDayToMonth,
+  getTodayISODate,
+} from "./dateUtils";
 
 // --- Internal Helper: Generate Paydays ---
 
@@ -41,7 +46,9 @@ function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
       }
     } else {
       // Default fallback
-      dates.push(new Date(year, monthIndex0, clampDayToMonth(year, monthIndex0, 15)));
+      dates.push(
+        new Date(year, monthIndex0, clampDayToMonth(year, monthIndex0, 15))
+      );
     }
 
     dates
@@ -58,7 +65,13 @@ function enumerateSemiMonthlyPaydays(startDateStr, months, paySchedule) {
 
 // --- Internal Helper: Allocate Income ---
 
-function allocateIncome({ amountCents, accounts, allocationRules, residualAccountId, payIndex }) {
+function allocateIncome({
+  amountCents,
+  accounts,
+  allocationRules,
+  residualAccountId,
+  payIndex,
+}) {
   const deltasByAccount = {};
   const safeAccounts = Array.isArray(accounts) ? accounts : [];
 
@@ -145,7 +158,8 @@ function allocateIncome({ amountCents, accounts, allocationRules, residualAccoun
 const stableStringify = (value) => {
   if (value === null || value === undefined) return String(value);
   if (typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  if (Array.isArray(value))
+    return `[${value.map((v) => stableStringify(v)).join(",")}]`;
   return `{${Object.keys(value)
     .sort()
     .map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`)
@@ -162,7 +176,9 @@ const buildCacheKey = (params = {}) => {
     extraIncomes: Array.isArray(params.extraIncomes) ? params.extraIncomes : [],
     expenses: Array.isArray(params.expenses) ? params.expenses : [],
     paySchedule: params.paySchedule || {},
-    allocationRules: Array.isArray(params.allocationRules) ? params.allocationRules : [],
+    allocationRules: Array.isArray(params.allocationRules)
+      ? params.allocationRules
+      : [],
     residualAccountId: params.residualAccountId || null,
     paidBills: params.paidBills || {},
     mode: params.mode || "projected",
@@ -186,8 +202,11 @@ const computeProjectCashflow = ({
 }) => {
   const startDateStr = startDate || "2025-01-01";
   const projectionMonths = Math.max(1, months || 1);
-  const safeAccounts = Array.isArray(accounts) && accounts.length ? accounts.map((a) => ({ ...a })) : [];
-  
+  const safeAccounts =
+    Array.isArray(accounts) && accounts.length
+      ? accounts.map((a) => ({ ...a }))
+      : [];
+
   // Initialize balances
   const balances = {};
   safeAccounts.forEach((a) => {
@@ -199,18 +218,26 @@ const computeProjectCashflow = ({
       safeAccounts.push({ id: "default", type: "checking", openingBalance: 0 });
     }
   }
-  
-  const residualId = residualAccountId && balances.hasOwnProperty(residualAccountId) ? residualAccountId : safeAccounts[0].id;
+
+  const residualId =
+    residualAccountId && balances.hasOwnProperty(residualAccountId)
+      ? residualAccountId
+      : safeAccounts[0].id;
 
   // 1) Build income events
-  const paydays = enumerateSemiMonthlyPaydays(startDateStr, projectionMonths, paySchedule);
+  const paydays = enumerateSemiMonthlyPaydays(
+    startDateStr,
+    projectionMonths,
+    paySchedule
+  );
   const safeH = Number.isFinite(+income?.husband) ? Math.max(0, +income.husband) : 0;
   const safeW = Number.isFinite(+income?.wife) ? Math.max(0, +income.wife) : 0;
   const perPayTotal = toCents(safeH) + toCents(safeW);
-  
+
   const payCountsByMonth = {};
   const salaryEvents = paydays.map((p, idx) => {
-    const count = (payCountsByMonth[p.monthIndex] = (payCountsByMonth[p.monthIndex] || 0) + 1);
+    const count = (payCountsByMonth[p.monthIndex] =
+      (payCountsByMonth[p.monthIndex] || 0) + 1);
     return {
       date: p.date,
       kind: "income",
@@ -252,6 +279,7 @@ const computeProjectCashflow = ({
   const todayLocal = getTodayISODate();
   const todayUtc = new Date().toISOString().slice(0, 10);
   const todayCutoff = todayUtc > todayLocal ? todayUtc : todayLocal;
+
   for (let m = 0; m < projectionMonths; m++) {
     for (const b of safeBills) {
       if (!b?.id) continue;
@@ -263,11 +291,6 @@ const computeProjectCashflow = ({
       const key = `${billDate}:${b.id}`;
       const isPaid = !!safePaidBills[key];
 
-      // In actual mode, skip unpaid bills in the past? 
-      // The requirement is usually: "Actual" means "what actually happened + future projection"
-      // But typically "Actual" mode hides UNPAID bills in the past if the user wants to see "real cash now".
-      // However, for projection, we usually want to know what's pending.
-      // Logic from previous engine:
       if (mode === "actual" && billDate < todayCutoff && !isPaid) {
         continue;
       }
@@ -311,23 +334,21 @@ const computeProjectCashflow = ({
   }
 
   // 5) Merge and Sort
-  const allEvents = [
-    ...filteredIncome,
-    ...billEvents,
-    ...filteredExpenses,
-  ].sort((a, b) => {
-    if (a.date < b.date) return -1;
-    if (a.date > b.date) return 1;
-    // Income first, then bills/expenses
-    if (a.kind === "income" && b.kind !== "income") return -1;
-    if (a.kind !== "income" && b.kind === "income") return 1;
-    return (a._sequence || 0) - (b._sequence || 0);
-  });
+  const allEvents = [...filteredIncome, ...billEvents, ...filteredExpenses].sort(
+    (a, b) => {
+      if (a.date < b.date) return -1;
+      if (a.date > b.date) return 1;
+      // Income first, then bills/expenses
+      if (a.kind === "income" && b.kind !== "income") return -1;
+      if (a.kind !== "income" && b.kind === "income") return 1;
+      return (a._sequence || 0) - (b._sequence || 0);
+    }
+  );
 
   // 6) Run Ledger
   const ledger = [];
   const monthlyTotals = [];
-  
+
   // Init monthly summary buckets
   for (let i = 0; i < projectionMonths; i++) {
     const dateForLabel = getDateForMonthIndex(startDateStr, i, 1);
@@ -338,6 +359,7 @@ const computeProjectCashflow = ({
       totalIncome: 0,
       totalBills: 0,
       net: 0,
+      // Added later: weeks: []
     });
   }
 
@@ -352,8 +374,11 @@ const computeProjectCashflow = ({
   });
 
   for (const ev of allEvents) {
-    const monthIndex = typeof ev.monthIndex === "number" ? ev.monthIndex : getMonthIndexFromStart(startDateStr, ev.date);
-    
+    const monthIndex =
+      typeof ev.monthIndex === "number"
+        ? ev.monthIndex
+        : getMonthIndexFromStart(startDateStr, ev.date);
+
     // Skip events outside projection range
     if (monthIndex < 0 || monthIndex >= projectionMonths) continue;
 
@@ -389,8 +414,8 @@ const computeProjectCashflow = ({
         delta = amt;
         const accId = ev.accountId || residualId;
         if (accId) {
-            if (!balances.hasOwnProperty(accId)) balances[accId] = 0;
-            balances[accId] -= delta;
+          if (!balances.hasOwnProperty(accId)) balances[accId] = 0;
+          balances[accId] -= delta;
         }
         monthlyTotals[monthIndex].totalBills += delta;
         monthlyTotals[monthIndex].net -= delta;
@@ -403,9 +428,63 @@ const computeProjectCashflow = ({
         balances: { ...balances },
         monthIndex,
         description: ev.kind === "bill" ? ev.billName : ev.description,
-        isPaid: ev.isPaid
+        isPaid: ev.isPaid,
       });
     }
+  }
+
+  // 7) Weekly breakdown
+  // Week-of-month rule: Week 1 = days 1–7, Week 2 = 8–14, Week 3 = 15–21, Week 4 = 22–28, Week 5 = 29–end.
+  // We derive weekly income/bills/net from the signed `delta` values in ledger entries (opening excluded).
+  const weeksByMonth = Array.from({ length: projectionMonths }, () => new Map());
+
+  for (const entry of ledger) {
+    if (!entry || !entry.date) continue;
+    if (entry.kind === "opening") continue;
+
+    const mIndex =
+      typeof entry.monthIndex === "number"
+        ? entry.monthIndex
+        : getMonthIndexFromStart(startDateStr, entry.date);
+
+    if (mIndex < 0 || mIndex >= projectionMonths) continue;
+
+    const day = Number(entry.date.slice(8, 10));
+    if (!Number.isFinite(day) || day <= 0) continue;
+
+    const weekIndex = Math.min(5, Math.max(1, Math.floor((day - 1) / 7) + 1));
+    const signedDelta = Number(entry.delta || 0);
+
+    if (!weeksByMonth[mIndex].has(weekIndex)) {
+      weeksByMonth[mIndex].set(weekIndex, {
+        weekIndex,
+        incomeCents: 0,
+        billsCents: 0,
+        netCents: 0,
+      });
+    }
+
+    const bucket = weeksByMonth[mIndex].get(weekIndex);
+    bucket.netCents += signedDelta;
+
+    if (signedDelta > 0) {
+      bucket.incomeCents += signedDelta;
+    } else if (signedDelta < 0) {
+      bucket.billsCents += -signedDelta;
+    }
+  }
+
+  for (let i = 0; i < projectionMonths; i++) {
+    const buckets = Array.from(weeksByMonth[i].values())
+      .filter(
+        (w) =>
+          (w.incomeCents || 0) !== 0 ||
+          (w.billsCents || 0) !== 0 ||
+          (w.netCents || 0) !== 0
+      )
+      .sort((a, b) => a.weekIndex - b.weekIndex);
+
+    monthlyTotals[i].weeks = buckets;
   }
 
   return { ledger, monthlySummary: monthlyTotals, finalBalancesByAccount: balances };
@@ -424,4 +503,3 @@ export function projectCashflow(params) {
   lastResult = result;
   return result;
 }
-

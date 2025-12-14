@@ -1,223 +1,358 @@
+// src/pages/Home.jsx
 import React, { useMemo } from "react";
-import { TrendingUp, TrendingDown, Wallet, ArrowRight, Plus } from "lucide-react";
+import {
+  ArrowRight,
+  TrendingUp,
+  AlertCircle,
+  Plus,
+  Wallet,
+  Calendar as CalendarIcon,
+} from "lucide-react";
 
-// Hooks & Logic
-import { selectUpcomingBills } from "../store/selectors/billsSelectors";
-import { formatCurrency } from "../lib/cashflow/formatters";
-import { formatDateShort } from "../utils/dateFormat";
+import { useCashflowStore } from "../store/useCashflowStore";
+import { useCashflowTimeline } from "../hooks/useCashflowTimeline";
+import { Card, CardBody } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
 
 // Components
-import { StatCard } from "../components/ui/StatCard";
-import { Card, CardHeader, CardBody } from "../components/ui/Card";
+// [!code highlight:2] FIXED: Named import required for build
 import { CashflowChart } from "../components/charts/CashflowChart";
-import DashboardSkeleton from "../components/ui/skeleton/DashboardSkeleton";
-import { Badge } from "../components/ui/Badge";
-import { Button } from "../components/ui/Button";
-import { useToast } from "../components/ui/toast/useToast";
 
-const getMonthIndexFromStart = (startDate, dateStr) => {
-  const s = new Date(startDate + "T00:00:00");
-  const d = new Date(dateStr + "T00:00:00");
-  return (d.getFullYear() - s.getFullYear()) * 12 + (d.getMonth() - s.getMonth());
-};
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function daysInMonth(year, monthIndexZeroBased) {
+  return new Date(year, monthIndexZeroBased + 1, 0).getDate();
+}
+
+function buildDueDateForCurrentMonth(dueDay) {
+  const now = new Date();
+  const y = now.getFullYear();
+  const mIdx = now.getMonth();
+  const dim = daysInMonth(y, mIdx);
+  const safeDay = Math.min(Math.max(Number(dueDay || 1), 1), dim);
+  return `${y}-${pad2(mIdx + 1)}-${pad2(safeDay)}`;
+}
+
+function normalizeMaybeCents(value, keyHint = "") {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+
+  // If the field name suggests cents, convert.
+  if (/cents/i.test(String(keyHint))) return n / 100;
+
+  // Heuristic: large integers are often cents. Avoid double converting decimals.
+  if (Number.isInteger(n) && Math.abs(n) >= 10000) return n / 100;
+
+  return n;
+}
 
 export default function Home({
-  cashflow,
-  bills = [],
-  paidBills = {},
-  startDate,
   onGoToBills,
+  onGoToPlanner,
+  onGoToAccounts,
   onAddExpense,
-  onGoToExpenses,
-  isLoading,
 }) {
-  const { showToast } = useToast();
-  // 1. Compute upcoming bills using a memo + pure selector
-  const upcomingBills = useMemo(() => {
-    return selectUpcomingBills(
-      {
-        bills,
-        paidBills,
-        startDate,
-      },
-      5 // limit
+  const userProfile = useCashflowStore((state) => state.userProfile);
+  const accounts = useCashflowStore((state) => state.accounts || []);
+  const bills = useCashflowStore((state) => state.bills || []);
+  const billSharing = useCashflowStore((state) => state.billSharing);
+  const paidBills = useCashflowStore((state) => state.paidBills || {});
+
+  // Compute chart timeline directly (same engine as Planner) rather than guessing store keys.
+  const chartData = useCashflowTimeline(6);
+
+  // 1. Determine Current User Role
+  const role = userProfile?.role || "H"; // Default to Husband if unknown
+  const isHusband = role === "H";
+
+  // 2. Filter Accounts (My Accounts Only)
+  const myAccounts = useMemo(() => {
+    return accounts.filter((acc) => {
+      // Show if I own it, if it's Joint, or if it has no owner assigned
+      return acc.ownerRole === role || acc.ownerRole === "Joint" || !acc.ownerRole;
+    });
+  }, [accounts, role]);
+
+  const hasComputedBalances = useMemo(() => {
+    return myAccounts.some(
+      (a) =>
+        a?.currentBalance != null ||
+        a?.balance != null ||
+        a?.currentBalanceCents != null ||
+        a?.balanceCents != null
     );
-  }, [bills, paidBills, startDate]);
+  }, [myAccounts]);
 
-  // 2. Derive summary from provided projection (already memoized upstream)
-  const cashflowSummary = useMemo(() => {
-    if (!cashflow) return { income: 0, expense: 0, balance: 0, chartData: [] };
+  const totalBalance = useMemo(() => {
+    // Prefer computed/current balances if the store provides them; otherwise fall back to openingBalance.
+    return myAccounts.reduce((sum, acc) => {
+      const hasCurrent =
+        acc?.currentBalance != null ||
+        acc?.balance != null ||
+        acc?.currentBalanceCents != null ||
+        acc?.balanceCents != null;
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const monthIndex = getMonthIndexFromStart(startDate, todayStr);
-    const summary = cashflow.monthlySummary?.[monthIndex] || { totalIncome: 0, totalBills: 0, net: 0 };
+      if (hasCurrent) {
+        const raw =
+          acc.currentBalance ??
+          acc.balance ??
+          acc.currentBalanceCents ??
+          acc.balanceCents ??
+          0;
+        const keyHint =
+          acc.currentBalanceCents != null || acc.balanceCents != null ? "cents" : "";
+        return sum + normalizeMaybeCents(raw, keyHint);
+      }
 
-    const chartData = (cashflow.monthlySummary || [])
-      .slice(0, 6)
-      .map((m, i) => ({
-        label: `M${i + 1}`,
-        balance: (m.net || 0) / 100,
-      }));
+      return sum + (Number(acc.openingBalance) || 0);
+    }, 0);
+  }, [myAccounts]);
 
-    return {
-      income: summary.totalIncome / 100,
-      expense: summary.totalBills / 100,
-      balance: summary.net / 100,
-      chartData,
-    };
-  }, [cashflow, startDate]);
+  const balanceLabel = hasComputedBalances ? "My Balance" : "Starting Balance";
 
-  const { income, expense, balance, chartData } = cashflowSummary;
+  // 3. Calculate "My Bills Due"
+  const billsDueAmount = useMemo(() => {
+    const hPercent = billSharing?.percentageSplit?.H ?? 0.5;
+    const wPercent = billSharing?.percentageSplit?.W ?? 0.5;
+    const myPercent = isHusband ? hPercent : wPercent;
 
-  if (isLoading) {
-    return <DashboardSkeleton />;
-  }
+    // IMPORTANT: Home and Bills must share the same paid-status semantics.
+    // Bills uses a `paidBills` map keyed by `${date}:${billId}`, so Home must
+    // use the same source of truth (not `bill.paid`).
+    const unpaidThisMonth = bills.filter((b) => {
+      const dueDate = buildDueDateForCurrentMonth(b.dueDay);
+      const billId = b.id || "";
+      if (!billId) return true; // if somehow missing an id, treat as unpaid
+      const key = `${dueDate}:${billId}`;
+      return !paidBills?.[key];
+    });
 
-  const balanceStatus = balance >= 0 ? "positive" : "negative";
+    return unpaidThisMonth.reduce((total, bill) => {
+      const amount = Number(bill.amount) || 0;
+
+      // If I am the sole payer, add full amount
+      if (bill.payer === role) {
+        return total + amount;
+      }
+
+      // Shared / AUTO / missing payer => pay my % share
+      if (bill.payer === "Shared" || bill.payer === "AUTO" || !bill.payer) {
+        return total + amount * myPercent;
+      }
+
+      // If payer is explicitly the partner, I pay 0
+      return total;
+    }, 0);
+  }, [bills, role, billSharing, isHusband, paidBills]);
+
+  // Formatters
+  const formatMoney = (amount) =>
+    new Intl.NumberFormat("en-CA", {
+      style: "currency",
+      currency: "CAD",
+      maximumFractionDigits: 0,
+    }).format(amount);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+  };
 
   return (
-    <div className="min-h-screen bg-surface-50">
-      <main className="max-w-6xl mx-auto px-6 md:px-8 lg:px-12 py-8 pb-28 space-y-6">
-        {/* --- Header --- */}
-        <header className="space-y-1">
-          <h1 className="text-title-2xl font-bold tracking-tight text-surface-900">Smart Cash Flow Planner</h1>
-          <p className="text-caption text-surface-500">Overview of your projected and actual cash flow.</p>
-        </header>
-
-        {/* --- Hero Section: Balance --- */}
-        <Card variant="elevated">
-          <CardBody className="space-y-4">
-            <div className="space-y-2">
-              <h2 className="text-caption font-semibold uppercase tracking-wide text-surface-500">Projected Cash Flow</h2>
-              <div className="flex items-baseline gap-2">
-                <span className="text-title-xl font-semibold text-surface-900 tracking-tight">
-                  {formatCurrency(balance)}
-                </span>
-                <Badge variant={balanceStatus === "positive" ? "success" : "danger"}>
-                  {balanceStatus === "positive" ? "On Track" : "Over Budget"}
-                </Badge>
-              </div>
-              <p className="text-caption text-surface-500">Estimated for this month</p>
-            </div>
-
-            {/* Quick Stats Grid */}
-            <div className="grid grid-cols-2 gap-4">
-              <StatCard
-                title="Income"
-                value={formatCurrency(income)}
-                icon={<TrendingUp size={18} className="text-success-500" />}
-                variant="default"
-                size="sm"
-              />
-              <StatCard
-                title="Expenses"
-                value={formatCurrency(expense)}
-                icon={<TrendingDown size={18} className="text-danger-500" />}
-                variant="highlight"
-                size="sm"
-              />
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* --- Chart Section --- */}
-        <Card variant="elevated">
-          <CardHeader className="px-5 pt-5 pb-3">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <h3 className="text-title-l text-surface-900">Weekly Cash Balance</h3>
-                <p className="text-caption text-surface-500">Based on your projected income and bills</p>
-              </div>
-              {typeof onGoToExpenses === "function" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onGoToExpenses?.()}
-                >
-                  View expenses <ArrowRight size={14} aria-hidden="true" />
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardBody className="pt-0">
-            <CashflowChart data={chartData} />
-          </CardBody>
-        </Card>
-
-        {/* --- Upcoming Bills Section --- */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-title-l font-semibold text-surface-900">Upcoming Bills</h3>
-            <Button variant="link" size="sm" onClick={onGoToBills}>
-              See all <ArrowRight size={14} aria-hidden="true" />
-            </Button>
+    <div className="space-y-6 pb-24">
+      {/* Header */}
+      <div className="flex items-center justify-between px-1">
+        <div>
+          <h1 className="text-title-l font-bold text-surface-900">
+            {getGreeting()},{" "}
+            {userProfile?.displayName || (isHusband ? "Teles" : "Nicole")}
+          </h1>
+          <p className="text-body text-surface-500">Here's your financial snapshot</p>
+        </div>
+        <a href="/settings" className="block">
+          <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold border border-primary-200">
+            {role}
           </div>
+        </a>
+      </div>
 
-          <div className="space-y-2">
-            {upcomingBills.length > 0 ? (
-              upcomingBills.map((bill) => (
-                <Card key={`${bill.id}-${bill.dueDate}`} variant="flat">
-                  <CardBody className="flex items-center justify-between gap-3 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`h-10 w-10 rounded-2xl flex items-center justify-center ${
-                          bill.overdue ? "bg-danger-500/10 text-danger-500" : "bg-surface-100 text-surface-600"
-                        }`}
-                      >
-                        <Wallet size={20} aria-hidden="true" />
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className="text-body font-semibold text-surface-900">{bill.name}</p>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-caption ${bill.overdue ? "text-danger-500" : "text-surface-500"}`}>
-                            {bill.overdue ? "Overdue" : `Due ${formatDateShort(bill.dueDate)}`}
-                          </span>
-                          {bill.paid && (
-                            <Badge variant="success" className="px-2 py-0.5 text-tiny">
-                              Paid
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 gap-4">
+        <Card className="bg-primary-600 text-white border-none shadow-primary-sm">
+          <CardBody className="p-4 space-y-2">
+            <div className="flex items-center gap-2 opacity-90">
+              <Wallet size={18} />
+              <span className="text-caption font-medium">{balanceLabel}</span>
+            </div>
+            <div className="text-title-l font-bold">{formatMoney(totalBalance)}</div>
+          </CardBody>
+        </Card>
 
-                    <div className="text-right space-y-0.5">
-                      <p className="text-body font-semibold text-surface-900">
-                        {formatCurrency((bill.amountCents || bill.amount || 0) / 100)}
+        <Card className="bg-surface-50 border-surface-200 shadow-soft">
+          <CardBody className="p-4 space-y-2">
+            <div className="flex items-center gap-2 text-surface-500">
+              <AlertCircle size={18} className="text-warning-500" />
+              <span className="text-caption font-medium">My Bills Due</span>
+            </div>
+            <div className="text-title-l font-bold text-surface-900">
+              {formatMoney(billsDueAmount)}
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+        <div className="flex-none">
+          <a
+            href="/planner"
+            onClick={(e) => {
+              if (typeof onGoToPlanner === "function") {
+                e.preventDefault();
+                onGoToPlanner();
+              }
+            }}
+          >
+            <Button
+              variant="outline"
+              className="rounded-xl border-surface-200 bg-surface-50 shadow-soft hover:bg-surface-100"
+            >
+              <TrendingUp size={18} className="mr-2 text-green-600" />
+              Forecast
+            </Button>
+          </a>
+        </div>
+        <div className="flex-none">
+          <Button
+            variant="outline"
+            className="rounded-xl border-surface-200 bg-surface-50 shadow-soft hover:bg-surface-100"
+            onClick={onGoToBills}
+          >
+            <CalendarIcon size={18} className="mr-2 text-primary-600" />
+            Pay Bills
+          </Button>
+        </div>
+        <div className="flex-none">
+          <a
+            href="/accounts"
+            onClick={(e) => {
+              if (typeof onGoToAccounts === "function") {
+                e.preventDefault();
+                onGoToAccounts();
+              }
+            }}
+          >
+            <Button
+              variant="outline"
+              className="rounded-xl border-surface-200 bg-surface-50 shadow-soft hover:bg-surface-100"
+            >
+              <Plus size={18} className="mr-2 text-surface-600" />
+              Add Account
+            </Button>
+          </a>
+        </div>
+      </div>
+
+      {/* Cashflow Chart Area */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-title-m font-bold text-surface-900">Cash Flow</h3>
+          <a
+            href="/planner"
+            className="text-caption font-semibold text-primary-600 flex items-center"
+          >
+            View Report <ArrowRight size={14} className="ml-1" />
+          </a>
+        </div>
+
+        <Card className="h-64 bg-surface-50 border-surface-200 shadow-soft overflow-hidden">
+          <CardBody className="p-0 h-full">
+            {chartData.length >= 2 ? (
+              <CashflowChart data={chartData} />
+            ) : (
+              <div className="h-full w-full flex items-center justify-center text-[11px] text-surface-500 bg-surface-50">
+                Not enough data to show cash flow yet. Add accounts, income, and bills
+                to see a projection.
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* My Accounts List */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-title-m font-bold text-surface-900">My Accounts</h3>
+          <a href="/accounts" className="text-caption font-semibold text-primary-600">
+            See All
+          </a>
+        </div>
+
+        <div className="space-y-3">
+          {myAccounts.length > 0 ? (
+            myAccounts.map((account) => {
+              const rawDisplay =
+                account?.currentBalance ??
+                account?.balance ??
+                account?.currentBalanceCents ??
+                account?.balanceCents ??
+                account?.openingBalance ??
+                0;
+
+              const keyHint =
+                account?.currentBalanceCents != null || account?.balanceCents != null
+                  ? "cents"
+                  : "";
+
+              const displayAmount =
+                account?.currentBalance != null ||
+                account?.balance != null ||
+                account?.currentBalanceCents != null ||
+                account?.balanceCents != null
+                  ? normalizeMaybeCents(rawDisplay, keyHint)
+                  : Number(rawDisplay) || 0;
+
+              return (
+                <Card
+                  key={account.id}
+                  className="bg-surface-50 border-surface-200 shadow-soft hover:bg-surface-100 active:scale-[0.98] transition-transform"
+                >
+                  <CardBody className="p-4 flex justify-between items-center">
+                    <div>
+                      <p className="font-semibold text-surface-900">{account.name}</p>
+                      <p className="text-caption text-surface-500 capitalize">
+                        {account.type}
                       </p>
-                      {bill.overdue && (
-                        <span className="text-tiny text-danger-500 font-semibold">Attention needed</span>
-                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-surface-900">
+                        {formatMoney(displayAmount)}
+                      </p>
                     </div>
                   </CardBody>
                 </Card>
-              ))
-            ) : (
-              <Card variant="flat">
-                <CardBody className="text-center bg-surface-50 rounded-3xl border border-dashed border-surface-200 text-caption text-surface-500">
-                  No upcoming bills for this month.
-                </CardBody>
-              </Card>
-            )}
-          </div>
-        </section>
-      </main>
+              );
+            })
+          ) : (
+            <div className="p-6 text-center text-surface-400 bg-surface-50 rounded-2xl border border-dashed border-surface-200">
+              No accounts found for you.
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Floating Action Button */}
       <Button
-        onClick={() => {
-          if (typeof onAddExpense === "function") {
-            onAddExpense();
-          } else {
-            showToast({ type: "info", message: "Add transaction coming soon." });
-          }
-        }}
+        onClick={onAddExpense}
         variant="primary"
         size="lg"
-        className="fixed right-4 bottom-24 sm:bottom-[calc(24px+env(safe-area-inset-bottom))] h-14 w-14 rounded-pill shadow-soft hover:shadow-glow transition-all hover:scale-105 active:scale-95"
-        aria-label="Add Transaction"
+        className="fixed right-4 bottom-24 h-14 w-14 rounded-full shadow-lg flex items-center justify-center z-50"
       >
-        <Plus size={24} aria-hidden="true" />
+        <Plus size={24} />
       </Button>
     </div>
   );

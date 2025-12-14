@@ -5,6 +5,7 @@ import Bills from "./pages/Bills";
 import Planner from "./pages/Planner";
 import Settings from "./pages/Settings";
 import Expenses from "./pages/Expenses";
+import Accounts from "./pages/Accounts";
 import AddTransactionModal from "./components/AddTransactionModal.jsx";
 import { Card, CardBody } from "./components/ui/Card";
 import { Button } from "./components/ui/Button";
@@ -17,6 +18,8 @@ import { useNetworkStatus } from "./hooks/useNetworkStatus";
 import { loginWithGoogle, auth } from "./firebase";
 import { projectCashflow } from "./lib/cashflow/index.js";
 import { getDefaultPlannerStartDate } from "./lib/cashflow/index.js";
+// [!code ++] Import the hook to access database actions
+import useCashflowData from "./hooks/useCashflowData";
 
 // --- Helper Functions ---
 function getMonthIndexFromStart(startDate, dateStr) {
@@ -26,7 +29,6 @@ function getMonthIndexFromStart(startDate, dateStr) {
 }
 
 // --- Helper Component to Conditionally Run Hooks ---
-// This ensures the sync hook NEVER runs when we are in demo mode
 function FirebaseSyncHelper() {
   useFirebaseSync();
   return null;
@@ -39,6 +41,9 @@ export default function App() {
 
   // 2. Access Global Store
   const store = useCashflowStore();
+  
+  // [!code ++] 3. Access Data Actions (for saving to Firebase)
+  const { handleUpdateExpenses } = useCashflowData();
 
   const {
     userProfile,
@@ -69,11 +74,8 @@ export default function App() {
 
   // --- Demo Seeding Effect ---
   useEffect(() => {
-    // IMPORTANT: Check userProfile.uid specifically to avoid loop.
-    // If we are in demo mode AND the user is not yet the demo user, seed it.
     if (isDemo && userProfile?.uid !== "demo-user") {
       console.log("Agent Demo detected: Seeding mock user.");
-
       store.setUserProfile({
         uid: "demo-user",
         email: "demo@example.com",
@@ -81,7 +83,6 @@ export default function App() {
         role: "H",
         householdId: "demo-household",
       });
-
       store.setFullPlanData({
         startDate: new Date().toISOString().slice(0, 10),
         startingBalance: 0,
@@ -94,7 +95,6 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDemo, userProfile?.uid]);
-  // ^^^ Removed 'store' from dependencies to prevent infinite update loop
 
   // --- Navigation & Warnings ---
   const handleGoToSettingsSection = useCallback((section) => {
@@ -124,7 +124,7 @@ export default function App() {
   const safeStartDate = startDate || getDefaultPlannerStartDate();
   const plannerMonths = 6;
 
-  // Memoize expensive inputs to keep projectCashflow stable between renders
+  // Memoize expensive inputs
   const memoizedAccounts = useMemo(() => accounts.map((a) => ({ ...a })), [accounts]);
   const memoizedBills = useMemo(() => bills.map((b) => ({ ...b })), [bills]);
   const memoizedExpenses = useMemo(() => expenses.map((e) => ({ ...e })), [expenses]);
@@ -247,26 +247,17 @@ export default function App() {
 
   // --- Render ---
 
-  // 1. Login Screen (Only shown if NOT logged in)
+  // 1. Login Screen
   if (!canEnter) {
     return (
       <>
-        {/* IMPORTANT: Only run Cloud Sync if NOT in demo mode */}
         {!isDemo && <FirebaseSyncHelper />}
-
         <div className="min-h-screen bg-surface-50 flex flex-col items-center justify-center p-6">
           <div className="max-w-sm w-full">
             <Card variant="elevated">
               <CardBody className="p-8 text-center space-y-6">
                 <div className="h-16 w-16 bg-primary-500/10 text-primary-600 rounded-2xl flex items-center justify-center mx-auto">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="32"
-                    height="32"
-                    fill="currentColor"
-                    viewBox="0 0 256 256"
-                    aria-hidden="true"
-                  >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 256 256">
                     <path d="M216,72H180.92c.39-.33.79-.65,1.17-1A29.53,29.53,0,0,0,192,49.57V48a24,24,0,0,0-24-24H136a24,24,0,0,0-24-24v1.57a29.53,29.53,0,0,0,9.91,21.41c.38.33.78.65,1.17,1H56A16,16,0,0,0,40,88v48a8,8,0,0,0,16,0V88H200v48a8,8,0,0,0,16,0V88A16,16,0,0,0,216,72ZM136,40h32a8,8,0,0,1,8,8v.83a13.93,13.93,0,0,1-4.65,10.38L168,62.14l-3.35-2.93A13.93,13.93,0,0,1,160,48.83V48A8,8,0,0,1,168,40h-8V56H144V40h-8a8,8,0,0,1,8-8Zm88,136V152a8,8,0,0,0-16,0v24a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V152a8,8,0,0,0-16,0v24a24,24,0,0,0,24,24H200A24,24,0,0,0,224,176Zm-48-8a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,168Z"></path>
                   </svg>
                 </div>
@@ -274,13 +265,7 @@ export default function App() {
                   <h1 className="text-title-l font-semibold text-surface-900">Budget Tracker</h1>
                   <p className="text-body text-surface-500">Manage your cash flow with ease.</p>
                 </div>
-                <Button
-                  type="button"
-                  onClick={loginWithGoogle}
-                  variant="primary"
-                  size="md"
-                  className="w-full"
-                >
+                <Button onClick={loginWithGoogle} variant="primary" size="md" className="w-full">
                   Sign in with Google
                 </Button>
               </CardBody>
@@ -294,7 +279,6 @@ export default function App() {
   // 2. Main App
   return (
     <>
-      {/* IMPORTANT: Only run Cloud Sync if NOT in demo mode */}
       {!isDemo && <FirebaseSyncHelper />}
 
       <div className="min-h-screen bg-surface-50 text-surface-900">
@@ -318,6 +302,19 @@ export default function App() {
               onGoToSettings={() => setTab("settings")}
               onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
               onGoToBills={() => setTab("bills")}
+              onGoToExpenses={() => setTab("expenses")}
+            />
+          )}
+
+          {tab === "accounts" && (
+            <Accounts
+              accounts={accounts}
+              bills={bills}
+              goals={goals}
+              budgets={categoryBudgets ? budgetListForHome : []}
+              onGoToSettingsBudgets={() => handleGoToSettingsSection("budgets")}
+              onGoToSettingsGoals={() => handleGoToSettingsSection("goals")}
+              onAddAccount={() => handleGoToSettingsSection("accounts")}
             />
           )}
 
@@ -397,7 +394,8 @@ export default function App() {
             onClose={() => setIsTransactionModalOpen(false)}
             onSave={(newTransaction) => {
               const next = [...expenses, newTransaction];
-              store.updateExpenses(next);
+              // [!code ++] Use the handleUpdateExpenses from the hook to persist to Firebase
+              handleUpdateExpenses(next);
             }}
             accounts={accounts}
             isOnline={isOnline}
