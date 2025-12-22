@@ -1,4 +1,7 @@
 # Cashflow App – Agent Handoff Summary (2025-12-21, PT)
+Repo: https://github.com/telesjr90/smart-cashflow-planner
+Demo (agent demo in browser): https://cashflow-a1c11.web.app/?agentdemo=1
+
 ## Current State
 - Auto-post pipeline partially implemented (persisted last run date, guarded hook); most unit/integration tests pass.
 - E2E suite: all regression cases pass except R.7 (income auto-post visibility/balance). R.7 currently unstable; transactions not rendered post-reload in agent demo.
@@ -46,5 +49,5 @@
 ## “If you paste this into ChatGPT Agent Mode, ask it to…”
 - Make the R.7 seed write an object to indexedDB/localStorage and verify rehydrate (`tests/e2e/regression.spec.js` payday block).
 - Add a hydration/tx readiness wait in R.7 after reload; if absent, push the auto-salary tx into the zustand store directly before UI assertions.
-- Instrument `maybeRunAutoPostPaychecks` (src/hooks/useCashflowData.js) to confirm it runs in agentDemo post-reload; relax/adjust guards if necessary for demo mode.
+- Instrument `maybeRunAutoPostPaychecks` (`src/hooks/useCashflowData.js`) to confirm it runs in agentDemo post-reload; relax/adjust guards if necessary for demo mode.
 - Re-run `npx playwright test tests/e2e/regression.spec.js -g "R.7"` until green; keep transaction-first assertion, balance second with attachments.

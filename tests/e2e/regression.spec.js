@@ -503,9 +503,12 @@ test.describe('Expanded Functional Regression (agentDemo)', () => {
         },
         version: 0,
       };
+      // Persist the seed state. Use a stringified payload for localStorage
+      // (for test reading), but write the raw object into IndexedDB. The
+      // zustand persisted storage will stringify automatically. See
+      // src/store/storage.js for details.
       const seedPayload = JSON.stringify(payload);
       localStorage.setItem("cashflow-storage", seedPayload);
-
       try {
         const request = indexedDB.open("cashflow-app", 1);
         request.onupgradeneeded = () => {
@@ -518,7 +521,8 @@ test.describe('Expanded Functional Regression (agentDemo)', () => {
           const db = request.result;
           const tx = db.transaction("zustand-cache", "readwrite");
           const store = tx.objectStore("zustand-cache");
-          store.put(seedPayload, "cashflow-storage");
+          // write raw object instead of the stringified version
+          store.put(payload, "cashflow-storage");
           tx.oncomplete = () => db.close();
           tx.onerror = () => db.close();
         };
@@ -580,9 +584,11 @@ test.describe('Expanded Functional Regression (agentDemo)', () => {
           },
           version: parsed.version ?? 0,
         };
+        // Persist the updated state. Use raw object for IndexedDB to avoid
+        // double-stringification via zustand's JSON storage. Also write a
+        // stringified copy to localStorage for test helpers.
         const seedPayload = JSON.stringify(payload);
         localStorage.setItem("cashflow-storage", seedPayload);
-        // Best-effort indexedDB seed
         const request = indexedDB.open("cashflow-app", 1);
         request.onupgradeneeded = () => {
           const db = request.result;
@@ -594,7 +600,7 @@ test.describe('Expanded Functional Regression (agentDemo)', () => {
           const db = request.result;
           const txDb = db.transaction("zustand-cache", "readwrite");
           const store = txDb.objectStore("zustand-cache");
-          store.put(seedPayload, "cashflow-storage");
+          store.put(payload, "cashflow-storage");
           txDb.oncomplete = () => db.close();
           txDb.onerror = () => db.close();
         };
@@ -604,6 +610,17 @@ test.describe('Expanded Functional Regression (agentDemo)', () => {
     }, payDay);
     await page.reload();
     await expectAppLoaded(page);
+    // Wait until the persisted state has been hydrated. We poll localStorage to
+    // ensure the seeded transactions are present before reading from the UI.
+    await page.waitForFunction(() => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem('cashflow-storage') || '{}');
+        const txs = parsed?.state?.transactions || [];
+        return Array.isArray(txs) && txs.length > 0;
+      } catch {
+        return false;
+      }
+    }, { timeout: 10000 });
 
     await page.getByTestId('nav-expenses').click();
     await expect
