@@ -19,6 +19,14 @@ import { getTodayISODate } from "../lib/cashflow/dateUtils";
 import { useToast } from "../components/ui/toast/useToast";
 import { useCashflowStore } from "../store/useCashflowStore";
 
+const isAgentDemoEnv =
+  typeof window !== "undefined" &&
+  window.location.search.includes("agentDemo=1");
+
+if (isAgentDemoEnv && typeof window !== "undefined") {
+  window.__cashflowStore = useCashflowStore;
+}
+
 // --- Constants & Defaults ---
 const USERS = "users";
 const DEFAULT_START_DATE = getDefaultPlannerStartDate();
@@ -709,13 +717,12 @@ export default function useCashflowData({ subscribe = true } = {}) {
   const setLastAutoPostRunISO = useCashflowStore((state) => state.setLastAutoPostRunISO);
 
   // Check for Agent Demo mode
-  const isAgentDemo =
-    typeof window !== "undefined" &&
-    window.location.search.includes("agentDemo=1");
+  const isAgentDemo = isAgentDemoEnv;
 
-  if (typeof window !== "undefined" && isAgentDemo) {
+  if (isAgentDemo) {
     // eslint-disable-next-line no-undef
     window.__TEST_USER__ = true;
+    window.__cashflowStore = useCashflowStore;
   }
 
   const showVersionConflictToast = useCallback(
@@ -781,11 +788,12 @@ export default function useCashflowData({ subscribe = true } = {}) {
 
     // --- PATH A: DEMO MODE ---
     if (isAgentDemo) {
-      // Demo path: bypass Firebase and hydrate from local store (if any) plus defaults.
-      // GUARD: Only run this ONCE to avoid infinite loops
-      if (!hasHydratedRef.current) {
+      const proceed = () => {
+        if (hasHydratedRef.current) return;
+
         const demoUser = { uid: "demo-user", displayName: "Agent Demo" };
         setUser(demoUser);
+
         const mergedDemoData = readPlanFromStore();
 
         hydrateStoreOnce(mergedDemoData);
@@ -800,13 +808,35 @@ export default function useCashflowData({ subscribe = true } = {}) {
           data: { ...mergedDemoData },
           sectionVersions: { ...DEFAULT_SECTION_VERSIONS },
         });
+
         setMyData({ ...mergedDemoData });
         setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
         setHousehold([]);
         setLoading(false);
         setHasCached(true);
+      };
+
+      // Wait for persist hydration so readPlanFromStore sees seeded state.
+      const persistApi = useCashflowStore?.persist;
+
+      if (persistApi?.hasHydrated?.()) {
+        proceed();
+        return;
       }
-      return;
+
+      const unsub = persistApi?.onFinishHydration?.(() => {
+        proceed();
+      });
+
+      // Safety fallback: don't hang forever if persist API differs.
+      const t = setTimeout(() => {
+        proceed();
+      }, 1500);
+
+      return () => {
+        clearTimeout(t);
+        if (typeof unsub === "function") unsub();
+      };
     }
 
     // --- PATH B: SUBSCRIBE DISABLED ---
