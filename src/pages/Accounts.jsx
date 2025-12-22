@@ -34,6 +34,7 @@ export default function Accounts({
   const storeGoals = useCashflowStore((state) => state.goals || []);
   const categoryBudgets = useCashflowStore((state) => state.categoryBudgets || {});
   const userProfile = useCashflowStore((state) => state.userProfile);
+  const hasHydrated = useCashflowStore((state) => state.hasHydrated);
 
   // 2. Normalize Budgets from object to array if coming from store
   const storeBudgets = useMemo(() => {
@@ -47,6 +48,25 @@ export default function Accounts({
   const budgets = propBudgets || storeBudgets;
 
   const role = userProfile?.role || "H"; // Default to Husband if unknown
+
+  if (!hasHydrated) {
+    return (
+      <div className="space-y-4 p-4">
+        <div className="h-6 w-32 bg-surface-200 rounded animate-pulse" />
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <div
+              key={idx}
+              className="bg-surface-100 border border-surface-200 rounded-2xl p-4 shadow-soft animate-pulse"
+            >
+              <div className="h-4 w-40 bg-surface-200 rounded mb-2" />
+              <div className="h-3 w-24 bg-surface-200 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   // 4. Filter Accounts (My Accounts Only)
   const myAccounts = useMemo(() => {

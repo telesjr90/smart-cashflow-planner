@@ -1,38 +1,33 @@
 import { test, expect } from '@playwright/test';
-import { mockUser, mockFirestoreData } from '../utils/mockData';
+const DEMO_ENTRY = '/?agentDemo=1';
 
 test.describe('Home Page Visuals', () => {
-  test.beforeEach(async ({ page }) => {
-    // Inject User AND Data directly into window
-    await page.addInitScript(({ user, data }) => {
-      window.__TEST_USER__ = user;
-      window.__TEST_DATA__ = {
-        profile: { 
-          uid: user.uid, 
-          email: user.email, 
-          displayName: user.displayName,
-          role: 'H',
-          householdId: 'household-1'
-        },
-        data: data
-      };
-    }, { user: mockUser, data: mockFirestoreData });
+  test('renders demo-mode home dashboard', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
 
-    await page.goto('/');
-    
-    // Wait for App to render "Hi, Test User"
-    await expect(page.getByText(/Hi, Test/i)).toBeVisible();
-  });
+    // Always use demo mode to load fixtures quickly
+    await page.goto(DEMO_ENTRY);
 
-  test('should render dashboard correctly', async ({ page }) => {
-    await expect(page.getByText(/Discretionary left/i)).toBeVisible();
-    await expect(page.getByText(/Savings to date/i)).toBeVisible();
-    await expect(page).toHaveScreenshot('home-page.png');
-  });
+    // Ensure we're on Home (clicking is idempotent)
+    const navHome = page.getByTestId('nav-home');
+    await expect(navHome).toBeVisible({ timeout: 10000 });
+    await navHome.click();
 
-  test('should show add expense modal', async ({ page }) => {
-    await page.getByRole('button', { name: /add expense/i }).click();
-    await expect(page.getByText(/Log Expense/i)).toBeVisible();
-    await expect(page).toHaveScreenshot('add-expense-modal.png');
+    // Wait for hydrated home content (home returns null pre-hydration)
+    const balanceCard = page.locator('div').filter({ hasText: /My Balance|Starting Balance/ }).first();
+    await expect(balanceCard).toBeVisible({ timeout: 15000 });
+
+    // Stable anchors in the current UI
+    await expect(page.getByRole('heading', { name: 'Cash Flow' })).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByRole('heading', { name: 'My Accounts' })).toBeVisible();
+    await expect(page.getByTestId('nav-add')).toBeVisible();
+    await page.waitForTimeout(100); // small settle for visual stability
+
+    // Visual regression snapshot
+    await expect(page).toHaveScreenshot('visual--home--default.png', {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 });

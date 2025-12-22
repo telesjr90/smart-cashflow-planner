@@ -20,9 +20,9 @@ export default function AddTransactionModal({ isOpen, onClose, onSave, accounts 
   // Initialize account ID when accounts change or modal opens
   useEffect(() => {
     if (isOpen && accounts.length > 0 && !accountId) {
-        setAccountId(accounts[0].id);
+      setAccountId(accounts[0].id);
     }
-  }, [isOpen, accounts]);
+  }, [isOpen, accounts, accountId]);
 
   if (!isOpen) return null;
 
@@ -56,17 +56,31 @@ export default function AddTransactionModal({ isOpen, onClose, onSave, accounts 
     }
   };
 
+  const normalizeAmount = (val) => {
+    if (typeof val === "string") {
+      const cleaned = val.replace(/[^0-9.-]/g, "");
+      const n = Number(cleaned);
+      if (!Number.isFinite(n)) return 0;
+      return Number(n.toFixed(2));
+    }
+    const n = Number(val);
+    if (!Number.isFinite(n)) return 0;
+    return Number(n.toFixed(2));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!amount || !description) return;
 
+    const numericAmount = normalizeAmount(amount);
+
     const newTransaction = {
       id: crypto.randomUUID(),
       date,
-      amount: parseFloat(amount),
+      amount: numericAmount,
       description,
       category: categoryId,
-      accountId: accountId || "unassigned", // Ensure it's never empty/null
+      accountId: accountId || accounts[0]?.id || "unassigned",
       type,
       createdAt: new Date().toISOString(),
     };

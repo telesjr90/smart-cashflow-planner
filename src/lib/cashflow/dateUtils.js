@@ -4,6 +4,12 @@
  * Returns today's date as an ISO string: "YYYY-MM-DD".
  */
 export function getTodayISODate() {
+  if (typeof window !== "undefined") {
+    const mock = window.__mockToday;
+    if (typeof mock === "string" && /^\d{4}-\d{2}-\d{2}$/.test(mock)) {
+      return mock;
+    }
+  }
   // Use local time to avoid timezone offset issues (e.g. UTC showing yesterday)
   const now = new Date();
   const year = now.getFullYear();

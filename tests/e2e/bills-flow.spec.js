@@ -9,7 +9,7 @@ test.describe('Bills Flow (remote, agentDemo)', () => {
     });
 
     await page.goto('/?agentDemo=1');
-    await page.getByRole('button', { name: /bills/i }).click();
+    await page.getByTestId('nav-bills').click();
   });
 
   test('C.1 Mark first unpaid bill as paid', async ({ page }) => {

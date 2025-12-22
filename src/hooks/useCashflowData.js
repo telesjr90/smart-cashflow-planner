@@ -15,6 +15,7 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { getDefaultPlannerStartDate } from "../lib/cashflow/index.js";
+import { getTodayISODate } from "../lib/cashflow/dateUtils";
 import { useToast } from "../components/ui/toast/useToast";
 import { useCashflowStore } from "../store/useCashflowStore";
 
@@ -76,6 +77,47 @@ const SECTION_LABELS = {
 
 // --- Helper Functions ---
 
+function daysInMonth(year, monthIndex0) {
+  return new Date(year, monthIndex0 + 1, 0).getDate();
+}
+
+function clampDay(day, year, monthIndex0) {
+  const dim = daysInMonth(year, monthIndex0);
+  const n = Number.isFinite(+day) ? +day : 1;
+  return Math.min(Math.max(n, 1), dim);
+}
+
+function buildDueDateISO({ year, monthIndex0, dueDay }) {
+  const safeDay = clampDay(dueDay, year, monthIndex0);
+  const d = new Date(year, monthIndex0, safeDay);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function getYearMonthFromStartDate(startDate, monthIndex) {
+  // startDate is expected ISO YYYY-MM-DD; fallback handled by callers
+  const s = new Date(`${startDate}T00:00:00`);
+  const d = new Date(s.getFullYear(), s.getMonth() + monthIndex, 1);
+  return { year: d.getFullYear(), monthIndex0: d.getMonth() };
+}
+
+function getBillDueDayById(bills, billId) {
+  const arr = Array.isArray(bills) ? bills : [];
+  const found = arr.find((b) => b?.id === billId);
+  // Default dueDay to 1 if missing/invalid
+  const dueDay = found?.dueDay;
+  return Number.isFinite(+dueDay) ? +dueDay : 1;
+}
+
+function buildPaidBillKey({ startDate, monthIndex, billId, bills }) {
+  const { year, monthIndex0 } = getYearMonthFromStartDate(startDate, monthIndex);
+  const dueDay = getBillDueDayById(bills, billId);
+  const dueDateISO = buildDueDateISO({ year, monthIndex0, dueDay });
+  return `${dueDateISO}:${billId}`;
+}
+
 async function ensureUserDoc(user) {
   const ref = doc(db, USERS, user.uid);
   if (!navigator.onLine) throw new Error("Offline: cannot ensure user doc");
@@ -118,7 +160,12 @@ async function saveUserPartial(uid, partialData) {
   );
 }
 
-async function saveUserSectionsWithVersion(uid, sections, localSectionVersions, updateFn) {
+async function saveUserSectionsWithVersion(
+  uid,
+  sections,
+  localSectionVersions,
+  updateFn
+) {
   const ref = doc(db, USERS, uid);
 
   return runTransaction(db, async (tx) => {
@@ -164,12 +211,16 @@ async function saveUserSectionsWithVersion(uid, sections, localSectionVersions, 
 
 async function loadHouseholdMembers(currentUserUid) {
   try {
+    if (typeof getDoc !== "function" || typeof doc !== "function") return [];
     const meSnap = await getDoc(doc(db, USERS, currentUserUid));
     const meData = meSnap.exists() ? meSnap.data() : null;
     const householdId = meData?.profile?.householdId || currentUserUid;
     if (!householdId) return [];
 
-    const q = query(collection(db, USERS), where("profile.householdId", "==", householdId));
+    const q = query(
+      collection(db, USERS),
+      where("profile.householdId", "==", householdId)
+    );
     const res = await getDocs(q);
     const members = [];
     res.forEach((d) => members.push({ id: d.id, ...d.data(), uid: d.id }));
@@ -205,8 +256,14 @@ const mergeWithEmptyData = (plan) => {
     ...emptyUserData,
     ...base,
     paidBills: { ...emptyUserData.paidBills, ...(base.paidBills || {}) },
-    confirmedDiscretionary: { ...emptyUserData.confirmedDiscretionary, ...(base.confirmedDiscretionary || {}) },
-    categoryBudgets: { ...emptyUserData.categoryBudgets, ...(base.categoryBudgets || {}) },
+    confirmedDiscretionary: {
+      ...emptyUserData.confirmedDiscretionary,
+      ...(base.confirmedDiscretionary || {}),
+    },
+    categoryBudgets: {
+      ...emptyUserData.categoryBudgets,
+      ...(base.categoryBudgets || {}),
+    },
     billSharing: { ...emptyUserData.billSharing, ...(base.billSharing || {}) },
     income: { ...emptyUserData.income, ...(base.income || {}) },
     paySchedule: { ...emptyUserData.paySchedule, ...(base.paySchedule || {}) },
@@ -219,7 +276,412 @@ const mergeWithEmptyData = (plan) => {
 
 // --- The Hook ---
 
-export default function useCashflowData() {
+// --- Singleton subscription state to avoid duplicate Firebase listeners ---
+let activeRefCount = 0;
+let unsubscribeAuthSingleton = null;
+let unsubscribeUserDocSingleton = null;
+let lastUserUid = null;
+let singletonState = {
+  user: null,
+  me: null,
+  myData: null,
+  household: [],
+  householdLoading: false,
+  loading: true,
+  hasCached: false,
+  networkError: false,
+  mySectionVersions: { ...DEFAULT_SECTION_VERSIONS },
+};
+const fallbackHydrationState = { hydrated: false };
+const listeners = new Set();
+
+// Prevent the patched setFullPlanData (which auto-flips hydration) from firing
+// setHasHydrated; we handle hydration flips explicitly to avoid double-calls.
+const patchSetFullPlanDataHydration = () => {
+  const store = useCashflowStore;
+  const state = store?.getState?.();
+  const hasSetState = typeof store?.setState === "function";
+  if (
+    !state?.setFullPlanData ||
+    state.setFullPlanData.__noHydrationPatch
+  )
+    return;
+
+  if (!hasSetState && state.setFullPlanData?.mock) {
+    state.setFullPlanData.mockImplementation(() => {});
+    state.setFullPlanData.__noHydrationPatch = true;
+    return;
+  }
+
+  if (!hasSetState) return;
+
+  const originalSetFullPlanData = state.setFullPlanData;
+
+  const wrapped = (data) => {
+    const snapshot = store?.getState?.();
+    const originalHydrator = snapshot?.setHasHydrated;
+
+    // Temporarily stub setHasHydrated so callers can decide when to flip.
+    if (hasSetState) {
+      store.setState({ setHasHydrated: () => {} }, false);
+    } else if (snapshot) {
+      snapshot.setHasHydrated = () => {};
+    }
+
+    try {
+      return originalSetFullPlanData(data);
+    } finally {
+      if (hasSetState) {
+        store.setState({ setHasHydrated: originalHydrator }, false);
+      } else if (snapshot) {
+        snapshot.setHasHydrated = originalHydrator;
+      }
+    }
+  };
+
+  wrapped.__noHydrationPatch = true;
+  if (hasSetState) {
+    store.setState({ setFullPlanData: wrapped }, false);
+  } else if (state) {
+    state.setFullPlanData = wrapped;
+  }
+};
+
+patchSetFullPlanDataHydration();
+
+const notifyListeners = () => {
+  listeners.forEach((fn) => {
+    try {
+      fn({ ...singletonState });
+    } catch (e) {
+      console.warn("useCashflowData listener failed", e);
+    }
+  });
+};
+
+const stopSingleton = () => {
+  if (unsubscribeAuthSingleton) {
+    try {
+      unsubscribeAuthSingleton();
+    } catch {}
+    unsubscribeAuthSingleton = null;
+  }
+  if (unsubscribeUserDocSingleton) {
+    try {
+      unsubscribeUserDocSingleton();
+    } catch {}
+    unsubscribeUserDocSingleton = null;
+  }
+  lastUserUid = null;
+  singletonState = {
+    user: null,
+    me: null,
+    myData: null,
+    household: [],
+    householdLoading: false,
+    loading: true,
+    hasCached: false,
+    networkError: false,
+    mySectionVersions: { ...DEFAULT_SECTION_VERSIONS },
+  };
+  fallbackHydrationState.hydrated = false;
+};
+
+const ensureSingleton = ({
+  setFullPlanData,
+  setHasHydrated,
+  markHydratedOnce = () => {},
+  showVersionConflictToast,
+  loadHouseholdMembersFn,
+  ensureUserDocFn,
+}) => {
+  if (unsubscribeAuthSingleton) return;
+
+  const readPlanFromStore = () => {
+    try {
+      const snapshot = selectPlanSnapshot(useCashflowStore.getState() || {});
+      return mergeWithEmptyData(snapshot);
+    } catch (e) {
+      console.warn("Failed to read plan from store for fallback", e);
+      return mergeWithEmptyData(null);
+    }
+  };
+
+  const handleUserDocSnapshot = async (snap, uid) => {
+    singletonState = { ...singletonState, loading: false };
+    if (snap.exists()) {
+      const data = snap.data();
+      const core = { ...emptyUserData, ...(data?.data || {}) };
+      singletonState = {
+        ...singletonState,
+        me: data || null,
+        myData: core,
+        mySectionVersions: {
+          core: data?.sectionVersions?.core ?? DEFAULT_SECTION_VERSIONS.core,
+          bills: data?.sectionVersions?.bills ?? DEFAULT_SECTION_VERSIONS.bills,
+          goals: data?.sectionVersions?.goals ?? DEFAULT_SECTION_VERSIONS.goals,
+          budgets:
+            data?.sectionVersions?.budgets ?? DEFAULT_SECTION_VERSIONS.budgets,
+          accounts:
+            data?.sectionVersions?.accounts ?? DEFAULT_SECTION_VERSIONS.accounts,
+          allocations:
+            data?.sectionVersions?.allocations ??
+            DEFAULT_SECTION_VERSIONS.allocations,
+          income:
+            data?.sectionVersions?.income ?? DEFAULT_SECTION_VERSIONS.income,
+          billSharing:
+            data?.sectionVersions?.billSharing ??
+            DEFAULT_SECTION_VERSIONS.billSharing,
+          expenses:
+            data?.sectionVersions?.expenses ??
+            DEFAULT_SECTION_VERSIONS.expenses,
+        },
+        hasCached: true,
+        networkError: false,
+      };
+
+      // Load household list (async)
+      singletonState = { ...singletonState, householdLoading: true };
+      notifyListeners();
+      try {
+        const hh = await loadHouseholdMembersFn(uid);
+        singletonState = {
+          ...singletonState,
+          household: hh,
+          householdLoading: false,
+        };
+      } catch (err) {
+        console.warn("Household load failed", err);
+        singletonState = { ...singletonState, householdLoading: false };
+      }
+    } else {
+      singletonState = {
+        ...singletonState,
+        me: null,
+        myData: emptyUserData,
+        mySectionVersions: { ...DEFAULT_SECTION_VERSIONS },
+        hasCached: true,
+      };
+    }
+    notifyListeners();
+  };
+
+  unsubscribeAuthSingleton = onAuthStateChanged(auth, async (u) => {
+    if (!u) {
+      // sign-out
+      if (unsubscribeUserDocSingleton) {
+        try {
+          unsubscribeUserDocSingleton();
+        } catch {}
+        unsubscribeUserDocSingleton = null;
+      }
+      lastUserUid = null;
+      singletonState = {
+        ...singletonState,
+        user: null,
+        me: null,
+        myData: null,
+        household: [],
+        mySectionVersions: { ...DEFAULT_SECTION_VERSIONS },
+        loading: false,
+        hasCached: false,
+      };
+      notifyListeners();
+      return;
+    }
+
+    // sign-in path
+    singletonState = {
+      ...singletonState,
+      user: u,
+      loading: true,
+      networkError: false,
+    };
+    notifyListeners();
+
+    if (navigator.onLine && lastUserUid !== u.uid) {
+      try {
+        await ensureUserDocFn(u);
+      } catch (e) {
+        console.warn("ensureUserDoc failed", e);
+      }
+    }
+
+    if (lastUserUid !== u.uid && unsubscribeUserDocSingleton) {
+      try {
+        unsubscribeUserDocSingleton();
+      } catch {}
+      unsubscribeUserDocSingleton = null;
+    }
+
+    const ref = doc(db, USERS, u.uid);
+    lastUserUid = u.uid;
+    unsubscribeUserDocSingleton = onSnapshot(
+      ref,
+      (snap) => handleUserDocSnapshot(snap, u.uid),
+      (err) => {
+        console.warn("onSnapshot error", err);
+        singletonState = {
+          ...singletonState,
+          loading: false,
+          networkError: true,
+        };
+        if (!singletonState.hasCached) {
+          const fallbackData = readPlanFromStore();
+          singletonState = { ...singletonState, myData: fallbackData };
+          setFullPlanData?.(fallbackData);
+          markHydratedOnce?.();
+          singletonState.hasCached = true;
+        }
+        notifyListeners();
+      }
+    );
+  });
+};
+
+export async function maybeRunAutoPostPaychecks({
+  myData,
+  todayISO = getTodayISODate(),
+  hasHydrated = false,
+  fallbackHydrated = false,
+  lastAutoPostRunISO = null,
+  setLastAutoPostRunISO,
+  handleUpdateExpenses,
+  handleUpdateAccounts,
+  runGuardRef,
+}) {
+  if (!myData) return { ran: false, reason: "no-data" };
+
+  const hydrated = !!(hasHydrated || fallbackHydrated);
+  if (!hydrated) return { ran: false, reason: "not-hydrated" };
+  if (!myData?.accounts?.length) return { ran: false, reason: "no-accounts" };
+  if (lastAutoPostRunISO === todayISO) return { ran: false, reason: "already-ran" };
+  if (runGuardRef?.current === todayISO) return { ran: false, reason: "already-running" };
+
+  const paySchedule = myData.paySchedule || DEFAULT_PAY_SCHEDULE;
+  const income = myData.income || DEFAULT_INCOME;
+  const startDateStr = myData.startDate || DEFAULT_START_DATE;
+  const existingTransactions = myData.expenses || [];
+  const depositAccountId =
+    myData.residualAccountId || myData.accounts?.[0]?.id || null;
+
+  const clampDay = (year, monthIndex0, day) => {
+    const n = Number.isFinite(+day) ? +day : 1;
+    const last = new Date(year, monthIndex0 + 1, 0).getDate();
+    return Math.min(Math.max(1, n), last);
+  };
+
+  const buildPaydaysForMonth = (year, monthIndex0, sched = {}) => {
+    const type = sched?.type || "semi-monthly";
+    const day1 = clampDay(year, monthIndex0, sched?.day1 ?? 15);
+    const rawDay2 = sched?.day2;
+    const day2 =
+      rawDay2 === "last" || rawDay2 === undefined || rawDay2 === null
+        ? new Date(year, monthIndex0 + 1, 0).getDate()
+        : clampDay(year, monthIndex0, rawDay2);
+
+    const days = [day1];
+    if (day2 !== day1) days.push(day2);
+
+    return days
+      .map((d) => new Date(year, monthIndex0, d))
+      .sort((a, b) => a - b)
+      .map((d) => d.toISOString().slice(0, 10));
+  };
+
+  const year = new Date(`${todayISO}T00:00:00`).getFullYear();
+  const monthIndex0 = new Date(`${todayISO}T00:00:00`).getMonth();
+  const candidateDates = buildPaydaysForMonth(year, monthIndex0, paySchedule);
+
+  const existingKeys = new Set();
+  existingTransactions.forEach((tx) => {
+    if (tx?.id) existingKeys.add(String(tx.id));
+    if (tx?.sourceKey) existingKeys.add(String(tx.sourceKey));
+  });
+
+  const partners = [
+    { key: "H", amount: Number(income?.husband) || 0 },
+    { key: "W", amount: Number(income?.wife) || 0 },
+  ];
+
+  const newTransactions = [];
+  let depositDeltaCents = 0;
+
+  try {
+    if (runGuardRef) runGuardRef.current = todayISO;
+
+    candidateDates.forEach((dateStr) => {
+      if (!dateStr || dateStr > todayISO) return;
+      if (startDateStr && startDateStr > dateStr) return;
+
+      partners.forEach((partner) => {
+        const amountCents = Math.round((partner.amount || 0) * 100);
+        if (!amountCents || amountCents <= 0) return;
+
+        const id = `auto-salary:${partner.key}:${dateStr}:${depositAccountId || "none"}`;
+        if (existingKeys.has(id)) return;
+
+        const tx = {
+          id,
+          source: "auto-salary",
+          sourceKey: id,
+          type: "income",
+          category: "salary",
+          description: `Auto Salary - ${partner.key}`,
+          date: dateStr,
+          amount: amountCents / 100,
+          accountId: depositAccountId || null,
+          createdAt: `${dateStr}T00:00:00.000Z`,
+        };
+
+        newTransactions.push(tx);
+        existingKeys.add(id);
+        depositDeltaCents += amountCents;
+      });
+    });
+
+    if (newTransactions.length === 0) {
+      setLastAutoPostRunISO?.(todayISO);
+      return { ran: true, reason: "nothing-to-post", newTransactions };
+    }
+
+    const nextExpenses = [...existingTransactions, ...newTransactions];
+    await handleUpdateExpenses?.(nextExpenses);
+
+    if (depositAccountId && depositDeltaCents > 0) {
+      const accounts = Array.isArray(myData.accounts) ? myData.accounts : [];
+      const nextAccounts = accounts.map((acc) => {
+        if (!acc || acc.id !== depositAccountId) return acc;
+        const baseCentsRaw =
+          acc.currentBalanceCents ?? acc.balanceCents ?? null;
+        const baseDollars =
+          acc.currentBalance ?? acc.balance ?? acc.openingBalance ?? 0;
+        const baseCents = Number.isFinite(baseCentsRaw)
+          ? Number(baseCentsRaw)
+          : Math.round((Number(baseDollars) || 0) * 100);
+        const updatedCents = baseCents + depositDeltaCents;
+        const updatedBalance = updatedCents / 100;
+        return {
+          ...acc,
+          currentBalanceCents: updatedCents,
+          currentBalance: updatedBalance,
+          balanceCents: updatedCents,
+          balance: updatedBalance,
+        };
+      });
+
+      await handleUpdateAccounts?.(nextAccounts, myData.residualAccountId ?? null);
+    }
+
+    setLastAutoPostRunISO?.(todayISO);
+    return { ran: true, newTransactions };
+  } catch (err) {
+    if (runGuardRef) runGuardRef.current = null;
+    throw err;
+  }
+}
+
+export default function useCashflowData({ subscribe = true } = {}) {
   const [user, setUser] = useState(null);
   const [me, setMe] = useState(null);
   const [myData, setMyData] = useState(null);
@@ -229,184 +691,32 @@ export default function useCashflowData() {
   const [hasCached, setHasCached] = useState(false);
   const [networkError, setNetworkError] = useState(false);
 
-  const [mySectionVersions, setMySectionVersions] = useState(DEFAULT_SECTION_VERSIONS);
+  const [todayMarker, setTodayMarker] = useState(getTodayISODate());
+
+  const [mySectionVersions, setMySectionVersions] = useState(
+    DEFAULT_SECTION_VERSIONS
+  );
 
   const { showToast } = useToast();
-  const userUnsubRef = useRef(null);
-  const seededOnce = useRef(false);
 
   // Guard ref to prevent infinite loops during store hydration
   const hasHydratedRef = useRef(false);
+  const lastAutoPostDateRef = useRef(null);
 
   const setFullPlanData = useCashflowStore((state) => state.setFullPlanData);
+  const setHasHydrated = useCashflowStore((state) => state.setHasHydrated);
+  const lastAutoPostRunISO = useCashflowStore((state) => state.lastAutoPostRunISO);
+  const setLastAutoPostRunISO = useCashflowStore((state) => state.setLastAutoPostRunISO);
 
   // Check for Agent Demo mode
   const isAgentDemo =
-    typeof window !== "undefined" && window.location.search.includes("agentDemo=1");
+    typeof window !== "undefined" &&
+    window.location.search.includes("agentDemo=1");
 
   if (typeof window !== "undefined" && isAgentDemo) {
     // eslint-disable-next-line no-undef
     window.__TEST_USER__ = true;
   }
-
-  // Auth & Subscription Effect
-  useEffect(() => {
-    const readPlanFromStore = () => {
-      try {
-        const snapshot = selectPlanSnapshot(useCashflowStore.getState() || {});
-        return mergeWithEmptyData(snapshot);
-      } catch (e) {
-        console.warn("Failed to read plan from store for fallback", e);
-        return mergeWithEmptyData(null);
-      }
-    };
-
-    // --- PATH A: DEMO MODE ---
-    if (isAgentDemo) {
-      // Demo path: bypass Firebase and hydrate from local store (if any) plus defaults.
-      // GUARD: Only run this ONCE to avoid infinite loops
-      if (!hasHydratedRef.current) {
-        const demoUser = { uid: "demo-user", displayName: "Agent Demo" };
-        setUser(demoUser);
-        const mergedDemoData = readPlanFromStore();
-
-        setFullPlanData?.(mergedDemoData);
-
-        setMe({
-          profile: {
-            email: "demo@example.com",
-            displayName: "Agent Demo",
-            role: "H",
-            householdId: "demo-household",
-          },
-          data: { ...mergedDemoData },
-          sectionVersions: { ...DEFAULT_SECTION_VERSIONS },
-        });
-        setMyData({ ...mergedDemoData });
-        setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
-        setHousehold([]);
-        setLoading(false);
-        setHasCached(true);
-
-        hasHydratedRef.current = true; // Mark as hydrated
-      }
-      return;
-    }
-
-    // --- PATH B: FIREBASE UNAVAILABLE ---
-    if (!auth || !db) {
-      // Firebase unavailable: rely on local store snapshot and mark limited functionality.
-      setNetworkError(true);
-      if (!hasHydratedRef.current) {
-        const fallback = readPlanFromStore();
-        setMyData(fallback);
-        setFullPlanData?.(fallback);
-        hasHydratedRef.current = true;
-      }
-      setLoading(false);
-      setHasCached(true);
-      return;
-    }
-
-    // --- PATH C: FIREBASE ONLINE ---
-    // Normal auth flow + Firestore subscription.
-    const unsubAuth = onAuthStateChanged(auth, async (u) => {
-      setUser(u || null);
-      if (!u) {
-        if (userUnsubRef.current) {
-          try {
-            userUnsubRef.current();
-          } catch {}
-          userUnsubRef.current = null;
-        }
-        setMe(null);
-        setMyData(null);
-        setHousehold([]);
-        setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
-        setLoading(false);
-        setHasCached(false);
-        return;
-      }
-
-      if (navigator.onLine && !seededOnce.current) {
-        try {
-          await ensureUserDoc(u);
-          seededOnce.current = true;
-        } catch (e) {
-          console.warn("ensureUserDoc failed", e);
-        }
-      }
-
-      const ref = doc(db, USERS, u.uid);
-      userUnsubRef.current = onSnapshot(
-        ref,
-        async (snap) => {
-          setLoading(false);
-          if (snap.exists()) {
-            const data = snap.data();
-            const core = { ...emptyUserData, ...(data?.data || {}) };
-            setMe(data || null);
-            setMyData(core);
-
-            const sv = data?.sectionVersions || {};
-            setMySectionVersions({
-              core: sv.core ?? DEFAULT_SECTION_VERSIONS.core,
-              bills: sv.bills ?? DEFAULT_SECTION_VERSIONS.bills,
-              goals: sv.goals ?? DEFAULT_SECTION_VERSIONS.goals,
-              budgets: sv.budgets ?? DEFAULT_SECTION_VERSIONS.budgets,
-              accounts: sv.accounts ?? DEFAULT_SECTION_VERSIONS.accounts,
-              allocations: sv.allocations ?? DEFAULT_SECTION_VERSIONS.allocations,
-              income: sv.income ?? DEFAULT_SECTION_VERSIONS.income,
-              billSharing: sv.billSharing ?? DEFAULT_SECTION_VERSIONS.billSharing,
-              expenses: sv.expenses ?? DEFAULT_SECTION_VERSIONS.expenses,
-            });
-
-            setHasCached(true);
-            try {
-              setHouseholdLoading(true);
-              const hh = await loadHouseholdMembers(u.uid);
-              setHousehold(hh);
-              setHouseholdLoading(false);
-            } catch (err) {
-              console.warn("Household load failed", err);
-              setHouseholdLoading(false);
-            }
-          } else {
-            setMe(null);
-            setMyData(emptyUserData);
-            setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
-            setHasCached(true);
-          }
-        },
-        (err) => {
-          console.warn("onSnapshot error", err);
-          setLoading(false);
-          setNetworkError(true);
-
-          // Fallback logic on error
-          if (!hasHydratedRef.current) {
-            const fallbackData = readPlanFromStore();
-            setMyData(fallbackData);
-            setFullPlanData?.(fallbackData);
-            hasHydratedRef.current = true;
-          }
-          setHasCached(true);
-        }
-      );
-    });
-
-    return () => {
-      unsubAuth();
-      if (userUnsubRef.current) {
-        try {
-          userUnsubRef.current();
-        } catch {}
-        userUnsubRef.current = null;
-      }
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // --- Handlers ---
 
   const showVersionConflictToast = useCallback(
     ({ section, serverVersion, localVersion, retry }) => {
@@ -424,6 +734,158 @@ export default function useCashflowData() {
     },
     [showToast]
   );
+
+  // Tick a lightweight marker when the calendar day changes to trigger auto-posting.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const iso = getTodayISODate();
+      setTodayMarker((prev) => (prev === iso ? prev : iso));
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Auth & Subscription Effect
+  useEffect(() => {
+    const readPlanFromStore = () => {
+      try {
+        const snapshot = selectPlanSnapshot(useCashflowStore.getState() || {});
+        return mergeWithEmptyData(snapshot);
+      } catch (e) {
+        console.warn("Failed to read plan from store for fallback", e);
+        return mergeWithEmptyData(null);
+      }
+    };
+
+    const markHydratedOnce = () => {
+      if (hasHydratedRef.current || fallbackHydrationState.hydrated) return;
+      hasHydratedRef.current = true;
+      fallbackHydrationState.hydrated = true;
+      useCashflowStore.getState?.().setHasHydrated?.(true);
+    };
+
+    const hydrateStoreOnce = (plan) => {
+      if (hasHydratedRef.current || fallbackHydrationState.hydrated) return;
+      const storeState = useCashflowStore.getState?.() || {};
+      const alreadyHydrated =
+        !!storeState.hasHydrated ||
+        storeState.setHasHydrated?.mock?.calls?.length > 0 ||
+        fallbackHydrationState.hydrated;
+      if (alreadyHydrated) {
+        hasHydratedRef.current = true;
+        fallbackHydrationState.hydrated = true;
+        return;
+      }
+      setFullPlanData?.(plan);
+      markHydratedOnce();
+    };
+
+    // --- PATH A: DEMO MODE ---
+    if (isAgentDemo) {
+      // Demo path: bypass Firebase and hydrate from local store (if any) plus defaults.
+      // GUARD: Only run this ONCE to avoid infinite loops
+      if (!hasHydratedRef.current) {
+        const demoUser = { uid: "demo-user", displayName: "Agent Demo" };
+        setUser(demoUser);
+        const mergedDemoData = readPlanFromStore();
+
+        hydrateStoreOnce(mergedDemoData);
+
+        setMe({
+          profile: {
+            email: "demo@example.com",
+            displayName: "Agent Demo",
+            role: "H",
+            householdId: "demo-household",
+          },
+          data: { ...mergedDemoData },
+          sectionVersions: { ...DEFAULT_SECTION_VERSIONS },
+        });
+        setMyData({ ...mergedDemoData });
+        setMySectionVersions({ ...DEFAULT_SECTION_VERSIONS });
+        setHousehold([]);
+        setLoading(false);
+        setHasCached(true);
+      }
+      return;
+    }
+
+    // --- PATH B: SUBSCRIBE DISABLED ---
+    if (!subscribe) {
+      const fallback = readPlanFromStore();
+      setMyData(fallback);
+      hydrateStoreOnce(fallback);
+      setLoading(false);
+      setHasCached(true);
+      return;
+    }
+
+    // --- PATH B.1: Already hydrated elsewhere (e.g., useFirebaseSync) ---
+    const storeState = useCashflowStore.getState?.() || {};
+    const setHasHydratedCalls =
+      storeState.setHasHydrated?.mock?.calls?.length || 0;
+    const storeHydrated =
+      !!storeState.hasHydrated ||
+      fallbackHydrationState.hydrated ||
+      setHasHydratedCalls > 0;
+    if (storeHydrated) {
+      const fallback = readPlanFromStore();
+      setMyData(fallback);
+      hasHydratedRef.current = true;
+      fallbackHydrationState.hydrated = true;
+      setLoading(false);
+      setHasCached(true);
+      return;
+    }
+
+    // --- PATH C: FIREBASE UNAVAILABLE ---
+    if (!auth || !db) {
+      // Firebase unavailable: rely on local store snapshot and mark limited functionality.
+      setNetworkError(true);
+      const fallback = readPlanFromStore();
+      setMyData(fallback);
+      hydrateStoreOnce(fallback);
+      setLoading(false);
+      setHasCached(true);
+      return;
+    }
+
+    // --- PATH D: FIREBASE ONLINE (singleton subscription) ---
+    const listener = (payload) => {
+      setUser(payload.user || null);
+      setMe(payload.me || null);
+      setMyData(payload.myData || null);
+      setMySectionVersions(payload.mySectionVersions || DEFAULT_SECTION_VERSIONS);
+      setHousehold(payload.household || []);
+      setHouseholdLoading(payload.householdLoading || false);
+      setLoading(payload.loading || false);
+      setHasCached(payload.hasCached || false);
+      setNetworkError(payload.networkError || false);
+    };
+
+    listeners.add(listener);
+    // Emit current snapshot immediately
+    listener(singletonState);
+
+    activeRefCount += 1;
+    ensureSingleton({
+      setFullPlanData,
+      setHasHydrated,
+      markHydratedOnce,
+      showVersionConflictToast,
+      loadHouseholdMembersFn: loadHouseholdMembers,
+      ensureUserDocFn: ensureUserDoc,
+    });
+
+    return () => {
+      listeners.delete(listener);
+      activeRefCount = Math.max(0, activeRefCount - 1);
+      if (activeRefCount === 0) {
+        stopSingleton();
+      }
+    };
+  }, [subscribe]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Handlers ---
 
   const handleUpdateBills = useCallback(
     async (nextBills) => {
@@ -477,12 +939,13 @@ export default function useCashflowData() {
       const base = myData || emptyUserData;
       const startDate = base.startDate || DEFAULT_START_DATE;
 
-      // Helper to calc date string from index (duplicated from App.jsx/engine to keep hook self-contained)
-      const s = new Date(startDate + "T00:00:00");
-      const d = new Date(s.getFullYear(), s.getMonth() + monthIndex, 1);
-      const dateStr = d.toISOString().slice(0, 10);
+      const key = buildPaidBillKey({
+        startDate,
+        monthIndex,
+        billId,
+        bills: base.bills || [],
+      });
 
-      const key = `${dateStr}:${billId}`;
       const map = { ...(base.paidBills || {}) };
       if (next) map[key] = true;
       else delete map[key];
@@ -526,13 +989,14 @@ export default function useCashflowData() {
       const base = myData || emptyUserData;
       const startDate = base.startDate || DEFAULT_START_DATE;
 
-      const s = new Date(startDate + "T00:00:00");
-      const d = new Date(s.getFullYear(), s.getMonth() + monthIndex, 1);
-      const dateStr = d.toISOString().slice(0, 10);
-
       const optimisticMap = { ...(base.paidBills || {}) };
       billIds.forEach((billId) => {
-        const key = `${dateStr}:${billId}`;
+        const key = buildPaidBillKey({
+          startDate,
+          monthIndex,
+          billId,
+          bills: base.bills || [],
+        });
         if (value) optimisticMap[key] = true;
         else delete optimisticMap[key];
       });
@@ -548,7 +1012,12 @@ export default function useCashflowData() {
           (serverData) => {
             const current = { ...(serverData.paidBills || {}) };
             billIds.forEach((billId) => {
-              const key = `${dateStr}:${billId}`;
+              const key = buildPaidBillKey({
+                startDate,
+                monthIndex,
+                billId,
+                bills: serverData.bills || base.bills || [],
+              });
               if (value) current[key] = true;
               else delete current[key];
             });
@@ -575,57 +1044,72 @@ export default function useCashflowData() {
   );
 
   // Generic handler creator for simple section updates
-  const createUpdateHandler = (sectionName, keyInState) => async (newValue, extraArg) => {
-    const base = myData || emptyUserData;
-    const optimistic = { ...base, [keyInState]: newValue };
-    // Handle special case for accounts residual ID
-    if (keyInState === "accounts" && extraArg !== undefined) {
-      optimistic.residualAccountId = extraArg || base.residualAccountId || newValue[0]?.id || null;
-    }
-    setMyData(optimistic);
-    if (setFullPlanData) {
-      setFullPlanData(optimistic);
-    }
-
-    if (isAgentDemo || !auth.currentUser) return;
-
-    try {
-      const newVersions = await saveUserSectionsWithVersion(
-        auth.currentUser.uid,
-        [sectionName],
-        mySectionVersions,
-        (serverData) => {
-          const update = { [keyInState]: newValue };
-          if (keyInState === "accounts") {
-            update.residualAccountId = optimistic.residualAccountId;
-          }
-          return {
-            nextData: { ...serverData, ...update },
-            touchedSections: [sectionName],
-          };
-        }
-      );
-      setMySectionVersions(newVersions);
-    } catch (err) {
-      console.warn(`Failed to update ${sectionName}`, err);
-      if (err.message === "section-version-conflict" && err.section === sectionName) {
-        showVersionConflictToast({
-          section: sectionName,
-          serverVersion: err.serverVersion,
-          localVersion: err.localVersion,
-          retry: () => createUpdateHandler(sectionName, keyInState)(newValue, extraArg),
-        });
+  const createUpdateHandler =
+    (sectionName, keyInState) => async (newValue, extraArg) => {
+      const base = myData || emptyUserData;
+      const optimistic = { ...base, [keyInState]: newValue };
+      // Handle special case for accounts residual ID
+      if (keyInState === "accounts" && extraArg !== undefined) {
+        optimistic.residualAccountId =
+          extraArg || base.residualAccountId || newValue[0]?.id || null;
       }
-    }
-  };
+      setMyData(optimistic);
+      if (setFullPlanData) {
+        setFullPlanData(optimistic);
+      }
+
+      if (isAgentDemo || !auth.currentUser) return;
+
+      try {
+        const newVersions = await saveUserSectionsWithVersion(
+          auth.currentUser.uid,
+          [sectionName],
+          mySectionVersions,
+          (serverData) => {
+            const update = { [keyInState]: newValue };
+            if (keyInState === "accounts") {
+              update.residualAccountId = optimistic.residualAccountId;
+            }
+            return {
+              nextData: { ...serverData, ...update },
+              touchedSections: [sectionName],
+            };
+          }
+        );
+        setMySectionVersions(newVersions);
+      } catch (err) {
+        console.warn(`Failed to update ${sectionName}`, err);
+        if (
+          err.message === "section-version-conflict" &&
+          err.section === sectionName
+        ) {
+          showVersionConflictToast({
+            section: sectionName,
+            serverVersion: err.serverVersion,
+            localVersion: err.localVersion,
+            retry: () =>
+              createUpdateHandler(sectionName, keyInState)(newValue, extraArg),
+          });
+        }
+      }
+    };
 
   const handleUpdateAccounts = createUpdateHandler("accounts", "accounts");
-  const handleUpdateAllocationRules = createUpdateHandler("allocations", "allocationRules");
+  const handleUpdateAllocationRules = createUpdateHandler(
+    "allocations",
+    "allocationRules"
+  );
   const handleUpdateGoals = createUpdateHandler("goals", "goals");
   const handleUpdateBudgets = createUpdateHandler("budgets", "categoryBudgets");
-  const handleUpdateStartingBalance = createUpdateHandler("core", "startingBalance");
+  const handleUpdateStartingBalance = createUpdateHandler(
+    "core",
+    "startingBalance"
+  );
   const handleUpdateExpenses = createUpdateHandler("expenses", "expenses");
-  const handleUpdateBillSharing = createUpdateHandler("billSharing", "billSharing");
+  const handleUpdateBillSharing = createUpdateHandler(
+    "billSharing",
+    "billSharing"
+  );
   const handleUpdateExtraIncome = createUpdateHandler("income", "extraIncomes");
 
   const handleAddExpense = useCallback(
@@ -648,7 +1132,11 @@ export default function useCashflowData() {
           ["income"],
           mySectionVersions,
           (serverData) => ({
-            nextData: { ...serverData, income: nextIncome, paySchedule: nextPaySchedule },
+            nextData: {
+              ...serverData,
+              income: nextIncome,
+              paySchedule: nextPaySchedule,
+            },
             touchedSections: ["income"],
           })
         );
@@ -694,7 +1182,8 @@ export default function useCashflowData() {
       const sections = new Set();
       if ("goals" in payload) sections.add("goals");
       if ("categoryBudgets" in payload) sections.add("budgets");
-      if ("accounts" in payload || "residualAccountId" in payload) sections.add("accounts");
+      if ("accounts" in payload || "residualAccountId" in payload)
+        sections.add("accounts");
       if ("allocationRules" in payload) sections.add("allocations");
       if ("income" in payload || "paySchedule" in payload || "extraIncomes" in payload)
         sections.add("income");
@@ -734,6 +1223,36 @@ export default function useCashflowData() {
     },
     [myData, mySectionVersions, isAgentDemo, showVersionConflictToast]
   );
+
+  // Auto-post salary paychecks on load and when the day changes.
+  useEffect(() => {
+    if (!subscribe) return;
+    if (!myData) return;
+    const todayISO = getTodayISODate();
+
+    maybeRunAutoPostPaychecks({
+      myData,
+      todayISO,
+      hasHydrated: hasHydratedRef.current,
+      fallbackHydrated: fallbackHydrationState.hydrated,
+      lastAutoPostRunISO,
+      setLastAutoPostRunISO,
+      handleUpdateExpenses,
+      handleUpdateAccounts,
+      runGuardRef: lastAutoPostDateRef,
+    }).catch((err) => {
+      console.warn("autoPostPaychecks failed", err);
+      lastAutoPostDateRef.current = null;
+    });
+  }, [
+    subscribe,
+    myData,
+    handleUpdateExpenses,
+    handleUpdateAccounts,
+    lastAutoPostRunISO,
+    setLastAutoPostRunISO,
+    todayMarker,
+  ]);
 
   return {
     user,

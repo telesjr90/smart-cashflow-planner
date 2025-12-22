@@ -15,7 +15,16 @@ import { useToast } from "../components/ui/toast/useToast";
 
 // Logic & Store
 import { useCashflowStore } from "../store/useCashflowStore";
-import { projectCashflow } from "../lib/cashflow";
+import {
+  projectCashflow,
+  getMonthIndexFromStart,
+  normalizeCashflowMode,
+  DEFAULT_CASHFLOW_MODE,
+} from "../lib/cashflow";
+import {
+  getScopedBillAmount,
+  isBillVisibleInSelfScope,
+} from "../lib/billSharing";
 
 export default function Planner({
   cashflow: initialCashflow,
@@ -27,11 +36,23 @@ export default function Planner({
   const billSharing = useCashflowStore((state) => state.billSharing);
 
   const role = userProfile?.role || "H";
+  const mode =
+    normalizeCashflowMode(infographicProps?.mode) || DEFAULT_CASHFLOW_MODE;
 
   // This page's top chart uses a scoped ("self") projection. The infographic below
   // should align to the same scope inputs (role + personScope) even if it computes
   // internally, to avoid drift between what users see in the chart vs the breakdown.
   const personScope = "self";
+
+  // Align projection window to cover through the current month (at least 6 months).
+  const startDateForWindow = infographicProps?.liveStartDate;
+  const projectionMonths = useMemo(() => {
+    const baseMinMonths = Math.max(6, months);
+    if (!startDateForWindow) return baseMinMonths;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const monthIndex = getMonthIndexFromStart(startDateForWindow, todayStr);
+    return Math.max(6, monthIndex + 1);
+  }, [startDateForWindow, months]);
 
   // 1. Calculate Scoped Projection (My Bills Only)
   const scopedCashflow = useMemo(() => {
@@ -60,32 +81,25 @@ export default function Planner({
 
     // B. Filter Bills (My Share Only)
     const myBills = [];
-    const hPercent = billSharing?.percentageSplit?.H ?? 0.5;
-    const wPercent = billSharing?.percentageSplit?.W ?? 0.5;
 
     liveBills.forEach((b, idx) => {
-      let amount = Number(b.amount || 0);
-      let shouldInclude = false;
+      if (!isBillVisibleInSelfScope({ bill: b, role })) return;
 
-      if (b.payer === role) {
-        shouldInclude = true; // I pay 100%
-      } else if (b.payer === "Shared" || !b.payer || b.payer === "AUTO") {
-        const myPercent = role === "H" ? hPercent : wPercent;
-        amount = amount * myPercent;
-        shouldInclude = true;
-      }
+      const scopedAmount = getScopedBillAmount({
+        bill: b,
+        role,
+        billSharing,
+      });
 
-      if (shouldInclude) {
-        myBills.push({
-          ...b,
-          id: b.id || `b${idx}`,
-          amount: amount,
-          accountId:
-            b.accountId && myAccounts.some((a) => a.id === b.accountId)
-              ? b.accountId
-              : safeResidualId,
-        });
-      }
+      myBills.push({
+        ...b,
+        id: b.id || `b${idx}`,
+        amount: scopedAmount,
+        accountId:
+          b.accountId && myAccounts.some((a) => a.id === b.accountId)
+            ? b.accountId
+            : safeResidualId,
+      });
     });
 
     // C. Filter Income (My Income Only)
@@ -98,7 +112,7 @@ export default function Planner({
     try {
       const projection = projectCashflow({
         startDate: liveStartDate,
-        months: months + 1,
+        months: projectionMonths,
         accounts: myAccounts,
         bills: myBills,
         income: myIncome,
@@ -112,7 +126,7 @@ export default function Planner({
         allocationRules: liveAllocationRules,
         residualAccountId: safeResidualId,
         paidBills: infographicProps.paidBills || {},
-        mode: infographicProps.mode || "projected",
+        mode,
       });
 
       return {
@@ -123,13 +137,14 @@ export default function Planner({
       console.warn("Planner local projection failed", err);
       return initialCashflow;
     }
-  }, [initialCashflow, infographicProps, role, billSharing, months]);
+  }, [initialCashflow, infographicProps, role, billSharing, projectionMonths]);
 
   // 2. Build Timeline
   const timeline = useMemo(() => {
     const ledger = scopedCashflow?.ledger || [];
     const scopedLedger = ledger.filter(
-      (entry) => typeof entry.monthIndex !== "number" || entry.monthIndex < months
+      (entry) =>
+        typeof entry.monthIndex !== "number" || entry.monthIndex < projectionMonths
     );
     const dailyMap = new Map();
 
@@ -166,9 +181,12 @@ export default function Planner({
   }, [timeline]);
 
   const fmt = (v) =>
-    new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(
-      v
-    );
+    new Intl.NumberFormat("en-CA", {
+      style: "currency",
+      currency: "CAD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(v);
 
   const lowestVariant = lowestBalance < 0 ? "highlight" : "elevated";
   const lowestIconColor =
@@ -188,7 +206,7 @@ export default function Planner({
             Financial Analysis
           </h2>
           <p className="text-caption text-surface-500">
-            6 Month Projection ({role === "H" ? "Teles" : "Nicole"})
+            6 Month Plan ({role === "H" ? "Teles" : "Nicole"})
           </p>
         </div>
         <Button
@@ -207,9 +225,13 @@ export default function Planner({
       <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="space-y-1">
-            <h3 className="text-title-l text-surface-900">Projected Balance</h3>
+            <h3 className="text-title-l text-surface-900">Planned Balance</h3>
             <p className="text-caption text-surface-500">
               Net worth forecast based on recurring bills &amp; income
+              <br />
+              <span className="text-surface-400 text-[11px]">
+                Actual = realized income/expenses up to today; future bills still included.
+              </span>
             </p>
           </div>
         </div>
@@ -269,7 +291,7 @@ export default function Planner({
                 Cashflow Infographic
               </h3>
               <p className="text-caption text-surface-500">
-                Projected vs actual view
+                Planned vs actual view
               </p>
             </div>
 
@@ -277,6 +299,8 @@ export default function Planner({
               {...infographicProps}
               role={role}
               personScope={personScope}
+              lockedPersonScope={personScope}
+              mode={mode}
             />
           </div>
         </ErrorBoundary>

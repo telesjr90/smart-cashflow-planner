@@ -13,6 +13,10 @@ import { useCashflowStore } from "../store/useCashflowStore";
 import { useCashflowTimeline } from "../hooks/useCashflowTimeline";
 import { Card, CardBody } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import {
+  getScopedBillAmount,
+  isBillVisibleInSelfScope,
+} from "../lib/billSharing";
 
 // Components
 // [!code highlight:2] FIXED: Named import required for build
@@ -26,13 +30,30 @@ function daysInMonth(year, monthIndexZeroBased) {
   return new Date(year, monthIndexZeroBased + 1, 0).getDate();
 }
 
-function buildDueDateForCurrentMonth(dueDay) {
-  const now = new Date();
+function buildDueDateForCurrentMonth(dueDay, now = new Date()) {
   const y = now.getFullYear();
   const mIdx = now.getMonth();
   const dim = daysInMonth(y, mIdx);
   const safeDay = Math.min(Math.max(Number(dueDay || 1), 1), dim);
   return `${y}-${pad2(mIdx + 1)}-${pad2(safeDay)}`;
+}
+
+// Pure helper to compute "My Bills Due" given inputs and an optional clock.
+export function computeBillsDueAmount({ bills = [], role = "H", billSharing, paidBills = {}, now = new Date() }) {
+  const unpaidThisMonth = (bills || []).filter((b) => {
+    const dueDate = buildDueDateForCurrentMonth(b.dueDay, now);
+    const billId = b.id || "";
+    if (!billId) return true;
+    const key = `${dueDate}:${billId}`;
+    const isPaid = !!paidBills?.[key];
+    const visible = isBillVisibleInSelfScope({ bill: b, role });
+    return !isPaid && visible;
+  });
+
+  return unpaidThisMonth.reduce((total, bill) => {
+    const share = getScopedBillAmount({ bill, role, billSharing });
+    return total + share;
+  }, 0);
 }
 
 function normalizeMaybeCents(value, keyHint = "") {
@@ -55,13 +76,26 @@ export default function Home({
   onAddExpense,
 }) {
   const userProfile = useCashflowStore((state) => state.userProfile);
+  const startDate = useCashflowStore((state) => state.startDate);
   const accounts = useCashflowStore((state) => state.accounts || []);
   const bills = useCashflowStore((state) => state.bills || []);
   const billSharing = useCashflowStore((state) => state.billSharing);
   const paidBills = useCashflowStore((state) => state.paidBills || {});
+  const hasHydrated = useCashflowStore((state) => state.hasHydrated);
+
+  // Compute a dynamic months window so the chart always covers the current month.
+  const monthsForHomeTimeline = useMemo(() => {
+    if (!startDate) return 6;
+    const today = new Date();
+    const s = new Date(startDate + "T00:00:00");
+    const monthIndex =
+      (today.getFullYear() - s.getFullYear()) * 12 +
+      (today.getMonth() - s.getMonth());
+    return Math.max(6, monthIndex + 1);
+  }, [startDate]);
 
   // Compute chart timeline directly (same engine as Planner) rather than guessing store keys.
-  const chartData = useCashflowTimeline(6);
+  const chartData = useCashflowTimeline(monthsForHomeTimeline);
 
   // 1. Determine Current User Role
   const role = userProfile?.role || "H"; // Default to Husband if unknown
@@ -113,46 +147,25 @@ export default function Home({
   const balanceLabel = hasComputedBalances ? "My Balance" : "Starting Balance";
 
   // 3. Calculate "My Bills Due"
-  const billsDueAmount = useMemo(() => {
-    const hPercent = billSharing?.percentageSplit?.H ?? 0.5;
-    const wPercent = billSharing?.percentageSplit?.W ?? 0.5;
-    const myPercent = isHusband ? hPercent : wPercent;
-
-    // IMPORTANT: Home and Bills must share the same paid-status semantics.
-    // Bills uses a `paidBills` map keyed by `${date}:${billId}`, so Home must
-    // use the same source of truth (not `bill.paid`).
-    const unpaidThisMonth = bills.filter((b) => {
-      const dueDate = buildDueDateForCurrentMonth(b.dueDay);
-      const billId = b.id || "";
-      if (!billId) return true; // if somehow missing an id, treat as unpaid
-      const key = `${dueDate}:${billId}`;
-      return !paidBills?.[key];
-    });
-
-    return unpaidThisMonth.reduce((total, bill) => {
-      const amount = Number(bill.amount) || 0;
-
-      // If I am the sole payer, add full amount
-      if (bill.payer === role) {
-        return total + amount;
-      }
-
-      // Shared / AUTO / missing payer => pay my % share
-      if (bill.payer === "Shared" || bill.payer === "AUTO" || !bill.payer) {
-        return total + amount * myPercent;
-      }
-
-      // If payer is explicitly the partner, I pay 0
-      return total;
-    }, 0);
-  }, [bills, role, billSharing, isHusband, paidBills]);
+  const billsDueAmount = useMemo(
+    () =>
+      computeBillsDueAmount({
+        bills,
+        role,
+        billSharing,
+        paidBills,
+        now: new Date(),
+      }),
+    [bills, role, billSharing, paidBills]
+  );
 
   // Formatters
   const formatMoney = (amount) =>
     new Intl.NumberFormat("en-CA", {
       style: "currency",
       currency: "CAD",
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount);
 
   const getGreeting = () => {
@@ -161,6 +174,10 @@ export default function Home({
     if (hour < 18) return "Good afternoon";
     return "Good evening";
   };
+
+  if (!hasHydrated) {
+    return null;
+  }
 
   return (
     <div className="space-y-6 pb-24">

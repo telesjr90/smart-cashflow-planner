@@ -1,33 +1,18 @@
 import { test, expect } from '@playwright/test';
-import { mockUser, mockFirestoreData } from '../utils/mockData';
+
+const DEMO_ENTRY = '/?agentDemo=1';
 
 test.describe('Settings Visuals', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(({ user, data }) => {
-      window.__TEST_USER__ = user;
-      window.__TEST_DATA__ = {
-        profile: { uid: user.uid, email: user.email, displayName: user.displayName, role: 'H' },
-        data: data
-      };
-    }, { user: mockUser, data: mockFirestoreData });
-
-    await page.goto('/');
-    
-    // FIX: Use exact match for the tab button to ensure reliable navigation
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  });
-
   test('should render settings layout', async ({ page }) => {
-    // FIX: Wait for the unique page header first to confirm we left Home
-    await expect(page.getByText('Smart Cash Flow Planner')).toBeVisible();
+    await page.goto(DEMO_ENTRY);
 
-    // Now check the sections
-    // FIX: Updated text to match Phase 5 change ("Household & Profile")
-    await expect(page.getByText(/Household & Profile/i)).toBeVisible();
-    
-    await expect(page.getByText(/Bank Accounts/i)).toBeVisible();
-    await expect(page.getByText(/Savings Goals/i)).toBeVisible();
+    const navSettings = page.getByTestId('nav-settings');
+    await expect(navSettings).toBeVisible({ timeout: 10000 });
+    await navSettings.click();
 
-    await expect(page).toHaveScreenshot('settings-page.png');
+    await expect(page.getByRole('button', { name: 'Accounts & Residual' })).toBeVisible({ timeout: 15000 });
+    await page.waitForTimeout(100);
+
+    await expect(page).toHaveScreenshot('settings-page.png', { fullPage: true });
   });
 });

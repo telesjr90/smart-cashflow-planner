@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { indexedDBStorage } from "./storage";
+import { getDefaultPlannerStartDate } from "../lib/cashflow";
 
 const INITIAL_STATE = {
   // User Profile
@@ -14,7 +15,7 @@ const INITIAL_STATE = {
   },
 
   // Core Plan Data
-  startDate: "2025-01-01",
+  startDate: getDefaultPlannerStartDate(),
   startingBalance: 0,
 
   // Entities
@@ -33,16 +34,18 @@ const INITIAL_STATE = {
   paySchedule: { type: "semi-monthly", day1: 15, day2: "last" },
   billSharing: { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] },
   residualAccountId: null,
+  postedPaychecks: {},
 
   // Tracking
   paidBills: {}, // "YYYY-MM-DD:billId": boolean
   confirmedDiscretionary: {},
 
   // UI State
-  mode: "projected", // "projected" | "actual"
+  mode: "planned", // "planned" | "actual"
 
   // Hydration guard
   hasHydrated: false,
+  lastAutoPostRunISO: null,
 };
 
 const normalizeId = (value) => (typeof value === "number" ? String(value) : value);
@@ -66,6 +69,11 @@ const normalizeEntity = (entity) => {
 
 const normalizeList = (list) => (Array.isArray(list) ? list.map(normalizeEntity) : []);
 
+const normalizeMode = (mode) => {
+  if (!mode || mode === "projected") return "planned";
+  return mode === "actual" ? "actual" : "planned";
+};
+
 const serializePlannerSettings = (state) => ({
   startDate: state.startDate || INITIAL_STATE.startDate,
   startingBalance: state.startingBalance ?? INITIAL_STATE.startingBalance,
@@ -73,7 +81,7 @@ const serializePlannerSettings = (state) => ({
   paySchedule: state.paySchedule || INITIAL_STATE.paySchedule,
   billSharing: state.billSharing || INITIAL_STATE.billSharing,
   residualAccountId: state.residualAccountId ?? INITIAL_STATE.residualAccountId,
-  mode: state.mode || INITIAL_STATE.mode,
+  mode: normalizeMode(state.mode) || INITIAL_STATE.mode,
 });
 
 export const useStore = create(
@@ -114,7 +122,7 @@ export const useStore = create(
             if (settings.paySchedule !== undefined) updates.paySchedule = settings.paySchedule;
             if (settings.billSharing !== undefined) updates.billSharing = settings.billSharing;
             if (settings.residualAccountId !== undefined) updates.residualAccountId = settings.residualAccountId;
-            if (settings.mode !== undefined) updates.mode = settings.mode;
+            if (settings.mode !== undefined) updates.mode = normalizeMode(settings.mode);
           }
 
           const simpleKeys = [
@@ -124,6 +132,7 @@ export const useStore = create(
             "paySchedule",
             "billSharing",
             "residualAccountId",
+            "postedPaychecks",
             "mode",
             "accounts",
             "goals",
@@ -136,7 +145,12 @@ export const useStore = create(
 
           simpleKeys.forEach((key) => {
             if (data[key] !== undefined) {
-              updates[key] = Array.isArray(data[key]) ? normalizeList(data[key]) : data[key];
+              const value = data[key];
+              if (key === "mode") {
+                updates[key] = normalizeMode(value);
+              } else {
+                updates[key] = Array.isArray(value) ? normalizeList(value) : value;
+              }
             }
           });
 
@@ -180,12 +194,14 @@ export const useStore = create(
           return { paidBills: newMap };
         }),
 
-      setMode: (mode) => set({ mode }),
+      setMode: (mode) => set({ mode: normalizeMode(mode) }),
 
       setConfirmedDiscretionary: (map) =>
         set({ confirmedDiscretionary: map || {} }),
 
       setHasHydrated: (hydrated = true) => set({ hasHydrated: hydrated }),
+
+      setLastAutoPostRunISO: (iso) => set({ lastAutoPostRunISO: iso || null }),
 
       // Reset for logout
       reset: () => set({ ...INITIAL_STATE, hasHydrated: true }),
@@ -196,18 +212,21 @@ export const useStore = create(
       partialize: (state) => {
         const transactions = state.transactions?.length ? state.transactions : state.expenses;
         const recurringBills = state.recurringBills?.length ? state.recurringBills : state.bills;
+        const mode = normalizeMode(state.mode) || INITIAL_STATE.mode;
 
         return {
           accounts: normalizeList(state.accounts),
           transactions: normalizeList(transactions),
           recurringBills: normalizeList(recurringBills),
-          plannerSettings: serializePlannerSettings(state),
+          plannerSettings: serializePlannerSettings({ ...state, mode }),
           paidBills: { ...state.paidBills },
+          postedPaychecks: { ...state.postedPaychecks },
+          lastAutoPostRunISO: state.lastAutoPostRunISO,
           categoryBudgets: { ...state.categoryBudgets },
           goals: normalizeList(state.goals),
           extraIncomes: normalizeList(state.extraIncomes),
           allocationRules: normalizeList(state.allocationRules),
-          mode: state.mode,
+          mode,
         };
       },
       merge: (persistedState, currentState) => {
@@ -216,6 +235,7 @@ export const useStore = create(
         }
 
         const settings = persistedState.plannerSettings || {};
+        const mode = normalizeMode(settings.mode ?? persistedState.mode) ?? currentState.mode;
 
         const accounts = normalizeList(persistedState.accounts ?? currentState.accounts);
         const transactions = normalizeList(
@@ -245,8 +265,10 @@ export const useStore = create(
           paySchedule: settings.paySchedule ?? currentState.paySchedule,
           billSharing: settings.billSharing ?? currentState.billSharing,
           residualAccountId: settings.residualAccountId ?? currentState.residualAccountId,
-          mode: settings.mode ?? currentState.mode,
+          mode: normalizeMode(mode) ?? currentState.mode,
           paidBills: persistedState.paidBills ?? currentState.paidBills,
+          postedPaychecks: persistedState.postedPaychecks ?? currentState.postedPaychecks,
+          lastAutoPostRunISO: persistedState.lastAutoPostRunISO ?? currentState.lastAutoPostRunISO,
           categoryBudgets: persistedState.categoryBudgets ?? currentState.categoryBudgets,
           goals: normalizeList(persistedState.goals ?? currentState.goals),
           extraIncomes: normalizeList(persistedState.extraIncomes ?? currentState.extraIncomes),

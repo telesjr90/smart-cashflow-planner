@@ -6,19 +6,22 @@ test.describe('User Journey & Functionality', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?agentDemo=1');
     // Ensure we are loaded
-    await expect(page.getByText('Projected Cash Flow')).toBeVisible();
+    await expect(page.getByTestId('nav-home')).toBeVisible();
   });
 
   test('Complete User Onboarding Flow', async ({ page }) => {
     // 1. Setup Income (Settings)
     await page.getByTestId('nav-settings').click();
-    await expect(page.getByText('Household & Profile')).toBeVisible();
+    const accountsNav = page.getByRole('button', { name: 'Accounts & Residual' });
+    await expect(accountsNav).toBeVisible({ timeout: 10000 });
+    await accountsNav.click();
     
     // Starting balance
     await page.getByLabel('Starting balance').fill('1000');
     await page.getByRole('button', { name: /^save$/i }).click();
 
     // Fill Income
+    await page.getByRole('button', { name: 'Income & Pay Schedule' }).click();
     await page.getByTestId('input-income-husband').fill('5000');
     await page.getByTestId('input-income-wife').fill('4500');
     await page.getByTestId('save-income-btn').click();
@@ -26,6 +29,7 @@ test.describe('User Journey & Functionality', () => {
     // 2. Add an Account (Settings)
     // Assuming Accounts is a section in settings or a sub-tab
     // You might need to scroll or click a 'Manage Accounts' accordion if present
+    await page.getByRole('button', { name: 'Accounts & Residual' }).click();
     await page.getByTestId('accounts-section').click(); 
     await page.getByTestId('btn-add-account').click();
     await page.getByTestId('input-account-name').fill('Main Checking');
@@ -33,23 +37,24 @@ test.describe('User Journey & Functionality', () => {
     await page.getByTestId('btn-save-accounts').click();
 
     // Pay schedule
+    await page.getByRole('button', { name: 'Income & Pay Schedule' }).click();
     await page.getByText('First pay date (day)').locator('..').getByRole('spinbutton').fill('10');
     await page.getByText('Second pay date').locator('..').getByRole('combobox').selectOption('30');
     await page.getByTestId('save-income-btn').click();
 
     // Budgets: add a category and save
+    await page.getByRole('button', { name: 'Budgets' }).click();
     await page.getByRole('button', { name: /add category/i }).click();
-    const budgetRow = page.locator('.p-2.border.border-slate-200.rounded-lg.bg-slate-50').filter({ has: page.locator('input[placeholder="Category name"]') }).last();
-    await budgetRow.locator('input[placeholder="Category name"]').fill('Fitness');
-    await budgetRow.locator('input[placeholder="0.00"]').fill('150');
+    await page.getByLabel('Category Name').last().fill('Fitness');
+    await page.getByLabel('Monthly Limit').last().fill('150');
     await page.getByRole('button', { name: /save budgets/i }).click();
 
     // Goals: add goal and save
+    await page.getByRole('button', { name: 'Goals' }).click();
     await page.getByRole('button', { name: /add goal/i }).click();
-    const goalRow = page.locator('.p-2.border.border-slate-200.rounded-lg.bg-slate-50').filter({ has: page.locator('input[placeholder="Goal name"]') }).last();
-    await goalRow.locator('input[placeholder="Goal name"]').fill('Vacation');
-    await goalRow.locator('input[placeholder="0.00"]').first().fill('3000'); // target
-    await goalRow.locator('input[placeholder="0.00"]').nth(1).fill('250'); // monthly
+    await page.getByLabel('Name').last().fill('Vacation');
+    await page.getByLabel('Target Amount').last().fill('3000'); // target
+    await page.getByLabel('Monthly Contribution').last().fill('250'); // monthly
     await page.getByRole('button', { name: /save goals/i }).click();
 
     // Expenses: add a transaction via Expenses page

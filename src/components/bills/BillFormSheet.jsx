@@ -21,7 +21,7 @@ export default function BillFormSheet({
     name: "",
     amount: "",
     dueDay: 1,
-    payer: "H",
+    payer: userRole || "H",
     category: "",
     accountId: "",
   });
@@ -34,9 +34,9 @@ export default function BillFormSheet({
           name: bill.name || "",
           amount: bill.amount ?? "",
           dueDay: bill.dueDay || 1,
-          payer: bill.payer || "H",
+          payer: bill.payer || userRole || "H",
           category: bill.category || defaultCategoryKey,
-          accountId: bill.accountId || (accounts[0]?.id || ""),
+          accountId: bill.accountId || accounts[0]?.id || "",
         });
       } else {
         setDraft({
@@ -51,16 +51,36 @@ export default function BillFormSheet({
     }
   }, [open, bill, defaultCategoryKey, accounts, userRole]);
 
+  const normalizeAmount = (val) => {
+    if (typeof val === "string") {
+      const cleaned = val.replace(/[^0-9.-]/g, "");
+      const n = Number(cleaned);
+      if (!Number.isFinite(n)) return 0;
+      return Number(n.toFixed(2));
+    }
+    const n = Number(val);
+    if (!Number.isFinite(n)) return 0;
+    return Number(n.toFixed(2));
+  };
+
+  const clampDueDay = (val) => {
+    const num = Number.parseInt(val, 10);
+    if (!Number.isFinite(num)) return 1;
+    return Math.min(31, Math.max(1, num));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!isOnline) return;
-    const cleanAmount = Number.isFinite(parseFloat(draft.amount)) ? parseFloat(draft.amount) : 0;
-    const cleanDueDay = Math.min(31, Math.max(1, parseInt(draft.dueDay || 1, 10)));
-    
+    const cleanAmount = normalizeAmount(draft.amount);
+    const cleanDueDay = clampDueDay(draft.dueDay || 1);
+    const safeAccountId = draft.accountId || accounts[0]?.id || "";
+
     onSave({
       ...draft,
       amount: cleanAmount,
       dueDay: cleanDueDay,
+      accountId: safeAccountId,
     });
   };
 

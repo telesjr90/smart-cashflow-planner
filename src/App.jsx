@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "./components/layout/Layout";
 import Home from "./pages/Home";
 import Bills from "./pages/Bills";
@@ -18,8 +18,6 @@ import { useNetworkStatus } from "./hooks/useNetworkStatus";
 import { loginWithGoogle, auth } from "./firebase";
 import { projectCashflow } from "./lib/cashflow/index.js";
 import { getDefaultPlannerStartDate } from "./lib/cashflow/index.js";
-// [!code ++] Import the hook to access database actions
-import useCashflowData from "./hooks/useCashflowData";
 
 // --- Helper Functions ---
 function getMonthIndexFromStart(startDate, dateStr) {
@@ -42,9 +40,6 @@ export default function App() {
   // 2. Access Global Store
   const store = useCashflowStore();
   
-  // [!code ++] 3. Access Data Actions (for saving to Firebase)
-  const { handleUpdateExpenses } = useCashflowData();
-
   const {
     userProfile,
     startDate,
@@ -221,6 +216,54 @@ export default function App() {
 
   const activeCashflow = mode === "actual" ? actualCashflow : projectedCashflow;
 
+  // TEMP DEBUG: cashflow logging when ?debugCashflow=1 is present
+  const debugCashflow = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("debugCashflow") === "1";
+  }, []);
+  const debugLoggedRef = useRef(false);
+
+  useEffect(() => {
+    if (!debugCashflow || debugLoggedRef.current) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const ledger = activeCashflow?.ledger || [];
+    const incomeEvents = ledger.filter((ev) => ev?.kind === "income");
+    const payDatesThisMonth = incomeEvents.filter((ev) => {
+      const date = ev?.date || "";
+      return date.slice(0, 7) === today.slice(0, 7);
+    });
+    const overlayExpenses =
+      mode === "actual"
+        ? ledger.filter((ev) => ev?.kind === "expense")
+        : [];
+
+    console.log("[TEMP DEBUG cashflow]", {
+      today,
+      startDate: safeStartDate,
+      paySchedule,
+      income,
+      accountsCount: accounts.length,
+      billsCount: bills.length,
+      payDatesThisMonth: payDatesThisMonth.map((ev) => ({
+        date: ev.date,
+        amountCents: ev.amountCents,
+      })),
+      sampleIncomeEntries: incomeEvents.slice(0, 5).map((ev) => ({
+        date: ev.date,
+        amountCents: ev.amountCents,
+      })),
+      actualOverlayTransactions: overlayExpenses.slice(0, 5).map((ev) => ({
+        date: ev.date,
+        amountCents: ev.amountCents,
+        description: ev.description,
+      })),
+    });
+
+    debugLoggedRef.current = true;
+  }, [debugCashflow, activeCashflow, mode, safeStartDate, paySchedule, income, accounts.length, bills.length]);
+
   const savingsToDate = useMemo(
     () => (goals || []).reduce((acc, g) => acc + (g.savedSoFar || 0), 0),
     [goals]
@@ -394,8 +437,8 @@ export default function App() {
             onClose={() => setIsTransactionModalOpen(false)}
             onSave={(newTransaction) => {
               const next = [...expenses, newTransaction];
-              // [!code ++] Use the handleUpdateExpenses from the hook to persist to Firebase
-              handleUpdateExpenses(next);
+              // Use store action to avoid mounting extra Firebase listeners here
+              store.updateExpenses(next);
             }}
             accounts={accounts}
             isOnline={isOnline}

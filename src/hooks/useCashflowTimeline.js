@@ -1,9 +1,39 @@
 ﻿import { useMemo } from "react";
 import { useCashflowStore } from "../store/useCashflowStore";
-import { projectCashflow } from "../lib/cashflow/index.js";
+import {
+  projectCashflow,
+  normalizeCashflowMode,
+  DEFAULT_CASHFLOW_MODE,
+} from "../lib/cashflow/index.js";
 import { formatDateShort } from "../utils/dateFormat";
 
-export function useCashflowTimeline(months = 6) {
+function isValidISODateString(value) {
+  if (!value || typeof value !== "string") return false;
+  // Basic ISO date check: YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(value + "T00:00:00");
+  return !Number.isNaN(d.getTime());
+}
+
+function getTodayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function monthIndexFromStart(startISO, todayISO) {
+  const [sy, sm] = (startISO || "").split("-").map(Number);
+  const [ty, tm] = (todayISO || "").split("-").map(Number);
+  if (
+    !Number.isFinite(sy) ||
+    !Number.isFinite(sm) ||
+    !Number.isFinite(ty) ||
+    !Number.isFinite(tm)
+  ) {
+    return 0;
+  }
+  return (ty - sy) * 12 + (tm - sm);
+}
+
+export function useCashflowTimeline(months) {
   const startDate = useCashflowStore((state) => state.startDate);
   const accounts = useCashflowStore((state) => state.accounts || []);
   const bills = useCashflowStore((state) => state.bills || []);
@@ -16,10 +46,21 @@ export function useCashflowTimeline(months = 6) {
   const expenses = useCashflowStore((state) => state.expenses || []);
   const mode = useCashflowStore((state) => state.mode);
 
+  const normalizedMode =
+    normalizeCashflowMode(mode) || DEFAULT_CASHFLOW_MODE;
+
   return useMemo(() => {
     try {
+      const todayISO = getTodayISO();
+      const startValid = isValidISODateString(startDate);
+      const effectiveStartDate = startValid ? startDate : todayISO;
+      const effectiveMonths =
+        months && Number.isFinite(months)
+          ? months
+          : Math.max(6, monthIndexFromStart(effectiveStartDate, todayISO) + 1);
+
       const projection = projectCashflow({
-        startDate,
+        startDate: effectiveStartDate,
         accounts,
         bills,
         income,
@@ -29,15 +70,18 @@ export function useCashflowTimeline(months = 6) {
         paidBills,
         extraIncomes,
         expenses,
-        mode,
-        months,
+        mode: normalizedMode,
+        months: effectiveMonths,
       });
 
       const ledger = projection.ledger || [];
       const dailyMap = new Map();
 
       ledger.forEach((entry) => {
-        const totalBal = Object.values(entry.balances || {}).reduce((a, b) => a + b, 0);
+        const totalBal = Object.values(entry.balances || {}).reduce(
+          (a, b) => a + b,
+          0
+        );
         dailyMap.set(entry.date, totalBal);
       });
 

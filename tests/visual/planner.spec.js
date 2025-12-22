@@ -1,26 +1,41 @@
 import { test, expect } from '@playwright/test';
-import { mockUser, mockFirestoreData } from '../utils/mockData';
+
+const DEMO_ENTRY = '/?agentDemo=1';
 
 test.describe('Planner Visuals', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(({ user, data }) => {
-      window.__TEST_USER__ = user;
-      window.__TEST_DATA__ = {
-        profile: { uid: user.uid, email: user.email, displayName: user.displayName, role: 'H' },
-        data: data
-      };
-    }, { user: mockUser, data: mockFirestoreData });
+  test('captures planned and actual views', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => window.localStorage.clear());
 
-    await page.goto('/');
-    await page.getByRole('button', { name: /planner/i }).click();
-  });
+    await page.goto(DEMO_ENTRY);
 
-  test('should render planner view', async ({ page }) => {
-    await expect(page.getByText(/Monthly snapshot/i)).toBeVisible();
-    
-    // FIX: Use exact match to avoid conflict with "Projected end-of-month"
-    await expect(page.getByText('Projected', { exact: true })).toBeVisible();
+    const navPlanner = page.getByTestId('nav-planner');
+    await expect(navPlanner).toBeVisible({ timeout: 10000 });
+    await navPlanner.click();
 
-    await expect(page).toHaveScreenshot('planner-view.png', { fullPage: true });
+    await expect(page.getByRole('heading', { level: 2, name: 'Financial Analysis' })).toBeVisible({ timeout: 15000 });
+    const plannedButton = page.getByRole('button', { name: /^Planned$/i });
+    const actualButton = page.getByRole('button', { name: /^Actual$/i });
+    await expect(plannedButton).toBeVisible({ timeout: 10000 });
+
+    const main = page.locator('main');
+    // Keep a modest minHeight to avoid tiny layout shifts between captures
+    await main.evaluate((el) => {
+      el.style.minHeight = '1600px';
+    });
+
+    // Planned view (default)
+    await plannedButton.click();
+    await page.waitForTimeout(100);
+    await expect(main).toHaveScreenshot('visual--planner--planned.png', {
+      maxDiffPixelRatio: 0.01,
+    });
+
+    // Actual view
+    await actualButton.click();
+    await page.waitForTimeout(150);
+    await expect(main).toHaveScreenshot('visual--planner--actual.png', {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 });

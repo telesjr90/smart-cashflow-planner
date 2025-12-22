@@ -26,6 +26,10 @@ import { Badge } from "../components/ui/Badge";
 import { Select } from "../components/ui/Select";
 import ConfirmModal from "../components/ui/modals/ConfirmModal";
 import { useToast } from "../components/ui/toast/useToast";
+import {
+  getScopedBillAmount,
+  isBillVisibleInSelfScope,
+} from "../lib/billSharing";
 
 const fmt = (v) =>
   `$${Number(v ?? 0).toLocaleString("en-CA", {
@@ -147,7 +151,7 @@ function SummaryTile({ label, value, danger }) {
   );
 }
 
-function PastDueBanner({ items, memberNames, bannerLabel }) {
+function PastDueBanner({ items, memberNames, bannerLabel, role, billSharing }) {
   if (!items.length) return null;
   const preview = items.slice(0, 3);
   const ownerName = (payer) =>
@@ -182,7 +186,32 @@ function PastDueBanner({ items, memberNames, bannerLabel }) {
                   Due {String(it.dueDay).padStart(2, "0")} · {ownerName(it.payer)}
                 </div>
               </div>
-              <div className="shrink-0 font-semibold">{fmt(it.amount)}</div>
+              <div className="shrink-0 font-semibold text-right">
+                {fmt(
+                  getScopedBillAmount({
+                    bill: it,
+                    role,
+                    billSharing,
+                  })
+                )}
+                {(() => {
+                  const raw = Number(it.amount) || 0;
+                  const isSharedLike =
+                    it.payer === "Shared" || it.payer === "AUTO" || !it.payer;
+                  const diff =
+                    Math.abs(
+                      getScopedBillAmount({ bill: it, role, billSharing }) - raw
+                    ) > 0.009;
+                  if (isSharedLike && diff) {
+                    return (
+                      <div className="text-[10px] text-danger-400">
+                        Household {fmt(raw)}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
             </div>
           ))}
         </div>
@@ -293,6 +322,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
     residualAccountId,
     categoryBudgets,
     paidBills,
+    billSharing,
   } = useCashflowStore();
 
   const role = userProfile.role || "H";
@@ -304,7 +334,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
     handleTogglePaid,
     handleBulkMark,
     handleChangeBillAccount,
-  } = useCashflowData();
+  } = useCashflowData({ subscribe: false });
   const { showToast } = useToast();
 
   // [!code highlight:2] Added search state
@@ -587,15 +617,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
     }
 
     // 2. Visibility Filter
-    // Smallest truthy fix: this page currently shows "bills you're responsible for"
-    // (your own + shared/auto/unassigned). Keep behavior and align the copy.
-    return baseItems.filter((it) => {
-      if (it.payer === role) return true; // My bills
-      if (it.payer === "Shared") return true; // Shared bills
-      if (it.payer === "AUTO") return true; // Unassigned bills
-      if (!it.payer) return true; // Legacy/Undefined
-      return false; // Hides partner's bills
-    });
+    return baseItems.filter((it) => isBillVisibleInSelfScope({ bill: it, role }));
   }, [monthItems, role, searchTerm]);
 
   const filtered = useMemo(() => {
@@ -609,7 +631,9 @@ export default function Bills({ personScope = "self", isOnline = true }) {
   }, [ownerFiltered, status]);
 
   const totals = useMemo(() => {
-    const sum = (items) => items.reduce((acc, it) => acc + (it.amount || 0), 0);
+    const scopedAmount = (it) =>
+      getScopedBillAmount({ bill: it, role, billSharing });
+    const sum = (items) => items.reduce((acc, it) => acc + scopedAmount(it), 0);
     const all = ownerFiltered;
     const unpaid = all.filter((it) => !it.paid);
     const overdue = all.filter((it) => it.overdue);
@@ -618,7 +642,7 @@ export default function Bills({ personScope = "self", isOnline = true }) {
       unpaid: sum(unpaid),
       overdue: sum(overdue),
     };
-  }, [ownerFiltered]);
+  }, [ownerFiltered, role, billSharing]);
 
   const overdueItems = useMemo(
     () => ownerFiltered.filter((it) => it.overdue),
@@ -792,6 +816,8 @@ export default function Bills({ personScope = "self", isOnline = true }) {
             items={overdueItems}
             memberNames={memberNames}
             bannerLabel={bannerLabel}
+            role={role}
+            billSharing={billSharing}
           />
 
           <div className="mt-4 space-y-3 px-0" data-testid="bills-list">
@@ -807,6 +833,11 @@ export default function Bills({ personScope = "self", isOnline = true }) {
             )}
 
             {filtered.map((item) => {
+              const scopedAmount = getScopedBillAmount({
+                bill: item,
+                role,
+                billSharing,
+              });
               const acctId = resolveAccountId(item);
               const acct = hasAccounts ? accountMap[acctId] : null;
               const accountLabel = hasAccounts
@@ -870,7 +901,23 @@ export default function Bills({ personScope = "self", isOnline = true }) {
 
                         <div className="shrink-0 flex items-start gap-2">
                           <div className="text-body font-semibold text-surface-900">
-                            {fmt(item.amount)}
+                            {fmt(scopedAmount)}
+                            {(() => {
+                              const raw = Number(item.amount) || 0;
+                              const isSharedLike =
+                                item.payer === "Shared" ||
+                                item.payer === "AUTO" ||
+                                !item.payer;
+                              const diff = Math.abs(scopedAmount - raw) > 0.009;
+                              if (isSharedLike && diff) {
+                                return (
+                                  <div className="text-tiny text-surface-400">
+                                    Household {fmt(raw)}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                           {handleUpdateBills && (
                             <RowActions

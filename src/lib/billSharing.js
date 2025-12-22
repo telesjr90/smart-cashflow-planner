@@ -150,25 +150,92 @@ export function applyBillSharing({ bills, income, billSharing, paySchedule }) {
   }
   
   /**
-   * Derive monthly income per partner.  The income object on a household
-   * represents the pay per pay period.  To convert to monthly values we
-   * estimate the number of pay events per month based on the paySchedule.  If
-   * no schedule is provided, semi‑monthly (two pays per month) is assumed.  The
-   * function also tolerates different property names (e.g. "husband", "H") and
-   * returns zeros when missing.
-   *
-   * @param {Object} income  Income values keyed by partner (per pay period).
-   * @param {Object} paySchedule Optional schedule with `type` property.
-   * @returns {{ monthlyIncomeH: number, monthlyIncomeW: number }}
-   */
-  export function deriveMonthlyIncomePerPartner(income = {}, paySchedule = {}) {
-    // Determine pay frequency.  Semi‑monthly => 2 paydays per month, otherwise 1.
-    const type = paySchedule?.type || "semi-monthly";
-    const payCount = type === "semi-monthly" ? 2 : 1;
-    // Support both "husband"/"wife" and "H"/"W" keys.
-    const hVal = income.husband ?? income.H ?? income.h ?? 0;
-    const wVal = income.wife ?? income.W ?? income.w ?? 0;
-    const monthlyIncomeH = Number.isFinite(+hVal) ? +hVal * payCount : 0;
-    const monthlyIncomeW = Number.isFinite(+wVal) ? +wVal * payCount : 0;
-    return { monthlyIncomeH, monthlyIncomeW };
+ * Derive monthly income per partner.  The income object on a household
+ * represents the pay per pay period.  To convert to monthly values we
+ * estimate the number of pay events per month based on the paySchedule.  If
+ * no schedule is provided, semi‑monthly (two pays per month) is assumed.  The
+ * function also tolerates different property names (e.g. "husband", "H") and
+ * returns zeros when missing.
+ *
+ * @param {Object} income  Income values keyed by partner (per pay period).
+ * @param {Object} paySchedule Optional schedule with `type` property.
+ * @returns {{ monthlyIncomeH: number, monthlyIncomeW: number }}
+ */
+export function deriveMonthlyIncomePerPartner(income = {}, paySchedule = {}) {
+  // Determine pay frequency.  Semi‑monthly => 2 paydays per month, otherwise 1.
+  const type = paySchedule?.type || "semi-monthly";
+  const payCount = type === "semi-monthly" ? 2 : 1;
+  // Support both "husband"/"wife" and "H"/"W" keys.
+  const hVal = income.husband ?? income.H ?? income.h ?? 0;
+  const wVal = income.wife ?? income.W ?? income.w ?? 0;
+  const monthlyIncomeH = Number.isFinite(+hVal) ? +hVal * payCount : 0;
+  const monthlyIncomeW = Number.isFinite(+wVal) ? +wVal * payCount : 0;
+  return { monthlyIncomeH, monthlyIncomeW };
+}
+
+// --- Shared helpers for "my share" bill math ---
+
+const DEFAULT_PERCENTAGE_SPLIT = { H: 0.5, W: 0.5 };
+const isSharedPayer = (payer) => payer === "Shared" || payer === "AUTO" || !payer;
+
+/**
+ * Return the share percent for a role given billSharing config.
+ * Defaults to 50/50 and clamps to [0,1].
+ */
+export function getRoleSharePercent({ role, billSharing }) {
+  const split = billSharing?.percentageSplit || DEFAULT_PERCENTAGE_SPLIT;
+  const raw = role === "H" ? split.H : split.W;
+  const percent = Number(raw);
+  const fallback = role === "H" ? DEFAULT_PERCENTAGE_SPLIT.H : DEFAULT_PERCENTAGE_SPLIT.W;
+  const normalized = Number.isFinite(percent) ? percent : fallback;
+  return Math.min(1, Math.max(0, normalized));
+}
+
+/**
+ * Whether a bill should appear in "self" scope lists.
+ * Show mine, shared/auto/unspecified; hide explicit partner's.
+ */
+export function isBillVisibleInSelfScope({ bill, role }) {
+  const payer = bill?.payer;
+  if (payer === role) return true;
+  return isSharedPayer(payer);
+}
+
+/**
+ * Compute the amount the current role owes for a given bill.
+ * Full if I am payer; split if shared/auto/unspecified; zero if partner-only.
+ */
+export function getScopedBillAmount({ bill, role, billSharing }) {
+  const amount = Number(bill?.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+
+  const payer = bill?.payer;
+  if (payer === role) return amount;
+
+  if (isSharedPayer(payer)) {
+    const percent = getRoleSharePercent({ role, billSharing });
+    return amount * percent;
   }
+
+  return 0;
+}
+
+/**
+ * Format a bill with scoped amount and a simple payer label.
+ * scopedPayerLabel: "Mine" | "Shared" | "Auto" | "Partner"
+ */
+export function formatScopedBill({ bill, role, billSharing }) {
+  const payer = bill?.payer;
+  let scopedPayerLabel = "Partner";
+  if (payer === role) scopedPayerLabel = "Mine";
+  else if (payer === "Shared") scopedPayerLabel = "Shared";
+  else if (payer === "AUTO" || !payer) scopedPayerLabel = "Auto";
+
+  const scopedAmount = getScopedBillAmount({ bill, role, billSharing });
+
+  return {
+    ...bill,
+    scopedAmount,
+    scopedPayerLabel,
+  };
+}

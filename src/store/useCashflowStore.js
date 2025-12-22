@@ -5,38 +5,69 @@ import { useStore } from "./useStore";
  * This module customizes the persisted store behavior without touching the base store definition.
  * - Adds confirmedDiscretionary to the persisted slice and hydrates it safely for legacy data.
  * - Wraps the IndexedDB storage with a safe fallback (localStorage or in-memory) so SSR/private
- *   modes don't crash persistence.
+ *   modes don't crash persistence, and degrades to in-memory when the browser blocks storage.
  * - Preserves existing merge/partialize logic and legacy key mapping defined in useStore.
  */
 
-const memoryStorage = () => {
-  const memory = new Map();
-  return {
-    getItem: async (name) => (memory.has(name) ? memory.get(name) : null),
-    setItem: async (name, value) => {
-      memory.set(name, value);
-    },
-    removeItem: async (name) => {
-      memory.delete(name);
-    },
-  };
+const memory = new Map();
+const memoryStorage = {
+  getItem: async (name) => (memory.has(name) ? memory.get(name) : null),
+  setItem: async (name, value) => {
+    memory.set(name, value);
+  },
+  removeItem: async (name) => {
+    memory.delete(name);
+  },
+};
+
+const canUseLocalStorage = () => {
+  try {
+    if (!("localStorage" in window) || !window.localStorage) return false;
+
+    const probeKey = "__cashflow_storage_probe__";
+    window.localStorage.setItem(probeKey, "ok");
+    window.localStorage.removeItem(probeKey);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const fallbackStorage = (() => {
   if (typeof window === "undefined") {
-    return createJSONStorage(memoryStorage);
+    return createJSONStorage(() => memoryStorage);
   }
 
-  try {
-    if ("localStorage" in window && window.localStorage) {
-      return createJSONStorage(() => window.localStorage);
-    }
-  } catch {
-    // Swallow and fall back to memory
+  if (canUseLocalStorage()) {
+    return createJSONStorage(() => window.localStorage);
   }
 
-  return createJSONStorage(memoryStorage);
+  return createJSONStorage(() => memoryStorage);
 })();
+
+const normalizeMode = (mode) => {
+  if (!mode || mode === "projected") return "planned";
+  return mode === "actual" ? "actual" : "planned";
+};
+
+const normalizePlanDataModes = (data) => {
+  if (!data || typeof data !== "object") return data;
+
+  const normalized = { ...data };
+
+  if ("mode" in normalized) {
+    normalized.mode = normalizeMode(normalized.mode);
+  }
+
+  if (normalized.plannerSettings && typeof normalized.plannerSettings === "object") {
+    normalized.plannerSettings = { ...normalized.plannerSettings };
+    if ("mode" in normalized.plannerSettings) {
+      normalized.plannerSettings.mode = normalizeMode(normalized.plannerSettings.mode);
+    }
+  }
+
+  return normalized;
+};
 
 const patchPersistence = () => {
   const persistApi = useStore.persist;
@@ -66,39 +97,27 @@ const patchPersistence = () => {
     };
   };
 
+  let forceFallback = false;
+  const withSafeStorage = async (method, name, value) => {
+    const activeStorage = forceFallback ? fallbackStorage : baseStorage;
+
+    try {
+      if (activeStorage?.[method]) {
+        return await activeStorage[method](name, value);
+      }
+    } catch (error) {
+      forceFallback = true;
+      console.warn(`IndexedDB ${method} failed, using fallback storage`, error);
+    }
+
+    forceFallback = true;
+    return fallbackStorage[method](name, value);
+  };
+
   const safeStorage = {
-    getItem: async (name) => {
-      try {
-        if (baseStorage?.getItem) {
-          return await baseStorage.getItem(name);
-        }
-      } catch (error) {
-        console.warn("IndexedDB getItem failed, using fallback storage", error);
-      }
-      return fallbackStorage.getItem(name);
-    },
-    setItem: async (name, value) => {
-      try {
-        if (baseStorage?.setItem) {
-          await baseStorage.setItem(name, value);
-          return;
-        }
-      } catch (error) {
-        console.warn("IndexedDB setItem failed, using fallback storage", error);
-      }
-      await fallbackStorage.setItem(name, value);
-    },
-    removeItem: async (name) => {
-      try {
-        if (baseStorage?.removeItem) {
-          await baseStorage.removeItem(name);
-          return;
-        }
-      } catch (error) {
-        console.warn("IndexedDB removeItem failed, using fallback storage", error);
-      }
-      await fallbackStorage.removeItem(name);
-    },
+    getItem: (name) => withSafeStorage("getItem", name),
+    setItem: (name, value) => withSafeStorage("setItem", name, value),
+    removeItem: (name) => withSafeStorage("removeItem", name),
   };
 
   persistApi.setOptions({
@@ -117,7 +136,8 @@ const patchSetFullPlanData = () => {
   if (original.__patched) return;
 
   const wrapped = (data) => {
-    original(data);
+    const normalized = normalizePlanDataModes(data);
+    original(normalized);
     useStore.getState().setHasHydrated?.(true);
   };
   wrapped.__patched = true;

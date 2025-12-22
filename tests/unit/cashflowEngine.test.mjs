@@ -1,6 +1,6 @@
 import assert from "assert/strict";
 import { describe, it } from "vitest";
-import { projectCashflow, getDateForMonthIndex } from "../src/lib/cashflow/index.js";
+import { projectCashflow, getDateForMonthIndex } from "../../src/lib/cashflow/index.js";
 
 // Fix timezone for repeatable tests
 process.env.TZ = process.env.TZ || "America/Vancouver";
@@ -72,8 +72,11 @@ describe("cashflowEngine", () => {
   });
 
   it("filters bills in actual mode based on today", () => {
+    // Actual mode hides unpaid bills dated today or earlier; future bills stay planned.
     const parts = todayStr.split("-");
     const dayOfMonth = parseInt(parts[2], 10);
+    const tomorrowParts = isoOffset(1).split("-");
+    const tomorrowDay = parseInt(tomorrowParts[2], 10);
     const billToday = {
       id: "bill_today",
       name: "Bill Today",
@@ -82,6 +85,13 @@ describe("cashflowEngine", () => {
       dueDay: dayOfMonth,
     };
     const bills = [billToday];
+    bills.push({
+      id: "bill_future",
+      name: "Bill Future",
+      amount: 50,
+      accountId: "acc",
+      dueDay: tomorrowDay,
+    });
     if (dayOfMonth > 1) {
       bills.push({
         id: "bill_yesterday",
@@ -94,7 +104,7 @@ describe("cashflowEngine", () => {
     const startOfMonth = `${parts[0]}-${parts[1]}-01`;
     const result = projectCashflow({
       startDate: startOfMonth,
-      months: 1,
+      months: 2,
       accounts,
       bills,
       income: {},
@@ -105,17 +115,27 @@ describe("cashflowEngine", () => {
       residualAccountId: "acc",
       mode: "actual",
     });
-    const ledgerNames = result.ledger.filter((ev) => ev.kind === "bill").map((ev) => ev.description);
-    assert.ok(ledgerNames.includes("Bill Today"), "Bill due today should be included");
-    if (dayOfMonth > 1) {
-      assert.ok(
-        !ledgerNames.includes("Bill Yesterday"),
-        "Bill due before today should be excluded when unpaid"
-      );
-    }
+    const billEntries = result.ledger.filter((ev) => ev.kind === "bill");
+    const onOrBeforeToday = billEntries
+      .filter((ev) => ev.date <= todayStr)
+      .map((ev) => ev.description);
+    assert.deepStrictEqual(
+      onOrBeforeToday,
+      [],
+      "Unpaid bill events dated today or earlier should be hidden in actual mode"
+    );
+    const futureNames = Array.from(
+      new Set(billEntries.filter((ev) => ev.date > todayStr).map((ev) => ev.description))
+    ).sort();
+    const expectedNames = bills.map((b) => b.name).sort();
+    assert.deepStrictEqual(
+      futureNames,
+      expectedNames,
+      "Future-dated bill events remain visible/planned in actual mode"
+    );
   });
 
-  it("includes same-day expenses in both modes", () => {
+  it("includes same-day expenses only in actual mode (planned ignores overlays)", () => {
     const expenses = [{ date: todayStr, amount: 75, description: "Same Day Expense" }];
     const actualRes = projectCashflow({
       startDate: todayStr,
@@ -130,7 +150,7 @@ describe("cashflowEngine", () => {
       residualAccountId: "acc",
       mode: "actual",
     });
-    const projectedRes = projectCashflow({
+    const plannedRes = projectCashflow({
       startDate: todayStr,
       months: 1,
       accounts,
@@ -141,16 +161,11 @@ describe("cashflowEngine", () => {
       paySchedule: {},
       allocationRules: [],
       residualAccountId: "acc",
-      mode: "projected",
+      mode: "planned",
     });
     const actualHas = actualRes.ledger.some((ev) => ev.kind === "expense" && ev.date === todayStr);
-    const projectedHas = projectedRes.ledger.some(
-      (ev) => ev.kind === "expense" && ev.date === todayStr
-    );
-    assert.strictEqual(
-      actualHas,
-      projectedHas,
-      "Both actual and projected modes should include an expense occurring today"
-    );
+    const plannedHas = plannedRes.ledger.some((ev) => ev.kind === "expense" && ev.date === todayStr);
+    assert.ok(actualHas, "Actual mode should include an expense occurring today");
+    assert.ok(!plannedHas, "Planned mode should ignore recorded expenses");
   });
 });

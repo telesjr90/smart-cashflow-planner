@@ -4,6 +4,8 @@ export default function ConfirmModal({
   open,
   title,
   message,
+  subtitle,
+  helperText,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   onConfirm,
@@ -16,10 +18,19 @@ export default function ConfirmModal({
   const dialogRef = useRef(null);
   const titleId = useId();
   const descId = useId();
+  const subtitleId = useId();
+  const helperId = useId();
 
   useEffect(() => {
     if (open) {
-      // Focus the first focusable element inside the dialog
+      // Prefer focusing the confirm button so planner prompts are one-key accessible
+      if (confirmRef.current) {
+        confirmRef.current.focus();
+        firstFocusableRef.current = confirmRef.current;
+        return;
+      }
+
+      // Fallback: focus the first focusable element inside the dialog
       const focusableSelectors =
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
       const focusables = dialogRef.current?.querySelectorAll(focusableSelectors);
@@ -62,7 +73,15 @@ export default function ConfirmModal({
       role={variant === "danger" ? "alertdialog" : "dialog"}
       aria-modal="true"
       aria-labelledby={titleId}
-      aria-describedby={descId}
+      aria-describedby={
+        [
+          descId,
+          subtitle ? subtitleId : null,
+          helperText ? helperId : null,
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
       onKeyDown={handleKeyDown}
     >
       {/* Backdrop */}
@@ -83,9 +102,19 @@ export default function ConfirmModal({
           >
             {title}
           </h3>
+          {subtitle && (
+            <p id={subtitleId} className="text-caption font-semibold text-surface-700">
+              {subtitle}
+            </p>
+          )}
           <p id={descId} className="text-body text-surface-500 leading-relaxed">
             {message}
           </p>
+          {helperText && (
+            <p id={helperId} className="text-caption text-surface-400 leading-relaxed">
+              {helperText}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-3 bg-surface-50 px-6 py-4 border-t border-surface-200/60">
@@ -99,6 +128,7 @@ export default function ConfirmModal({
           <button
             ref={confirmRef}
             onClick={onConfirm}
+            autoFocus
             className={`flex-1 rounded-2xl px-4 py-2.5 text-body font-semibold text-white shadow-soft transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-50 ${
               variant === "danger"
                 ? "bg-danger-600 hover:bg-danger-700 focus-visible:ring-danger-500"

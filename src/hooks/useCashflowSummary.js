@@ -15,9 +15,7 @@ export function useCashflowSummary() {
   const allocationRules = useCashflowStore(
     (state) => state.allocationRules || []
   );
-  const residualAccountId = useCashflowStore(
-    (state) => state.residualAccountId
-  );
+  const residualAccountId = useCashflowStore((state) => state.residualAccountId);
   const paidBills = useCashflowStore((state) => state.paidBills || {});
   const extraIncomes = useCashflowStore((state) => state.extraIncomes || []);
   const expenses = useCashflowStore((state) => state.expenses || []);
@@ -52,9 +50,14 @@ export function useCashflowSummary() {
         months: monthsToProject,
       });
 
-      const monthlySummaries = projection.monthlySummaries || [];
+      // Engine returns `monthlySummary` (singular)
+      const monthlySummary = projection.monthlySummary || [];
+
+      // Derive current summary safely
       const currentSummary =
-        monthlySummaries[monthIndex] || monthlySummaries[0] || {};
+        (Array.isArray(monthlySummary) && monthlySummary[monthIndex]) ||
+        (Array.isArray(monthlySummary) && monthlySummary[0]) ||
+        {};
 
       return {
         totalIncome: currentSummary.totalIncome || 0,
