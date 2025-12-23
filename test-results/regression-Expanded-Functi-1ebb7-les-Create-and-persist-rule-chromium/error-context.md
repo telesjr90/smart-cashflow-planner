@@ -1,0 +1,93 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e5]:
+  - banner [ref=e6]:
+    - generic [ref=e7]:
+      - heading "Profile" [level=1] [ref=e8]
+      - generic [ref=e9]:
+        - button "Toggle Dark Mode" [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+        - button "Notifications" [ref=e13] [cursor=pointer]:
+          - img [ref=e14]
+  - main [ref=e17]:
+    - generic [ref=e18]:
+      - generic [ref=e20]:
+        - img [ref=e22]
+        - generic [ref=e25]:
+          - generic [ref=e26]: Settings
+          - generic [ref=e27]: Manage your household, accounts, and goals
+      - main [ref=e28]:
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - img [ref=e32]
+              - generic [ref=e35]: AI Smart Import
+            - paragraph [ref=e36]: Upload a screenshot of your budget spreadsheet to auto-configure everything.
+            - button "Upload Image" [ref=e37] [cursor=pointer]
+          - generic [ref=e38]:
+            - generic [ref=e39]:
+              - img [ref=e40]
+              - generic [ref=e43]: Spreadsheet Import
+            - paragraph [ref=e44]: Download our template, fill it out, and upload to bulk import data.
+            - generic [ref=e45]:
+              - button "Template" [ref=e46] [cursor=pointer]:
+                - img [ref=e47]
+                - text: Template
+              - button "Upload CSV" [ref=e50] [cursor=pointer]
+        - navigation [ref=e51]:
+          - button "Profile & Household" [ref=e52] [cursor=pointer]:
+            - generic [ref=e53]: Profile & Household
+            - img [ref=e54]
+          - button "Accounts & Residual" [ref=e56] [cursor=pointer]:
+            - generic [ref=e57]: Accounts & Residual
+            - img [ref=e58]
+          - button "Allocation Rules" [active] [ref=e60] [cursor=pointer]:
+            - generic [ref=e61]: Allocation Rules
+            - img [ref=e62]
+          - button "Income & Pay Schedule" [ref=e64] [cursor=pointer]:
+            - generic [ref=e65]: Income & Pay Schedule
+            - img [ref=e66]
+          - button "Bill Sharing" [ref=e68] [cursor=pointer]:
+            - generic [ref=e69]: Bill Sharing
+            - img [ref=e70]
+          - button "Goals" [ref=e72] [cursor=pointer]:
+            - generic [ref=e73]: Goals
+            - img [ref=e74]
+          - button "Budgets" [ref=e76] [cursor=pointer]:
+            - generic [ref=e77]: Budgets
+            - img [ref=e78]
+        - generic [ref=e81]:
+          - heading "Allocation Rules" [level=3] [ref=e82]
+          - generic [ref=e83]:
+            - generic [ref=e84]:
+              - img [ref=e85]
+              - heading "Income allocation rules" [level=3] [ref=e88]
+            - button "Add Rule" [ref=e89] [cursor=pointer]:
+              - img [ref=e90]
+              - text: Add Rule
+          - paragraph [ref=e92]: Automatically distribute income into different accounts when paychecks arrive.
+          - paragraph [ref=e93]: No allocation rules defined yet.
+  - navigation [ref=e94]:
+    - generic [ref=e95]:
+      - button "Home" [ref=e96] [cursor=pointer]:
+        - img [ref=e97]
+        - generic [ref=e100]: Home
+      - button "Accounts" [ref=e101] [cursor=pointer]:
+        - img [ref=e102]
+        - generic [ref=e105]: Accounts
+      - button "Planner" [ref=e106] [cursor=pointer]:
+        - img [ref=e107]
+        - generic [ref=e111]: Planner
+      - button "Add Transaction" [ref=e113] [cursor=pointer]:
+        - img [ref=e114]
+      - button "Expenses" [ref=e115] [cursor=pointer]:
+        - img [ref=e116]
+        - generic [ref=e119]: Expenses
+      - button "Bills" [ref=e120] [cursor=pointer]:
+        - img [ref=e121]
+        - generic [ref=e124]: Bills
+      - button "Settings" [ref=e125] [cursor=pointer]:
+        - img [ref=e126]
+        - generic [ref=e129]: Settings
+```

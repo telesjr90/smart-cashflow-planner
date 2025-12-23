@@ -52,10 +52,14 @@ test('auth: prod interactive login', async ({ page, context }, testInfo) => {
     }
   });
 
-  const url = process.env.PW_BASE_URL || 'https://cashflow-a1c11.web.app/';
+  const baseUrl = process.env.PW_BASE_URL || 'https://cashflow-a1c11.web.app/';
+
+  // Prefer the same deterministic entry as the rest of the E2E suite.
+  const appUrl = new URL(baseUrl);
+  appUrl.searchParams.set('agentDemo', '1');
 
   // Avoid pausing on a blank/empty initial navigation.
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.goto(appUrl.toString(), { waitUntil: 'domcontentloaded' });
 
   // Wait for *some* DOM to exist so screenshots / pause are meaningful.
   await page.waitForFunction(() => document.readyState === 'interactive' || document.readyState === 'complete', {
@@ -119,7 +123,11 @@ test('auth: prod interactive login', async ({ page, context }, testInfo) => {
   // Pause for manual login (in the inspector, complete login then click Resume)
   await page.pause();
 
-  // After resume, assert logged in using a stable post-login anchor
+  // After resume: don’t assume we landed back on the app route that renders the shell.
+  // Force navigation back to the deterministic app entry, then assert.
+  await page.goto(appUrl.toString(), { waitUntil: 'domcontentloaded' });
+
+  // Assert logged in using a stable post-login anchor
   await expect(loggedInNav).toBeVisible({ timeout: 60_000 });
 
   // Save cookies/localStorage so subsequent prod tests can run without login
