@@ -1,0 +1,71 @@
+{
+  "createdAt": "2025-12-23T04:54:54.275Z",
+  "steps": [
+    {
+      "name": "home",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\home.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\home.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "planner-planned",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\planner-planned.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\planner-planned.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "planner-actual",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\planner-actual.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\planner-actual.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "bills",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\bills.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\bills.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "expenses",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\expenses.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\expenses.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "accounts",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\accounts.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\accounts.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "settings",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\settings.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\settings.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "settings-accounts-residual",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\settings-accounts-residual.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\settings-accounts-residual.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "settings-budgets",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\settings-budgets.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\settings-budgets.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "settings-goals",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\settings-goals.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\settings-goals.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    },
+    {
+      "name": "settings-allocation-rules",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\pages\\settings-allocation-rules.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-23T04-54-49-403Z\\state\\settings-allocation-rules.json",
+      "url": "https://cashflow-a1c11-staging.web.app/?agentDemo=1"
+    }
+  ]
+}

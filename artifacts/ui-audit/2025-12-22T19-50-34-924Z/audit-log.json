@@ -1,0 +1,161 @@
+{
+  "createdAt": "2025-12-22T19:51:06.351Z",
+  "steps": [
+    {
+      "name": "smoke-home-baseline",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\smoke-home-baseline.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\smoke-home-baseline.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-home",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-home.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-home.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-planner",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-planner.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-planner.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-bills",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-bills.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-bills.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-expenses",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-expenses.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-expenses.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-accounts",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-accounts.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-accounts.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-settings",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-settings.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-settings.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "planner-before-toggles",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\planner-before-toggles.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\planner-before-toggles.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-planner-planned",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-planner-planned.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-planner-planned.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-planner-actual",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-planner-actual.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-planner-actual.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-planner-planned-again",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-planner-planned-again.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-planner-planned-again.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-add-open-modal",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-add-open-modal.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-add-open-modal.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "add-modal-escape",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\add-modal-escape.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\add-modal-escape.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "add-modal-2-escape",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\add-modal-2-escape.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\add-modal-2-escape.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "pre-nav-nav-settings-post-add-escape",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\pre-nav-nav-settings-post-add-escape.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\pre-nav-nav-settings-post-add-escape.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-settings-post-add",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-settings-post-add.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-settings-post-add.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "settings-baseline",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\settings-baseline.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\settings-baseline.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "pre-nav-nav-bills-post-settings-escape",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\pre-nav-nav-bills-post-settings-escape.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\pre-nav-nav-bills-post-settings-escape.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-bills-post-settings",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-bills-post-settings.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-bills-post-settings.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "bills-baseline",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\bills-baseline.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\bills-baseline.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "pre-nav-nav-expenses-post-bills-escape",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\pre-nav-nav-expenses-post-bills-escape.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\pre-nav-nav-expenses-post-bills-escape.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-expenses-post-bills",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-expenses-post-bills.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-expenses-post-bills.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "expenses-baseline",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\expenses-baseline.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\expenses-baseline.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "pre-nav-nav-accounts-post-expenses-escape",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\pre-nav-nav-accounts-post-expenses-escape.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\pre-nav-nav-accounts-post-expenses-escape.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "click-nav-accounts-post-expenses",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\click-nav-accounts-post-expenses.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\click-nav-accounts-post-expenses.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    },
+    {
+      "name": "accounts-baseline",
+      "pngPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\pages\\accounts-baseline.png",
+      "jsonPath": "E:\\cashflow-app\\artifacts\\ui-audit\\2025-12-22T19-50-34-924Z\\state\\accounts-baseline.json",
+      "url": "http://localhost:5173/?agentDemo=1"
+    }
+  ]
+}

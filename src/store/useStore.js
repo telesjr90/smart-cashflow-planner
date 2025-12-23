@@ -18,6 +18,18 @@ const INITIAL_STATE = {
   startDate: getDefaultPlannerStartDate(),
   startingBalance: 0,
 
+  /**
+   * Actual mode baseline for the CURRENT MONTH ONLY.
+   *
+   * - actualOpeningBalanceCents: the computed "cash on hand" as of actualOpeningBalanceAsOfISO,
+   *   typically: (income received MTD) - (bills marked paid MTD) - (expenses recorded MTD)
+   * - actualOpeningBalanceAsOfISO: ISO date (YYYY-MM-DD) representing "as of" date (usually today)
+   *
+   * IMPORTANT: Consumers should ONLY apply this when mode === "actual" AND asOf is in the current month.
+   */
+  actualOpeningBalanceCents: null, // number (cents) | null
+  actualOpeningBalanceAsOfISO: null, // string "YYYY-MM-DD" | null
+
   // Entities
   accounts: [],
   bills: [],
@@ -32,7 +44,11 @@ const INITIAL_STATE = {
   // Configuration
   income: { husband: 0, wife: 0 },
   paySchedule: { type: "semi-monthly", day1: 15, day2: "last" },
-  billSharing: { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] },
+  billSharing: {
+    mode: "manual",
+    percentageSplit: { H: 0.5, W: 0.5 },
+    sharedBillIds: [],
+  },
   residualAccountId: null,
   postedPaychecks: {},
 
@@ -48,7 +64,8 @@ const INITIAL_STATE = {
   lastAutoPostRunISO: null,
 };
 
-const normalizeId = (value) => (typeof value === "number" ? String(value) : value);
+const normalizeId = (value) =>
+  typeof value === "number" ? String(value) : value;
 
 const normalizeEntity = (entity) => {
   if (!entity || typeof entity !== "object") return entity;
@@ -67,11 +84,26 @@ const normalizeEntity = (entity) => {
   return normalized;
 };
 
-const normalizeList = (list) => (Array.isArray(list) ? list.map(normalizeEntity) : []);
+const normalizeList = (list) =>
+  Array.isArray(list) ? list.map(normalizeEntity) : [];
 
 const normalizeMode = (mode) => {
   if (!mode || mode === "projected") return "planned";
   return mode === "actual" ? "actual" : "planned";
+};
+
+const normalizeISODate = (value) => {
+  if (!value) return null;
+  if (typeof value !== "string") return null;
+  // Basic "YYYY-MM-DD" shape check
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  return value;
+};
+
+const normalizeCents = (value) => {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n) : null;
 };
 
 const serializePlannerSettings = (state) => ({
@@ -80,8 +112,13 @@ const serializePlannerSettings = (state) => ({
   income: state.income || INITIAL_STATE.income,
   paySchedule: state.paySchedule || INITIAL_STATE.paySchedule,
   billSharing: state.billSharing || INITIAL_STATE.billSharing,
-  residualAccountId: state.residualAccountId ?? INITIAL_STATE.residualAccountId,
+  residualAccountId:
+    state.residualAccountId ?? INITIAL_STATE.residualAccountId,
   mode: normalizeMode(state.mode) || INITIAL_STATE.mode,
+
+  // NEW: Persist actual opening baseline (current month only)
+  actualOpeningBalanceCents: normalizeCents(state.actualOpeningBalanceCents),
+  actualOpeningBalanceAsOfISO: normalizeISODate(state.actualOpeningBalanceAsOfISO),
 });
 
 export const useStore = create(
@@ -116,13 +153,31 @@ export const useStore = create(
 
           if (data.plannerSettings) {
             const settings = data.plannerSettings;
-            if (settings.startDate !== undefined) updates.startDate = settings.startDate;
-            if (settings.startingBalance !== undefined) updates.startingBalance = settings.startingBalance;
+            if (settings.startDate !== undefined)
+              updates.startDate = settings.startDate;
+            if (settings.startingBalance !== undefined)
+              updates.startingBalance = settings.startingBalance;
             if (settings.income !== undefined) updates.income = settings.income;
-            if (settings.paySchedule !== undefined) updates.paySchedule = settings.paySchedule;
-            if (settings.billSharing !== undefined) updates.billSharing = settings.billSharing;
-            if (settings.residualAccountId !== undefined) updates.residualAccountId = settings.residualAccountId;
-            if (settings.mode !== undefined) updates.mode = normalizeMode(settings.mode);
+            if (settings.paySchedule !== undefined)
+              updates.paySchedule = settings.paySchedule;
+            if (settings.billSharing !== undefined)
+              updates.billSharing = settings.billSharing;
+            if (settings.residualAccountId !== undefined)
+              updates.residualAccountId = settings.residualAccountId;
+            if (settings.mode !== undefined)
+              updates.mode = normalizeMode(settings.mode);
+
+            // NEW: hydrate actual opening baseline from plannerSettings
+            if (settings.actualOpeningBalanceCents !== undefined) {
+              updates.actualOpeningBalanceCents = normalizeCents(
+                settings.actualOpeningBalanceCents
+              );
+            }
+            if (settings.actualOpeningBalanceAsOfISO !== undefined) {
+              updates.actualOpeningBalanceAsOfISO = normalizeISODate(
+                settings.actualOpeningBalanceAsOfISO
+              );
+            }
           }
 
           const simpleKeys = [
@@ -141,6 +196,10 @@ export const useStore = create(
             "allocationRules",
             "paidBills",
             "confirmedDiscretionary",
+
+            // NEW: allow top-level hydration too (for backwards/alternate payload shapes)
+            "actualOpeningBalanceCents",
+            "actualOpeningBalanceAsOfISO",
           ];
 
           simpleKeys.forEach((key) => {
@@ -148,6 +207,10 @@ export const useStore = create(
               const value = data[key];
               if (key === "mode") {
                 updates[key] = normalizeMode(value);
+              } else if (key === "actualOpeningBalanceCents") {
+                updates[key] = normalizeCents(value);
+              } else if (key === "actualOpeningBalanceAsOfISO") {
+                updates[key] = normalizeISODate(value);
               } else {
                 updates[key] = Array.isArray(value) ? normalizeList(value) : value;
               }
@@ -181,9 +244,11 @@ export const useStore = create(
 
       updateGoals: (newGoals) => set({ goals: normalizeList(newGoals || []) }),
 
-      updateBudgets: (newBudgets) => set({ categoryBudgets: newBudgets || {} }),
+      updateBudgets: (newBudgets) =>
+        set({ categoryBudgets: newBudgets || {} }),
 
-      updateAllocationRules: (newRules) => set({ allocationRules: normalizeList(newRules || []) }),
+      updateAllocationRules: (newRules) =>
+        set({ allocationRules: normalizeList(newRules || []) }),
 
       setPaidStatus: (billId, dateStr, isPaid) =>
         set((state) => {
@@ -201,7 +266,21 @@ export const useStore = create(
 
       setHasHydrated: (hydrated = true) => set({ hasHydrated: hydrated }),
 
-      setLastAutoPostRunISO: (iso) => set({ lastAutoPostRunISO: iso || null }),
+      setLastAutoPostRunISO: (iso) =>
+        set({ lastAutoPostRunISO: iso || null }),
+
+      // NEW: setters for actual baseline
+      setActualOpeningBalance: ({ cents, asOfISO } = {}) =>
+        set(() => ({
+          actualOpeningBalanceCents: normalizeCents(cents),
+          actualOpeningBalanceAsOfISO: normalizeISODate(asOfISO),
+        })),
+
+      clearActualOpeningBalance: () =>
+        set(() => ({
+          actualOpeningBalanceCents: null,
+          actualOpeningBalanceAsOfISO: null,
+        })),
 
       // Reset for logout
       reset: () => set({ ...INITIAL_STATE, hasHydrated: true }),
@@ -210,15 +289,22 @@ export const useStore = create(
       name: "cashflow-storage",
       storage: indexedDBStorage,
       partialize: (state) => {
-        const transactions = state.transactions?.length ? state.transactions : state.expenses;
-        const recurringBills = state.recurringBills?.length ? state.recurringBills : state.bills;
+        const transactions = state.transactions?.length
+          ? state.transactions
+          : state.expenses;
+        const recurringBills = state.recurringBills?.length
+          ? state.recurringBills
+          : state.bills;
         const mode = normalizeMode(state.mode) || INITIAL_STATE.mode;
 
         return {
           accounts: normalizeList(state.accounts),
           transactions: normalizeList(transactions),
           recurringBills: normalizeList(recurringBills),
+
+          // planner settings are the canonical persisted home for these config-like values
           plannerSettings: serializePlannerSettings({ ...state, mode }),
+
           paidBills: { ...state.paidBills },
           postedPaychecks: { ...state.postedPaychecks },
           lastAutoPostRunISO: state.lastAutoPostRunISO,
@@ -235,9 +321,13 @@ export const useStore = create(
         }
 
         const settings = persistedState.plannerSettings || {};
-        const mode = normalizeMode(settings.mode ?? persistedState.mode) ?? currentState.mode;
+        const mode =
+          normalizeMode(settings.mode ?? persistedState.mode) ??
+          currentState.mode;
 
-        const accounts = normalizeList(persistedState.accounts ?? currentState.accounts);
+        const accounts = normalizeList(
+          persistedState.accounts ?? currentState.accounts
+        );
         const transactions = normalizeList(
           persistedState.transactions ??
             persistedState.expenses ??
@@ -259,20 +349,40 @@ export const useStore = create(
           expenses: transactions,
           recurringBills,
           bills: recurringBills,
+
           startDate: settings.startDate ?? currentState.startDate,
           startingBalance: settings.startingBalance ?? currentState.startingBalance,
           income: settings.income ?? currentState.income,
           paySchedule: settings.paySchedule ?? currentState.paySchedule,
           billSharing: settings.billSharing ?? currentState.billSharing,
-          residualAccountId: settings.residualAccountId ?? currentState.residualAccountId,
+          residualAccountId:
+            settings.residualAccountId ?? currentState.residualAccountId,
+
+          // NEW: hydrate actual opening baseline from persisted plannerSettings
+          actualOpeningBalanceCents:
+            normalizeCents(
+              settings.actualOpeningBalanceCents ?? persistedState.actualOpeningBalanceCents
+            ) ?? currentState.actualOpeningBalanceCents,
+          actualOpeningBalanceAsOfISO:
+            normalizeISODate(
+              settings.actualOpeningBalanceAsOfISO ?? persistedState.actualOpeningBalanceAsOfISO
+            ) ?? currentState.actualOpeningBalanceAsOfISO,
+
           mode: normalizeMode(mode) ?? currentState.mode,
           paidBills: persistedState.paidBills ?? currentState.paidBills,
-          postedPaychecks: persistedState.postedPaychecks ?? currentState.postedPaychecks,
-          lastAutoPostRunISO: persistedState.lastAutoPostRunISO ?? currentState.lastAutoPostRunISO,
-          categoryBudgets: persistedState.categoryBudgets ?? currentState.categoryBudgets,
+          postedPaychecks:
+            persistedState.postedPaychecks ?? currentState.postedPaychecks,
+          lastAutoPostRunISO:
+            persistedState.lastAutoPostRunISO ?? currentState.lastAutoPostRunISO,
+          categoryBudgets:
+            persistedState.categoryBudgets ?? currentState.categoryBudgets,
           goals: normalizeList(persistedState.goals ?? currentState.goals),
-          extraIncomes: normalizeList(persistedState.extraIncomes ?? currentState.extraIncomes),
-          allocationRules: normalizeList(persistedState.allocationRules ?? currentState.allocationRules),
+          extraIncomes: normalizeList(
+            persistedState.extraIncomes ?? currentState.extraIncomes
+          ),
+          allocationRules: normalizeList(
+            persistedState.allocationRules ?? currentState.allocationRules
+          ),
           hasHydrated: true,
         };
       },

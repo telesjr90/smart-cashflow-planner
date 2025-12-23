@@ -1,6 +1,18 @@
 // src/pages/Settings.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Settings as SettingsIcon, ChevronRight, UploadCloud, Loader2, X, Check, AlertTriangle, Calendar, FileSpreadsheet, Download, Split } from "lucide-react";
+import {
+  Settings as SettingsIcon,
+  ChevronRight,
+  UploadCloud,
+  Loader2,
+  X,
+  Check,
+  AlertTriangle,
+  Calendar,
+  FileSpreadsheet,
+  Download,
+  Split,
+} from "lucide-react";
 
 // Hooks
 import { useCashflowStore } from "../store/useCashflowStore";
@@ -39,7 +51,7 @@ export default function Settings({
   isOnline = true,
 }) {
   const actionsDisabled = !isOnline;
-  
+
   // 1. Fetch Data
   const userProfile = useCashflowStore((state) => state.userProfile || {});
   const accounts = useCashflowStore((state) => state.accounts || []);
@@ -127,36 +139,35 @@ export default function Settings({
     // --- STEP 1: Smart Account Creation ---
     // We check if "Teles Checking" and "Nicole Checking" exist. If not, we create them.
     let currentAccounts = [...accounts];
-    
+
     // Find or Create Husband's Account
-    let accountH = currentAccounts.find(a => a.name.toLowerCase().includes("teles") || a.ownerRole === "H");
+    let accountH = currentAccounts.find((a) => a.name.toLowerCase().includes("teles") || a.ownerRole === "H");
     if (!accountH) {
-        accountH = {
-            id: `acct-teles-${Date.now()}`,
-            name: "Teles Checking",
-            type: "deposit",
-            openingBalance: 0,
-            ownerRole: "H",
-            ownerUid: null // Can be linked later if needed
-        };
-        currentAccounts.push(accountH);
+      accountH = {
+        id: `acct-teles-${Date.now()}`,
+        name: "Teles Checking",
+        type: "deposit",
+        openingBalance: 0,
+        ownerRole: "H",
+        ownerUid: null, // Can be linked later if needed
+      };
+      currentAccounts.push(accountH);
     }
 
     // Find or Create Wife's Account
-    let accountW = currentAccounts.find(a => a.name.toLowerCase().includes("nicole") || a.ownerRole === "W");
+    let accountW = currentAccounts.find((a) => a.name.toLowerCase().includes("nicole") || a.ownerRole === "W");
     if (!accountW) {
-        accountW = {
-            id: `acct-nicole-${Date.now()}`,
-            name: "Nicole Checking",
-            type: "deposit",
-            openingBalance: 0,
-            ownerRole: "W",
-            ownerUid: null
-        };
-        currentAccounts.push(accountW);
+      accountW = {
+        id: `acct-nicole-${Date.now()}`,
+        name: "Nicole Checking",
+        type: "deposit",
+        openingBalance: 0,
+        ownerRole: "W",
+        ownerUid: null,
+      };
+      currentAccounts.push(accountW);
     }
 
-    // Update the accounts store immediately so we can link bills to these IDs
     // Note: We'll call handleUpdateAccounts at the end to save everything.
     const residualId = residualAccountId || accountH.id; // Fallback to H if no residual
 
@@ -165,82 +176,103 @@ export default function Settings({
       const income1 = importPreview.incomes[0]?.amount || 0;
       const income2 = importPreview.incomes[1]?.amount || 0;
 
+      const payDaysRaw = Array.isArray(importPreview.paySchedule?.payDays) ? importPreview.paySchedule.payDays : [];
+      const payDays = payDaysRaw.map((d) => Number(d)).filter((d) => Number.isFinite(d) && d >= 1 && d <= 31);
+
       const scheduleConfig = {
-        frequency: importPreview.paySchedule?.frequency || "semi-monthly",
-        day1: importPreview.paySchedule?.payDays?.[0] || 15,
-        day2: importPreview.paySchedule?.payDays?.[1] || 30
+        frequency:
+          importPreview.paySchedule?.frequency ||
+          (payDays.length >= 2 ? "semi-monthly" : "monthly"),
+        day1: payDays[0] || 15,
+        // IMPORTANT: do NOT default day2 to 30 when the import only defines one payday.
+        day2: payDays.length >= 2 ? payDays[1] : null,
       };
 
-      handleUpdateIncomeAndPaySchedule(
-        { husband: income1, wife: income2 },
-        scheduleConfig
-      );
+      handleUpdateIncomeAndPaySchedule({ husband: income1, wife: income2 }, scheduleConfig);
     }
 
     // --- STEP 3: Process Expenses (Bills) ---
+    // Rule: everything assigned to H imports ONLY to Teles account;
+    //       everything assigned to W imports ONLY to Nicole account.
+    // Shared rows become TWO bills (H share + W share). No residual “Shared” bill.
     if (importPreview.expenses && importPreview.expenses.length > 0) {
-      
-      let totalSharedH = 0;
-      let totalSharedW = 0;
-      
-      const newBills = importPreview.expenses.map(b => {
-        let payer = "Shared"; // Default
-        let amountH = 0;
-        let amountW = 0;
+      const newBills = [];
 
-        // Determine Payer based on Split amounts
-        if (b.split) {
-           const keys = Object.keys(b.split);
-           if (keys.length >= 2) {
-              amountH = b.split[keys[0]] || 0; // User A (Husband)
-              amountW = b.split[keys[1]] || 0; // User B (Wife)
-           }
+      for (const b of importPreview.expenses) {
+        const dueDay = b?.dueDay || 1;
+        const category = b?.category || "misc";
+        const name = b?.name || "Imported Bill";
+
+        const split = b?.split || {};
+        const amountH = Number(
+          split["User A"] ??
+            split["User A (Teles)"] ??
+            split["H"] ??
+            split["Teles"] ??
+            0
+        ) || 0;
+
+        const amountW = Number(
+          split["User B"] ??
+            split["User B (Nicole)"] ??
+            split["W"] ??
+            split["Nicole"] ??
+            0
+        ) || 0;
+
+        const baseId = `${String(name)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "")}-${dueDay}`;
+
+        // H -> Teles
+        if (amountH > 0) {
+          newBills.push({
+            id: `${baseId}-h`,
+            name,
+            amount: amountH,
+            dueDay,
+            accountId: accountH.id,
+            payer: "H",
+            category,
+          });
         }
 
-        let assignedAccountId = residualId; // Default to shared/residual
-
-        if (amountH > 0 && amountW === 0) {
-           payer = "H";
-           assignedAccountId = accountH.id; // Link to Teles Checking
-        } else if (amountW > 0 && amountH === 0) {
-           payer = "W";
-           assignedAccountId = accountW.id; // Link to Nicole Checking
-        } else {
-           payer = "Shared";
-           // Accumulate shared amounts
-           totalSharedH += amountH;
-           totalSharedW += amountW;
+        // W -> Nicole
+        if (amountW > 0) {
+          newBills.push({
+            id: `${baseId}-w`,
+            name,
+            amount: amountW,
+            dueDay,
+            accountId: accountW.id,
+            payer: "W",
+            category,
+          });
         }
 
-        return {
-          id: b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + (b.dueDay || 1),
-          name: b.name,
-          amount: b.totalAmount, // The full amount of the bill
-          dueDay: b.dueDay || 1,
-          accountId: assignedAccountId, // <-- SMART ASSOCIATION HERE
-          payer: payer,
-          category: b.category || "misc"
-        };
-      });
+        // Fallback: if split is blank but totalAmount exists, default to H
+        const totalAmount = Number(b?.totalAmount || 0) || 0;
+        if (amountH === 0 && amountW === 0 && totalAmount > 0) {
+          newBills.push({
+            id: `${baseId}-h`,
+            name,
+            amount: totalAmount,
+            dueDay,
+            accountId: accountH.id,
+            payer: "H",
+            category,
+          });
+        }
+      }
 
       handleUpdateBills(newBills);
 
-      // Only update global split percentage based on the "Shared" bills found
-      const grandTotalShared = totalSharedH + totalSharedW;
-      if (grandTotalShared > 0) {
-        const hPercent = totalSharedH / grandTotalShared;
-        const wPercent = totalSharedW / grandTotalShared;
-
-        handleUpdateBillSharing({
-            mode: 'percentage',
-            percentageSplit: { H: hPercent, W: wPercent },
-            sharedBillIds: []
-        });
-      }
+      // NOTE: We intentionally do NOT auto-update billSharing here.
+      // With explicit H/W bills (no "Shared" bills), billSharing calculations are not needed and can confuse the UI.
     }
 
     // --- STEP 4: Save Accounts ---
-    // We do this last to ensure we have the complete list including any auto-created ones
     handleUpdateAccounts(currentAccounts, residualId);
 
     setImportPreview(null);
@@ -300,9 +332,7 @@ export default function Settings({
   }, [residualAccountId]);
 
   const handleAccountChange = (id, updates) => {
-    setLocalAccounts((prev) =>
-      prev.map((acct) => (acct.id === id ? { ...acct, ...updates } : acct))
-    );
+    setLocalAccounts((prev) => prev.map((acct) => (acct.id === id ? { ...acct, ...updates } : acct)));
     setDirtyAccounts(true);
   };
 
@@ -458,13 +488,16 @@ export default function Settings({
   }, [goals, localRoleState]);
 
   const handleAddGoal = () => {
-    const newGoal = normalizeGoal({
-      id: `goal-${Date.now()}`,
-      name: "New goal",
-      targetAmount: 0,
-      perMonth: 0,
-      savedSoFar: 0,
-    }, localRoleState);
+    const newGoal = normalizeGoal(
+      {
+        id: `goal-${Date.now()}`,
+        name: "New goal",
+        targetAmount: 0,
+        perMonth: 0,
+        savedSoFar: 0,
+      },
+      localRoleState
+    );
     setLocalGoals((prev) => [...prev, newGoal]);
     setDirtyGoals(true);
   };
@@ -506,15 +539,15 @@ export default function Settings({
   };
 
   const handleGoalPerMonthChange = (id, value) => {
-    setLocalGoals((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, perMonth: parseFloat(value) || 0 } : g))
-    );
+    setLocalGoals((prev) => prev.map((g) => (g.id === id ? { ...g, perMonth: parseFloat(value) || 0 } : g)));
     setDirtyGoals(true);
   };
 
   const handleGoalApproval = (id, action) => {
     setLocalGoals((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, status: action === "accept" ? "active" : "rejected", pendingFor: null } : g))
+      prev.map((g) =>
+        g.id === id ? { ...g, status: action === "accept" ? "active" : "rejected", pendingFor: null } : g
+      )
     );
     setDirtyGoals(true);
   };
@@ -582,9 +615,7 @@ export default function Settings({
 
   useEffect(() => {
     committedBillSharingRef.current = billSharing;
-    setLocalBillSharing(
-      billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] }
-    );
+    setLocalBillSharing(billSharing || { mode: "manual", percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] });
     setDirtyBillSharing(false);
   }, [billSharing]);
 
@@ -685,25 +716,27 @@ export default function Settings({
           <Card className="w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col bg-surface-100 border border-surface-200 shadow-2xl">
             <div className="px-6 py-4 border-b border-surface-200 flex items-center justify-between">
               <h3 className="text-title-m font-bold text-surface-900">Review Smart Import</h3>
-              <button onClick={() => setImportPreview(null)} className="p-2 hover:bg-surface-200 rounded-full text-surface-500">
+              <button
+                onClick={() => setImportPreview(null)}
+                className="p-2 hover:bg-surface-200 rounded-full text-surface-500"
+              >
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto space-y-6">
-              
               {/* Pay Schedule Preview */}
               {importPreview.paySchedule && (
-                 <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 flex items-center gap-3">
-                    <Calendar className="text-blue-500" size={20} />
-                    <div>
-                        <p className="text-caption font-bold text-blue-400">Detected Pay Schedule</p>
-                        <p className="text-caption text-blue-200">
-                            Payment Days: <strong>{importPreview.paySchedule.payDays?.join(" & ")}</strong> 
-                            <span className="opacity-60"> ({importPreview.paySchedule.frequency})</span>
-                        </p>
-                    </div>
-                 </div>
+                <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 flex items-center gap-3">
+                  <Calendar className="text-blue-500" size={20} />
+                  <div>
+                    <p className="text-caption font-bold text-blue-400">Detected Pay Schedule</p>
+                    <p className="text-caption text-blue-200">
+                      Payment Days: <strong>{importPreview.paySchedule.payDays?.join(" & ")}</strong>
+                      <span className="opacity-60"> ({importPreview.paySchedule.frequency})</span>
+                    </p>
+                  </div>
+                </div>
               )}
 
               {/* Income Preview */}
@@ -712,138 +745,132 @@ export default function Settings({
                 <div className="grid grid-cols-2 gap-4">
                   {(importPreview.incomes || []).map((inc, i) => (
                     <div key={i} className="p-3 bg-surface-50 rounded-xl border border-surface-200">
-                      <p className="text-caption text-surface-500">
-                         {inc.user || (i === 0 ? "Partner H" : "Partner W")}
-                      </p>
+                      <p className="text-caption text-surface-500">{inc.user || (i === 0 ? "Partner H" : "Partner W")}</p>
                       <p className="text-body font-semibold text-surface-900">{formatMoney(inc.amount)}</p>
                     </div>
                   ))}
-                  {!importPreview.incomes && <p className="text-caption text-surface-400 italic col-span-2">No income detected</p>}
+                  {!importPreview.incomes && (
+                    <p className="text-caption text-surface-400 italic col-span-2">No income detected</p>
+                  )}
                 </div>
               </div>
 
               {/* Bills Preview - FIXED VISIBILITY */}
               <div className="space-y-3">
-                <h4 className="text-caption font-bold uppercase text-surface-500">Detected Expenses ({importPreview.expenses?.length || 0})</h4>
+                <h4 className="text-caption font-bold uppercase text-surface-500">
+                  Detected Expenses ({importPreview.expenses?.length || 0})
+                </h4>
                 {importPreview.expenses?.length > 0 ? (
                   <div className="divide-y divide-surface-200 border border-surface-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto bg-surface-50">
                     {importPreview.expenses.map((bill, i) => {
-                       let splitLabel = "";
-                       if (bill.split) {
-                          const h = bill.split["User A"] || 0;
-                          const w = bill.split["User B"] || 0;
-                          if (h > 0 && w === 0) splitLabel = "Husband Only";
-                          else if (w > 0 && h === 0) splitLabel = "Wife Only";
-                          else if (h > 0 && w > 0) splitLabel = "Shared";
-                       }
-                       
-                       return (
+                      let splitLabel = "";
+                      if (bill.split) {
+                        const h = bill.split["User A"] || 0;
+                        const w = bill.split["User B"] || 0;
+                        if (h > 0 && w === 0) splitLabel = "Husband Only";
+                        else if (w > 0 && h === 0) splitLabel = "Wife Only";
+                        else if (h > 0 && w > 0) splitLabel = "Shared";
+                      }
+
+                      return (
                         <div key={i} className="p-3 flex items-center justify-between hover:bg-surface-100/50 transition-colors">
-                            <div>
-                                <p className="text-body font-medium text-surface-900">{bill.name}</p>
-                                <div className="flex gap-2 mt-0.5">
-                                    <span className="text-[10px] bg-surface-200 px-1.5 rounded text-surface-600 border border-surface-300">Due: {bill.dueDay}th</span>
-                                    <span className="text-[10px] bg-surface-200 px-1.5 rounded text-surface-600 border border-surface-300">{bill.category}</span>
-                                </div>
+                          <div>
+                            <p className="text-body font-medium text-surface-900">{bill.name}</p>
+                            <div className="flex gap-2 mt-0.5">
+                              <span className="text-[10px] bg-surface-200 px-1.5 rounded text-surface-600 border border-surface-300">
+                                Due: {bill.dueDay}th
+                              </span>
+                              <span className="text-[10px] bg-surface-200 px-1.5 rounded text-surface-600 border border-surface-300">
+                                {bill.category}
+                              </span>
                             </div>
-                            <div className="text-right">
-                                <p className="text-body font-semibold text-surface-900">{formatMoney(bill.totalAmount)}</p>
-                                <div className="text-[10px] text-surface-500 font-medium">
-                                   {splitLabel}
-                                </div>
-                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-body font-semibold text-surface-900">{formatMoney(bill.totalAmount)}</p>
+                            <div className="text-[10px] text-surface-500 font-medium">{splitLabel}</div>
+                          </div>
                         </div>
-                       );
+                      );
                     })}
                   </div>
                 ) : (
                   <div className="p-4 bg-warning-500/10 text-warning-600 rounded-xl flex items-center gap-2 border border-warning-500/20">
-                      <AlertTriangle size={18} />
-                      <p className="text-caption font-medium">No expenses found.</p>
+                    <AlertTriangle size={18} />
+                    <p className="text-caption font-medium">No expenses found.</p>
                   </div>
                 )}
               </div>
-              
+
               <div className="text-caption text-surface-500 italic text-center">
-                  This will configure your Income, Pay Schedule, and Bill Splits automatically.
+                This will configure your Income, Pay Schedule, and Bill Splits automatically.
               </div>
             </div>
 
             <div className="p-4 border-t border-surface-200 bg-surface-50 flex justify-end gap-3">
-               <Button variant="ghost" onClick={() => setImportPreview(null)}>Cancel</Button>
-               <Button variant="primary" onClick={confirmImport} icon={Check}>Confirm &amp; Apply</Button>
+              <Button variant="ghost" onClick={() => setImportPreview(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={confirmImport} icon={Check}>
+                Confirm &amp; Apply
+              </Button>
             </div>
           </Card>
         </div>
       )}
 
       <main
-        className={`max-w-6xl mx-auto px-6 md:px-8 lg:px-12 py-8 pb-24 space-y-6 ${
-          actionsDisabled ? "pointer-events-none opacity-60" : ""
-        }`}
+        className={`max-w-6xl mx-auto px-6 md:px-8 lg:px-12 py-8 pb-24 space-y-6 ${actionsDisabled ? "pointer-events-none opacity-60" : ""}`}
       >
         {/* --- Import Section --- */}
         <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-           {/* Card 1: AI Image Import */}
-           <div className="bg-primary-500/5 border border-primary-500/20 rounded-2xl p-4 flex flex-col gap-3">
-               <div className="flex items-center gap-2 text-primary-500 font-semibold">
-                   <UploadCloud size={20} />
-                   <span>AI Smart Import</span>
-               </div>
-               <p className="text-caption text-surface-500">
-                   Upload a screenshot of your budget spreadsheet to auto-configure everything.
-               </p>
-               <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  accept="image/*"
-                  onChange={handleBudgetUpload}
-               />
-               <Button 
-                  variant="outline"
-                  className="w-full bg-surface-50 border-primary-500/30 text-primary-500 hover:bg-primary-500/10"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isImporting}
-               >
-                  {isImporting ? <Loader2 className="animate-spin" size={16} /> : "Upload Image"}
-               </Button>
-           </div>
+          {/* Card 1: AI Image Import */}
+          <div className="bg-primary-500/5 border border-primary-500/20 rounded-2xl p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-primary-500 font-semibold">
+              <UploadCloud size={20} />
+              <span>AI Smart Import</span>
+            </div>
+            <p className="text-caption text-surface-500">
+              Upload a screenshot of your budget spreadsheet to auto-configure everything.
+            </p>
+            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleBudgetUpload} />
+            <Button
+              variant="outline"
+              className="w-full bg-surface-50 border-primary-500/30 text-primary-500 hover:bg-primary-500/10"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImporting}
+            >
+              {isImporting ? <Loader2 className="animate-spin" size={16} /> : "Upload Image"}
+            </Button>
+          </div>
 
-           {/* Card 2: CSV Import */}
-           <div className="bg-surface-50 border border-surface-200 rounded-2xl p-4 flex flex-col gap-3">
-               <div className="flex items-center gap-2 text-surface-900 font-semibold">
-                   <FileSpreadsheet size={20} />
-                   <span>Spreadsheet Import</span>
-               </div>
-               <p className="text-caption text-surface-500">
-                   Download our template, fill it out, and upload to bulk import data.
-               </p>
-               <input 
-                  type="file" 
-                  ref={csvInputRef} 
-                  className="hidden" 
-                  accept=".csv"
-                  onChange={handleCsvUpload}
-               />
-               <div className="flex gap-2">
-                   <Button 
-                      variant="ghost"
-                      className="flex-1 text-surface-600 hover:bg-surface-200"
-                      onClick={downloadBudgetTemplate}
-                      icon={Download}
-                   >
-                      Template
-                   </Button>
-                   <Button 
-                      variant="outline"
-                      className="flex-1 bg-surface-50 border-surface-300"
-                      onClick={() => csvInputRef.current?.click()}
-                   >
-                      Upload CSV
-                   </Button>
-               </div>
-           </div>
+          {/* Card 2: CSV Import */}
+          <div className="bg-surface-50 border border-surface-200 rounded-2xl p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-surface-900 font-semibold">
+              <FileSpreadsheet size={20} />
+              <span>Spreadsheet Import</span>
+            </div>
+            <p className="text-caption text-surface-500">
+              Download our template, fill it out, and upload to bulk import data.
+            </p>
+            <input type="file" ref={csvInputRef} className="hidden" accept=".csv" onChange={handleCsvUpload} />
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                className="flex-1 text-surface-600 hover:bg-surface-200"
+                onClick={downloadBudgetTemplate}
+                icon={Download}
+              >
+                Template
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 bg-surface-50 border-surface-300"
+                onClick={() => csvInputRef.current?.click()}
+              >
+                Upload CSV
+              </Button>
+            </div>
+          </div>
         </div>
 
         <nav className="space-y-2">
@@ -865,14 +892,19 @@ export default function Settings({
               }}
               aria-current={activeSection === item.key ? "page" : undefined}
               className={`w-full flex items-center justify-between rounded-2xl border px-4 py-3 text-body font-semibold transition-all
-                  ${activeSection === item.key 
-                    ? "bg-surface-100 border-primary-500 shadow-sm text-primary-500 ring-1 ring-primary-500" 
-                    : "bg-surface-50 border-surface-200 text-surface-900 hover:bg-surface-100"
+                  ${
+                    activeSection === item.key
+                      ? "bg-surface-100 border-primary-500 shadow-sm text-primary-500 ring-1 ring-primary-500"
+                      : "bg-surface-50 border-surface-200 text-surface-900 hover:bg-surface-100"
                   }
               `}
             >
               <span>{item.label}</span>
-              <ChevronRight size={18} className={activeSection === item.key ? "text-primary-500" : "text-surface-400"} aria-hidden="true" />
+              <ChevronRight
+                size={18}
+                className={activeSection === item.key ? "text-primary-500" : "text-surface-400"}
+                aria-hidden="true"
+              />
             </button>
           ))}
         </nav>

@@ -1,0 +1,546 @@
+{
+  "url": "http://localhost:5173/?agentDemo=1",
+  "persisted": null,
+  "hasStore": true,
+  "hasState": true,
+  "hasHydrated": true,
+  "storeState": {
+    "userProfile": {
+      "uid": "demo-user",
+      "email": "demo@example.com",
+      "displayName": "Agent Demo",
+      "role": "H",
+      "householdId": "demo-household"
+    },
+    "startDate": "2025-01-01",
+    "startingBalance": 0,
+    "accounts": [
+      {
+        "id": "checking-1",
+        "name": "Imported Checking",
+        "openingBalance": 0,
+        "balance": 4117.19,
+        "balanceCents": 411719,
+        "currentBalance": 4117.19,
+        "currentBalanceCents": 411719
+      }
+    ],
+    "bills": [
+      {
+        "id": "bill-feira-1st",
+        "name": "Feira 1st",
+        "amount": 400,
+        "amountCents": 40000,
+        "dueDay": 1,
+        "category": "\"Food\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-emprestimo-m",
+        "name": "Emprestimo M",
+        "amount": 381.4,
+        "amountCents": 38140,
+        "dueDay": 1,
+        "category": "\"Loan\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-ccs",
+        "name": "CCS",
+        "amount": 332,
+        "amountCents": 33200,
+        "dueDay": 1,
+        "category": "\"Bill\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-psicologa-nicole",
+        "name": "Psicologa Nicole",
+        "amount": 150,
+        "amountCents": 15000,
+        "dueDay": 1,
+        "category": "\"Health\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-compass-teles",
+        "name": "Compass Teles",
+        "amount": 149.25,
+        "amountCents": 14925,
+        "dueDay": 1,
+        "category": "\"Transport\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-compass-nicole",
+        "name": "Compass Nicole",
+        "amount": 111.6,
+        "amountCents": 11160,
+        "dueDay": 1,
+        "category": "\"Transport\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-lilo-remedio",
+        "name": "Lilo remedio",
+        "amount": 100,
+        "amountCents": 10000,
+        "dueDay": 1,
+        "category": "\"Health\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-lilo-comida",
+        "name": "Lilo comida",
+        "amount": 75,
+        "amountCents": 7500,
+        "dueDay": 1,
+        "category": "\"Food\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-lilo-unha",
+        "name": "Lilo unha",
+        "amount": 70,
+        "amountCents": 7000,
+        "dueDay": 1,
+        "category": "\"Personal\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-bc-hydro",
+        "name": "BC Hydro",
+        "amount": 33,
+        "amountCents": 3300,
+        "dueDay": 1,
+        "category": "\"Utilities\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-account-fee-td",
+        "name": "Account Fee TD",
+        "amount": 17.95,
+        "amountCents": 1795,
+        "dueDay": 1,
+        "category": "\"Fees\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-microsoft",
+        "name": "Microsoft",
+        "amount": 16.25,
+        "amountCents": 1625,
+        "dueDay": 1,
+        "category": "\"Subscription\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-rbc-fee-nicole",
+        "name": "RBC Fee Nicole",
+        "amount": 11.95,
+        "amountCents": 1195,
+        "dueDay": 1,
+        "category": "\"Fees\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-amazon-prime",
+        "name": "Amazon Prime",
+        "amount": 11.19,
+        "amountCents": 1119,
+        "dueDay": 1,
+        "category": "\"Subscription\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-onepassword",
+        "name": "OnePassword",
+        "amount": 8.9,
+        "amountCents": 890,
+        "dueDay": 1,
+        "category": "\"Subscription\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-dropout",
+        "name": "Dropout",
+        "amount": 7.65,
+        "amountCents": 765,
+        "dueDay": 1,
+        "category": "\"Subscription\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-rent",
+        "name": "Rent",
+        "amount": 2300,
+        "amountCents": 230000,
+        "dueDay": 15,
+        "category": "\"Housing\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-feira-15",
+        "name": "Feira 15",
+        "amount": 400,
+        "amountCents": 40000,
+        "dueDay": 15,
+        "category": "\"Food\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-psicologa-nicole-2",
+        "name": "Psicologa Nicole 2",
+        "amount": 150,
+        "amountCents": 15000,
+        "dueDay": 15,
+        "category": "\"Health\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-koodo",
+        "name": "Koodo",
+        "amount": 94.63,
+        "amountCents": 9463,
+        "dueDay": 28,
+        "category": "\"Utilities\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-telus",
+        "name": "Telus",
+        "amount": 81.76,
+        "amountCents": 8176,
+        "dueDay": 20,
+        "category": "\"Utilities\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-square-one",
+        "name": "Square One",
+        "amount": 50.61,
+        "amountCents": 5061,
+        "dueDay": 16,
+        "category": "\"Insurance\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-spotify",
+        "name": "Spotify",
+        "amount": 20.04,
+        "amountCents": 2004,
+        "dueDay": 25,
+        "category": "\"Subscription\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-instacart",
+        "name": "Instacart",
+        "amount": 11.19,
+        "amountCents": 1119,
+        "dueDay": 15,
+        "category": "\"Food\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      }
+    ],
+    "recurringBills": [
+      {
+        "id": "bill-feira-1st",
+        "name": "Feira 1st",
+        "amount": 400,
+        "amountCents": 40000,
+        "dueDay": 1,
+        "category": "\"Food\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-emprestimo-m",
+        "name": "Emprestimo M",
+        "amount": 381.4,
+        "amountCents": 38140,
+        "dueDay": 1,
+        "category": "\"Loan\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-ccs",
+        "name": "CCS",
+        "amount": 332,
+        "amountCents": 33200,
+        "dueDay": 1,
+        "category": "\"Bill\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-psicologa-nicole",
+        "name": "Psicologa Nicole",
+        "amount": 150,
+        "amountCents": 15000,
+        "dueDay": 1,
+        "category": "\"Health\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-compass-teles",
+        "name": "Compass Teles",
+        "amount": 149.25,
+        "amountCents": 14925,
+        "dueDay": 1,
+        "category": "\"Transport\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-compass-nicole",
+        "name": "Compass Nicole",
+        "amount": 111.6,
+        "amountCents": 11160,
+        "dueDay": 1,
+        "category": "\"Transport\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-lilo-remedio",
+        "name": "Lilo remedio",
+        "amount": 100,
+        "amountCents": 10000,
+        "dueDay": 1,
+        "category": "\"Health\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-lilo-comida",
+        "name": "Lilo comida",
+        "amount": 75,
+        "amountCents": 7500,
+        "dueDay": 1,
+        "category": "\"Food\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-lilo-unha",
+        "name": "Lilo unha",
+        "amount": 70,
+        "amountCents": 7000,
+        "dueDay": 1,
+        "category": "\"Personal\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-bc-hydro",
+        "name": "BC Hydro",
+        "amount": 33,
+        "amountCents": 3300,
+        "dueDay": 1,
+        "category": "\"Utilities\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-account-fee-td",
+        "name": "Account Fee TD",
+        "amount": 17.95,
+        "amountCents": 1795,
+        "dueDay": 1,
+        "category": "\"Fees\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-microsoft",
+        "name": "Microsoft",
+        "amount": 16.25,
+        "amountCents": 1625,
+        "dueDay": 1,
+        "category": "\"Subscription\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-rbc-fee-nicole",
+        "name": "RBC Fee Nicole",
+        "amount": 11.95,
+        "amountCents": 1195,
+        "dueDay": 1,
+        "category": "\"Fees\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-amazon-prime",
+        "name": "Amazon Prime",
+        "amount": 11.19,
+        "amountCents": 1119,
+        "dueDay": 1,
+        "category": "\"Subscription\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-onepassword",
+        "name": "OnePassword",
+        "amount": 8.9,
+        "amountCents": 890,
+        "dueDay": 1,
+        "category": "\"Subscription\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-dropout",
+        "name": "Dropout",
+        "amount": 7.65,
+        "amountCents": 765,
+        "dueDay": 1,
+        "category": "\"Subscription\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-rent",
+        "name": "Rent",
+        "amount": 2300,
+        "amountCents": 230000,
+        "dueDay": 15,
+        "category": "\"Housing\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-feira-15",
+        "name": "Feira 15",
+        "amount": 400,
+        "amountCents": 40000,
+        "dueDay": 15,
+        "category": "\"Food\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-psicologa-nicole-2",
+        "name": "Psicologa Nicole 2",
+        "amount": 150,
+        "amountCents": 15000,
+        "dueDay": 15,
+        "category": "\"Health\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-koodo",
+        "name": "Koodo",
+        "amount": 94.63,
+        "amountCents": 9463,
+        "dueDay": 28,
+        "category": "\"Utilities\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-telus",
+        "name": "Telus",
+        "amount": 81.76,
+        "amountCents": 8176,
+        "dueDay": 20,
+        "category": "\"Utilities\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-square-one",
+        "name": "Square One",
+        "amount": 50.61,
+        "amountCents": 5061,
+        "dueDay": 16,
+        "category": "\"Insurance\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-spotify",
+        "name": "Spotify",
+        "amount": 20.04,
+        "amountCents": 2004,
+        "dueDay": 25,
+        "category": "\"Subscription\"",
+        "payer": "W",
+        "accountId": "checking-1"
+      },
+      {
+        "id": "bill-instacart",
+        "name": "Instacart",
+        "amount": 11.19,
+        "amountCents": 1119,
+        "dueDay": 15,
+        "category": "\"Food\"",
+        "payer": "H",
+        "accountId": "checking-1"
+      }
+    ],
+    "expenses": [],
+    "transactions": [],
+    "goals": [],
+    "categoryBudgets": {},
+    "extraIncomes": [],
+    "allocationRules": [],
+    "income": {
+      "husband": 2127.08,
+      "wife": 1990.11
+    },
+    "paySchedule": {
+      "type": "semi-monthly",
+      "day1": 15,
+      "day2": "last"
+    },
+    "billSharing": {
+      "mode": "manual",
+      "percentageSplit": {
+        "H": 0.5,
+        "W": 0.5
+      },
+      "sharedBillIds": []
+    },
+    "residualAccountId": "checking-1",
+    "postedPaychecks": {},
+    "paidBills": {},
+    "confirmedDiscretionary": {},
+    "mode": "actual",
+    "hasHydrated": true,
+    "lastAutoPostRunISO": "2025-12-22"
+  },
+  "uiHints": {
+    "homeBalanceText": null
+  }
+}

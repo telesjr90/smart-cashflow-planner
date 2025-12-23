@@ -14,7 +14,12 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebase";
-import { getDefaultPlannerStartDate } from "../lib/cashflow/index.js";
+import {
+  getDefaultPlannerStartDate,
+  getMonthIndexFromStart,
+  clampDayToMonth,
+  getDateForMonthIndex,
+} from "../lib/cashflow/index.js";
 import { getTodayISODate } from "../lib/cashflow/dateUtils";
 import { useToast } from "../components/ui/toast/useToast";
 import { useCashflowStore } from "../store/useCashflowStore";
@@ -35,9 +40,22 @@ const DEFAULT_SPLIT = { husband: 0, wife: 0 };
 const DEFAULT_INCOME = { husband: 0, wife: 0 };
 const DEFAULT_PAY_SCHEDULE = { type: "semi-monthly", day1: 15, day2: "last" };
 
+/**
+ * Option A support:
+ * - Store an Actual-only opening balance for the CURRENT month.
+ * - This allows the app to:
+ *   1) ask "have you paid these bills from month start -> today?"
+ *   2) set actualStartingBalance = income received MTD - paid bills MTD
+ * - Planner / MonthlyCashFlowInfographic will later use this when mode === "actual".
+ */
 export const emptyUserData = {
   startDate: DEFAULT_START_DATE,
   startingBalance: DEFAULT_STARTING_BALANCE,
+
+  // NEW (Option A): Actual-only opening balance (dollars)
+  // When set, the UI/engine can use it only in Actual mode.
+  actualStartingBalance: null,
+
   balanceSplit: { ...DEFAULT_SPLIT },
   bills: [],
   paidBills: {},
@@ -124,6 +142,181 @@ function buildPaidBillKey({ startDate, monthIndex, billId, bills }) {
   const dueDay = getBillDueDayById(bills, billId);
   const dueDateISO = buildDueDateISO({ year, monthIndex0, dueDay });
   return `${dueDateISO}:${billId}`;
+}
+
+/**
+ * NEW: Bills due Month-to-Date (Option A onboarding prompt helper)
+ * Range = max(startDate, first day of current month) -> todayISO
+ * Returns normalized list with dueDate + paidKey + isPaid.
+ */
+export function listBillsDueMonthToDate({ startDate, bills, paidBills, todayISO }) {
+  const safeBills = Array.isArray(bills) ? bills : [];
+  const paidMap = paidBills || {};
+  const today = todayISO || getTodayISODate();
+
+  const dToday = new Date(`${today}T00:00:00`);
+  const monthStartISO = `${dToday.getFullYear()}-${String(dToday.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-01`;
+
+  const rangeStart = startDate && startDate > monthStartISO ? startDate : monthStartISO;
+
+  // If rangeStart is after today, nothing to prompt.
+  if (rangeStart > today) return [];
+
+  const year = dToday.getFullYear();
+  const monthIndex0 = dToday.getMonth();
+
+  const out = [];
+  for (const b of safeBills) {
+    if (!b?.id) continue;
+    if (b.status && b.status !== "active") continue;
+
+    const dueDay = Number.isFinite(+b.dueDay) ? +b.dueDay : 1;
+    const safeDueDay = clampDayToMonth(year, monthIndex0, dueDay);
+    const dueISO = getDateForMonthIndex(monthStartISO, 0, safeDueDay); // same month, safe day
+    // dueISO is guaranteed same month due to clampDayToMonth use.
+
+    if (dueISO < rangeStart || dueISO > today) continue;
+
+    // monthIndex relative to plan start
+    const monthIndex = getMonthIndexFromStart(startDate || DEFAULT_START_DATE, dueISO);
+    if (!Number.isFinite(monthIndex) || monthIndex < 0) continue;
+
+    const key = `${dueISO}:${b.id}`;
+    out.push({
+      billId: b.id,
+      name: b.name || "Bill",
+      dueDate: dueISO,
+      monthIndex,
+      amount: Number(b.amount || 0),
+      paidKey: key,
+      isPaid: !!paidMap[key],
+    });
+  }
+
+  // Sort by due date then name for stable UI
+  out.sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : a.name.localeCompare(b.name)));
+  return out;
+}
+
+/**
+ * NEW: Income received Month-to-Date from pay schedule (Option A onboarding)
+ * - Uses paySchedule + income amounts
+ * - Range = max(startDate, first day of current month) -> todayISO
+ * - Returns cents + useful breakdown
+ */
+export function computeIncomeReceivedMonthToDateCents({
+  startDate,
+  todayISO,
+  paySchedule,
+  income,
+}) {
+  const today = todayISO || getTodayISODate();
+  const dToday = new Date(`${today}T00:00:00`);
+  const monthStartISO = `${dToday.getFullYear()}-${String(dToday.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-01`;
+  const rangeStart = startDate && startDate > monthStartISO ? startDate : monthStartISO;
+  if (rangeStart > today) {
+    return { totalCents: 0, paydays: [], breakdown: { H: 0, W: 0 } };
+  }
+
+  const sched = paySchedule || DEFAULT_PAY_SCHEDULE;
+  const type = (sched.type || "semi-monthly").toLowerCase();
+
+  const year = dToday.getFullYear();
+  const monthIndex0 = dToday.getMonth();
+  const monthEndDay = new Date(year, monthIndex0 + 1, 0).getDate();
+
+  const clampLocal = (day) => {
+    const n = Number.isFinite(+day) ? +day : 1;
+    return Math.min(Math.max(1, n), monthEndDay);
+  };
+
+  let paydayDays = [];
+  if (type === "semi-monthly") {
+    const d1 = clampLocal(sched.day1 ?? 15);
+    const rawDay2 = sched.day2;
+    const d2 =
+      rawDay2 === "last" || rawDay2 === undefined || rawDay2 === null
+        ? monthEndDay
+        : clampLocal(rawDay2);
+    paydayDays = d2 === d1 ? [d1] : [d1, d2];
+  } else if (type === "monthly") {
+    paydayDays = [clampLocal(sched.day ?? sched.day1 ?? 1)];
+  } else {
+    // fallback: treat like semi-monthly default
+    paydayDays = [clampLocal(15), monthEndDay];
+  }
+
+  const paydays = paydayDays
+    .map((day) => {
+      const d = new Date(year, monthIndex0, day);
+      return d.toISOString().slice(0, 10);
+    })
+    .filter((iso) => iso >= rangeStart && iso <= today)
+    .sort();
+
+  const h = Number(income?.husband) || 0;
+  const w = Number(income?.wife) || 0;
+
+  // cents
+  const hCentsPerPay = Math.round(h * 100);
+  const wCentsPerPay = Math.round(w * 100);
+
+  const totalH = hCentsPerPay * paydays.length;
+  const totalW = wCentsPerPay * paydays.length;
+
+  return {
+    totalCents: totalH + totalW,
+    paydays,
+    breakdown: { H: totalH, W: totalW },
+  };
+}
+
+/**
+ * NEW: Suggested Actual Opening Balance (Option A)
+ * actualStartingBalance = (income received MTD) - (sum of PAID bills MTD)
+ * IMPORTANT: This does NOT include discretionary expenses; those are tracked separately.
+ */
+export function computeSuggestedActualStartingBalanceCents({
+  startDate,
+  todayISO,
+  bills,
+  paidBills,
+  paySchedule,
+  income,
+}) {
+  const incomeRes = computeIncomeReceivedMonthToDateCents({
+    startDate,
+    todayISO,
+    paySchedule,
+    income,
+  });
+
+  const dueBills = listBillsDueMonthToDate({
+    startDate,
+    bills,
+    paidBills,
+    todayISO: todayISO || getTodayISODate(),
+  });
+
+  const paidBillsCents = dueBills.reduce((sum, b) => {
+    if (!b.isPaid) return sum;
+    const amt = Math.round((Number(b.amount) || 0) * 100);
+    return sum + (amt > 0 ? amt : 0);
+  }, 0);
+
+  return {
+    incomeToDateCents: incomeRes.totalCents,
+    paidBillsToDateCents: paidBillsCents,
+    suggestedActualStartCents: incomeRes.totalCents - paidBillsCents,
+    paydays: incomeRes.paydays,
+    dueBills,
+  };
 }
 
 async function ensureUserDoc(user) {
@@ -242,6 +435,10 @@ async function loadHouseholdMembers(currentUserUid) {
 const selectPlanSnapshot = (state) => ({
   startDate: state.startDate,
   startingBalance: state.startingBalance,
+
+  // NEW
+  actualStartingBalance: state.actualStartingBalance,
+
   bills: state.recurringBills?.length ? state.recurringBills : state.bills,
   paidBills: state.paidBills,
   confirmedDiscretionary: state.confirmedDiscretionary,
@@ -279,6 +476,10 @@ const mergeWithEmptyData = (plan) => {
     expenses: base.expenses || emptyUserData.expenses,
     bills: base.bills || emptyUserData.bills,
     accounts: base.accounts || emptyUserData.accounts,
+
+    // Ensure new field exists (can be null)
+    actualStartingBalance:
+      base.actualStartingBalance ?? emptyUserData.actualStartingBalance,
   };
 };
 
@@ -309,11 +510,7 @@ const patchSetFullPlanDataHydration = () => {
   const store = useCashflowStore;
   const state = store?.getState?.();
   const hasSetState = typeof store?.setState === "function";
-  if (
-    !state?.setFullPlanData ||
-    state.setFullPlanData.__noHydrationPatch
-  )
-    return;
+  if (!state?.setFullPlanData || state.setFullPlanData.__noHydrationPatch) return;
 
   if (!hasSetState && state.setFullPlanData?.mock) {
     state.setFullPlanData.mockImplementation(() => {});
@@ -428,21 +625,12 @@ const ensureSingleton = ({
           core: data?.sectionVersions?.core ?? DEFAULT_SECTION_VERSIONS.core,
           bills: data?.sectionVersions?.bills ?? DEFAULT_SECTION_VERSIONS.bills,
           goals: data?.sectionVersions?.goals ?? DEFAULT_SECTION_VERSIONS.goals,
-          budgets:
-            data?.sectionVersions?.budgets ?? DEFAULT_SECTION_VERSIONS.budgets,
-          accounts:
-            data?.sectionVersions?.accounts ?? DEFAULT_SECTION_VERSIONS.accounts,
-          allocations:
-            data?.sectionVersions?.allocations ??
-            DEFAULT_SECTION_VERSIONS.allocations,
-          income:
-            data?.sectionVersions?.income ?? DEFAULT_SECTION_VERSIONS.income,
-          billSharing:
-            data?.sectionVersions?.billSharing ??
-            DEFAULT_SECTION_VERSIONS.billSharing,
-          expenses:
-            data?.sectionVersions?.expenses ??
-            DEFAULT_SECTION_VERSIONS.expenses,
+          budgets: data?.sectionVersions?.budgets ?? DEFAULT_SECTION_VERSIONS.budgets,
+          accounts: data?.sectionVersions?.accounts ?? DEFAULT_SECTION_VERSIONS.accounts,
+          allocations: data?.sectionVersions?.allocations ?? DEFAULT_SECTION_VERSIONS.allocations,
+          income: data?.sectionVersions?.income ?? DEFAULT_SECTION_VERSIONS.income,
+          billSharing: data?.sectionVersions?.billSharing ?? DEFAULT_SECTION_VERSIONS.billSharing,
+          expenses: data?.sectionVersions?.expenses ?? DEFAULT_SECTION_VERSIONS.expenses,
         },
         hasCached: true,
         networkError: false,
@@ -660,10 +848,8 @@ export async function maybeRunAutoPostPaychecks({
       const accounts = Array.isArray(myData.accounts) ? myData.accounts : [];
       const nextAccounts = accounts.map((acc) => {
         if (!acc || acc.id !== depositAccountId) return acc;
-        const baseCentsRaw =
-          acc.currentBalanceCents ?? acc.balanceCents ?? null;
-        const baseDollars =
-          acc.currentBalance ?? acc.balance ?? acc.openingBalance ?? 0;
+        const baseCentsRaw = acc.currentBalanceCents ?? acc.balanceCents ?? null;
+        const baseDollars = acc.currentBalance ?? acc.balance ?? acc.openingBalance ?? 0;
         const baseCents = Number.isFinite(baseCentsRaw)
           ? Number(baseCentsRaw)
           : Math.round((Number(baseDollars) || 0) * 100);
@@ -701,9 +887,7 @@ export default function useCashflowData({ subscribe = true } = {}) {
 
   const [todayMarker, setTodayMarker] = useState(getTodayISODate());
 
-  const [mySectionVersions, setMySectionVersions] = useState(
-    DEFAULT_SECTION_VERSIONS
-  );
+  const [mySectionVersions, setMySectionVersions] = useState(DEFAULT_SECTION_VERSIONS);
 
   const { showToast } = useToast();
 
@@ -851,12 +1035,9 @@ export default function useCashflowData({ subscribe = true } = {}) {
 
     // --- PATH B.1: Already hydrated elsewhere (e.g., useFirebaseSync) ---
     const storeState = useCashflowStore.getState?.() || {};
-    const setHasHydratedCalls =
-      storeState.setHasHydrated?.mock?.calls?.length || 0;
+    const setHasHydratedCalls = storeState.setHasHydrated?.mock?.calls?.length || 0;
     const storeHydrated =
-      !!storeState.hasHydrated ||
-      fallbackHydrationState.hydrated ||
-      setHasHydratedCalls > 0;
+      !!storeState.hasHydrated || fallbackHydrationState.hydrated || setHasHydratedCalls > 0;
     if (storeHydrated) {
       const fallback = readPlanFromStore();
       setMyData(fallback);
@@ -949,7 +1130,7 @@ export default function useCashflowData({ subscribe = true } = {}) {
         }
       }
     },
-    [myData, mySectionVersions, isAgentDemo, showVersionConflictToast]
+    [myData, mySectionVersions, isAgentDemo, showVersionConflictToast, setFullPlanData]
   );
 
   const handleChangeBillAccount = useCallback(
@@ -1109,37 +1290,28 @@ export default function useCashflowData({ subscribe = true } = {}) {
         setMySectionVersions(newVersions);
       } catch (err) {
         console.warn(`Failed to update ${sectionName}`, err);
-        if (
-          err.message === "section-version-conflict" &&
-          err.section === sectionName
-        ) {
+        if (err.message === "section-version-conflict" && err.section === sectionName) {
           showVersionConflictToast({
             section: sectionName,
             serverVersion: err.serverVersion,
             localVersion: err.localVersion,
-            retry: () =>
-              createUpdateHandler(sectionName, keyInState)(newValue, extraArg),
+            retry: () => createUpdateHandler(sectionName, keyInState)(newValue, extraArg),
           });
         }
       }
     };
 
   const handleUpdateAccounts = createUpdateHandler("accounts", "accounts");
-  const handleUpdateAllocationRules = createUpdateHandler(
-    "allocations",
-    "allocationRules"
-  );
+  const handleUpdateAllocationRules = createUpdateHandler("allocations", "allocationRules");
   const handleUpdateGoals = createUpdateHandler("goals", "goals");
   const handleUpdateBudgets = createUpdateHandler("budgets", "categoryBudgets");
-  const handleUpdateStartingBalance = createUpdateHandler(
-    "core",
-    "startingBalance"
-  );
+  const handleUpdateStartingBalance = createUpdateHandler("core", "startingBalance");
+
+  // NEW (Option A)
+  const handleUpdateActualStartingBalance = createUpdateHandler("core", "actualStartingBalance");
+
   const handleUpdateExpenses = createUpdateHandler("expenses", "expenses");
-  const handleUpdateBillSharing = createUpdateHandler(
-    "billSharing",
-    "billSharing"
-  );
+  const handleUpdateBillSharing = createUpdateHandler("billSharing", "billSharing");
   const handleUpdateExtraIncome = createUpdateHandler("income", "extraIncomes");
 
   const handleAddExpense = useCallback(
@@ -1153,23 +1325,82 @@ export default function useCashflowData({ subscribe = true } = {}) {
   const handleUpdateIncomeAndPaySchedule = useCallback(
     async (nextIncome, nextPaySchedule) => {
       const base = myData || emptyUserData;
-      setMyData({ ...base, income: nextIncome, paySchedule: nextPaySchedule });
+
+      const normalizedIncome = {
+        husband: Number(nextIncome?.husband) || 0,
+        wife: Number(nextIncome?.wife) || 0,
+      };
+
+      const normalizePaySchedule = (sched) => {
+        const s = sched || {};
+        const inferredType = (s.type || s.frequency || DEFAULT_PAY_SCHEDULE.type || "semi-monthly");
+        const type = String(inferredType).toLowerCase();
+
+        const clamp31 = (d, fallback) => {
+          const n = Number.isFinite(+d) ? +d : fallback;
+          return Math.min(Math.max(1, n), 31);
+        };
+
+        if (type === "monthly") {
+          const day = clamp31(s.day ?? s.day1 ?? 1, 1);
+          // Keep both `day` and `day1` so downstream code can read either.
+          return {
+            type: "monthly",
+            day,
+            day1: day,
+            day2: null,
+          };
+        }
+
+        // default: semi-monthly
+        const day1 = clamp31(s.day1 ?? s.day ?? DEFAULT_PAY_SCHEDULE.day1, DEFAULT_PAY_SCHEDULE.day1);
+        let day2 = s.day2;
+
+        // If caller passed null/undefined/"" for day2, treat as "last" (the common UI sentinel).
+        if (day2 === null || day2 === undefined || day2 === "") day2 = DEFAULT_PAY_SCHEDULE.day2;
+
+        if (day2 !== "last") {
+          day2 = clamp31(day2, DEFAULT_PAY_SCHEDULE.day1);
+          if (day2 === day1) day2 = "last"; // avoid duplicate paydays
+        }
+
+        return {
+          type: "semi-monthly",
+          day1,
+          day2,
+        };
+      };
+
+      const normalizedPaySchedule = normalizePaySchedule(nextPaySchedule);
+
+      const optimistic = {
+        ...base,
+        income: normalizedIncome,
+        paySchedule: normalizedPaySchedule,
+      };
+
+      setMyData(optimistic);
+      if (setFullPlanData) {
+        setFullPlanData(optimistic);
+      }
+
       if (isAgentDemo || !auth.currentUser) return;
 
       try {
-        await saveUserSectionsWithVersion(
+        const newVersions = await saveUserSectionsWithVersion(
           auth.currentUser.uid,
           ["income"],
           mySectionVersions,
           (serverData) => ({
             nextData: {
               ...serverData,
-              income: nextIncome,
-              paySchedule: nextPaySchedule,
+              income: normalizedIncome,
+              paySchedule: normalizedPaySchedule,
             },
             touchedSections: ["income"],
           })
         );
+        setMySectionVersions(newVersions);
       } catch (err) {
         console.warn("Income update failed", err);
         if (err.message === "section-version-conflict") {
@@ -1182,7 +1413,7 @@ export default function useCashflowData({ subscribe = true } = {}) {
         }
       }
     },
-    [myData, mySectionVersions, isAgentDemo, showVersionConflictToast]
+    [myData, mySectionVersions, isAgentDemo, showVersionConflictToast, setFullPlanData]
   );
 
   const handleUpdateProfile = useCallback(
@@ -1212,15 +1443,19 @@ export default function useCashflowData({ subscribe = true } = {}) {
       const sections = new Set();
       if ("goals" in payload) sections.add("goals");
       if ("categoryBudgets" in payload) sections.add("budgets");
-      if ("accounts" in payload || "residualAccountId" in payload)
-        sections.add("accounts");
+      if ("accounts" in payload || "residualAccountId" in payload) sections.add("accounts");
       if ("allocationRules" in payload) sections.add("allocations");
-      if ("income" in payload || "paySchedule" in payload || "extraIncomes" in payload)
-        sections.add("income");
+      if ("income" in payload || "paySchedule" in payload || "extraIncomes" in payload) sections.add("income");
       if ("expenses" in payload) sections.add("expenses");
       if ("billSharing" in payload) sections.add("billSharing");
-      if ("startingBalance" in payload || "startDate" in payload || "balanceSplit" in payload)
+      if (
+        "startingBalance" in payload ||
+        "actualStartingBalance" in payload ||
+        "startDate" in payload ||
+        "balanceSplit" in payload
+      ) {
         sections.add("core");
+      }
 
       const sectionList = Array.from(sections);
       if (sectionList.length === 0) {
@@ -1264,9 +1499,8 @@ export default function useCashflowData({ subscribe = true } = {}) {
     // runs. Force fallbackHydrated when in demo to ensure paychecks are
     // auto-posted even if the store hasn't yet indicated hydration. See
     // tests/e2e/regression.spec.js for context.
-    const effectiveFallbackHydrated = isAgentDemo
-      ? true
-      : fallbackHydrationState.hydrated;
+    const effectiveFallbackHydrated = isAgentDemo ? true : fallbackHydrationState.hydrated;
+
     maybeRunAutoPostPaychecks({
       myData,
       todayISO,
@@ -1289,6 +1523,7 @@ export default function useCashflowData({ subscribe = true } = {}) {
     lastAutoPostRunISO,
     setLastAutoPostRunISO,
     todayMarker,
+    isAgentDemo,
   ]);
 
   return {
@@ -1304,6 +1539,24 @@ export default function useCashflowData({ subscribe = true } = {}) {
     DEFAULT_INCOME,
     DEFAULT_PAY_SCHEDULE,
 
+    // NEW (Option A) helpers for the “Bills paid MTD?” prompt + suggested opening balance
+    listBillsDueMonthToDate: (overrideTodayISO) =>
+      listBillsDueMonthToDate({
+        startDate: (myData || emptyUserData).startDate || DEFAULT_START_DATE,
+        bills: (myData || emptyUserData).bills || [],
+        paidBills: (myData || emptyUserData).paidBills || {},
+        todayISO: overrideTodayISO || getTodayISODate(),
+      }),
+    computeSuggestedActualStartingBalance: (overrideTodayISO) =>
+      computeSuggestedActualStartingBalanceCents({
+        startDate: (myData || emptyUserData).startDate || DEFAULT_START_DATE,
+        todayISO: overrideTodayISO || getTodayISODate(),
+        bills: (myData || emptyUserData).bills || [],
+        paidBills: (myData || emptyUserData).paidBills || {},
+        paySchedule: (myData || emptyUserData).paySchedule || DEFAULT_PAY_SCHEDULE,
+        income: (myData || emptyUserData).income || DEFAULT_INCOME,
+      }),
+
     // Actions
     handleUpdateBills,
     handleChangeBillAccount,
@@ -1315,6 +1568,10 @@ export default function useCashflowData({ subscribe = true } = {}) {
     handleUpdateGoals,
     handleUpdateBudgets,
     handleUpdateStartingBalance,
+
+    // NEW (Option A)
+    handleUpdateActualStartingBalance,
+
     handleUpdateExpenses,
     handleAddExpense,
     handleUpdateExtraIncome,

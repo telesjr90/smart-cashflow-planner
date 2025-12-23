@@ -35,13 +35,19 @@ export default function Planner({
   const userProfile = useCashflowStore((state) => state.userProfile);
   const billSharing = useCashflowStore((state) => state.billSharing);
 
+  // NEW: actual opening balance override (current month only)
+  const actualOpeningBalanceCents = useCashflowStore(
+    (state) => state.actualOpeningBalanceCents ?? null
+  );
+  const actualOpeningBalanceAsOfISO = useCashflowStore(
+    (state) => state.actualOpeningBalanceAsOfISO ?? null
+  );
+
   const role = userProfile?.role || "H";
   const mode =
     normalizeCashflowMode(infographicProps?.mode) || DEFAULT_CASHFLOW_MODE;
 
-  // This page's top chart uses a scoped ("self") projection. The infographic below
-  // should align to the same scope inputs (role + personScope) even if it computes
-  // internally, to avoid drift between what users see in the chart vs the breakdown.
+  // This page's top chart uses a scoped ("self") projection.
   const personScope = "self";
 
   // Align projection window to cover through the current month (at least 6 months).
@@ -72,12 +78,46 @@ export default function Planner({
       residualAccountId,
     } = infographicProps;
 
+    const todayISO = new Date().toISOString().slice(0, 10);
+
+    const useActualOpening =
+      mode === "actual" &&
+      typeof actualOpeningBalanceCents === "number" &&
+      Number.isFinite(actualOpeningBalanceCents) &&
+      !!actualOpeningBalanceAsOfISO &&
+      actualOpeningBalanceAsOfISO.slice(0, 7) === todayISO.slice(0, 7);
+
+    const effectiveStartDate = useActualOpening
+      ? actualOpeningBalanceAsOfISO
+      : liveStartDate;
+
     // A. Filter Accounts (My Accounts Only)
     const myAccounts = liveAccounts.filter(
       (a) => a.ownerRole === role || a.ownerRole === "Joint" || !a.ownerRole
     );
 
-    const safeResidualId = residualAccountId || myAccounts[0]?.id || "default";
+    // Ensure engine always has at least one account
+    const baseAccounts =
+      myAccounts.length > 0
+        ? myAccounts
+        : [
+            {
+              id: "default",
+              type: "checking",
+              openingBalance: 0,
+            },
+          ];
+
+    const safeResidualId =
+      residualAccountId || baseAccounts[0]?.id || "default";
+
+    // When using actual opening, seed total cash to the override and avoid double-counting
+    const accountsForEngine = useActualOpening
+      ? baseAccounts.map((a, idx) => ({
+          ...a,
+          openingBalance: idx === 0 ? actualOpeningBalanceCents / 100 : 0,
+        }))
+      : baseAccounts;
 
     // B. Filter Bills (My Share Only)
     const myBills = [];
@@ -96,7 +136,7 @@ export default function Planner({
         id: b.id || `b${idx}`,
         amount: scopedAmount,
         accountId:
-          b.accountId && myAccounts.some((a) => a.id === b.accountId)
+          b.accountId && accountsForEngine.some((a) => a.id === b.accountId)
             ? b.accountId
             : safeResidualId,
       });
@@ -111,9 +151,9 @@ export default function Planner({
     // D. Run Projection
     try {
       const projection = projectCashflow({
-        startDate: liveStartDate,
+        startDate: effectiveStartDate,
         months: projectionMonths,
-        accounts: myAccounts,
+        accounts: accountsForEngine,
         bills: myBills,
         income: myIncome,
         extraIncomes: liveExtraIncomes,
@@ -137,7 +177,16 @@ export default function Planner({
       console.warn("Planner local projection failed", err);
       return initialCashflow;
     }
-  }, [initialCashflow, infographicProps, role, billSharing, projectionMonths]);
+  }, [
+    initialCashflow,
+    infographicProps,
+    role,
+    billSharing,
+    projectionMonths,
+    mode,
+    actualOpeningBalanceCents,
+    actualOpeningBalanceAsOfISO,
+  ]);
 
   // 2. Build Timeline
   const timeline = useMemo(() => {
@@ -163,7 +212,7 @@ export default function Planner({
         balance: (dailyMap.get(date) || 0) / 100,
         label: formatDateShort(date),
       }));
-  }, [scopedCashflow, months]);
+  }, [scopedCashflow, projectionMonths]);
 
   // 3. Calculate Insight Metrics
   const { lowestBalance, highestBalance, runwayDays } = useMemo(() => {
@@ -198,6 +247,8 @@ export default function Planner({
       <Badge variant="success">Healthy</Badge>
     );
 
+  const chartTitle = mode === "actual" ? "Actual Balance" : "Planned Balance";
+
   return (
     <div className="space-y-6 pb-20 px-4">
       <div className="flex items-center justify-between pt-2">
@@ -225,7 +276,7 @@ export default function Planner({
       <div className="bg-surface-50 border border-surface-200 rounded-2xl shadow-soft p-4 md:p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="space-y-1">
-            <h3 className="text-title-l text-surface-900">Planned Balance</h3>
+            <h3 className="text-title-l text-surface-900">{chartTitle}</h3>
             <p className="text-caption text-surface-500">
               Net worth forecast based on recurring bills &amp; income
               <br />
@@ -254,7 +305,7 @@ export default function Planner({
             title="Peak Balance"
             value={fmt(highestBalance)}
             icon={<Target className="text-success-500" />}
-            variant="default" // [!code highlight] FIXED: Passed as string literal
+            variant="default"
             size="md"
           />
         </div>

@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "cashflow-a1c11"
-  }
+  },
+  "targets": {
+    "cashflow-a1c11": {
+      "hosting": {
+        "staging": [
+          "cashflow-a1c11-staging"
+        ],
+        "prod": [
+          "cashflow-a1c11"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

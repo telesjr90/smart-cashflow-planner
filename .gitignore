@@ -28,3 +28,4 @@ serviceAccountKey.json
 cashflow-a1c11-firebase-adminsdk-fbsvc-*.json
 .env
 .env.*
+playwright/.auth/prod.json
