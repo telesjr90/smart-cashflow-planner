@@ -81,6 +81,7 @@ export default function GoalsForm({
           size="sm"
           variant="primary"
           icon={Plus}
+          data-testid="btn-add-goal"
         >
           Add Goal
         </Button>
@@ -96,34 +97,39 @@ export default function GoalsForm({
         {visibleGoals.map((goal) => (
           <div
             key={goal.id}
+            data-testid={`goal-card-${goal.id}`}
             className="p-4 border border-surface-200 rounded-2xl bg-surface-50 space-y-4 transition-all hover:border-primary-200"
           >
             {/* Top Row: Name, Target, Monthly */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input
-                label="Name"
-                value={goal.name}
-                onChange={(e) => onGoalChange(goal.id, { name: e.target.value })}
-                onBlur={(e) => validateField(goal.id, "name", e.target.value)}
-                placeholder="e.g. New Car"
-                error={errors[goal.id]?.name}
-              />
+              <div data-testid="input-group-goal-name">
+                <Input
+                  label="Name"
+                  value={goal.name}
+                  onChange={(e) => onGoalChange(goal.id, { name: e.target.value })}
+                  onBlur={(e) => validateField(goal.id, "name", e.target.value)}
+                  placeholder="e.g. New Car"
+                  error={errors[goal.id]?.name}
+                />
+              </div>
 
-              <Input
-                label="Target Amount"
-                type="number"
-                step="0.01"
-                prefix="$"
-                value={goal.targetAmount}
-                onChange={(e) =>
-                  onGoalChange(goal.id, {
-                    targetAmount: e.target.value === "" ? 0 : parseFloat(e.target.value),
-                  })
-                }
-                onBlur={(e) => validateField(goal.id, "targetAmount", parseFloat(e.target.value))}
-                placeholder="0.00"
-                error={errors[goal.id]?.targetAmount}
-              />
+              <div data-testid="input-group-goal-target">
+                <Input
+                  label="Target Amount"
+                  type="number"
+                  step="0.01"
+                  prefix="$"
+                  value={goal.targetAmount}
+                  onChange={(e) =>
+                    onGoalChange(goal.id, {
+                      targetAmount: e.target.value === "" ? 0 : parseFloat(e.target.value),
+                    })
+                  }
+                  onBlur={(e) => validateField(goal.id, "targetAmount", parseFloat(e.target.value))}
+                  placeholder="0.00"
+                  error={errors[goal.id]?.targetAmount}
+                />
+              </div>
 
               {goal.scope === "personal" ? (
                 <Input
@@ -255,6 +261,7 @@ export default function GoalsForm({
             onClick={onSaveGoals}
             variant="primary"
             icon={CheckCircle2}
+            data-testid="btn-save-goals"
           >
             Save Goals
           </Button>

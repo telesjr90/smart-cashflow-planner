@@ -31,6 +31,7 @@ export default function BudgetsForm({
           size="sm"
           variant="primary"
           icon={Plus}
+          data-testid="btn-add-budget"
         >
           Add Category
         </Button>
@@ -52,29 +53,34 @@ export default function BudgetsForm({
         {visibleBudgets.map(({ key, label, amount, scope, owner, accountId }) => (
           <div
             key={key}
+            data-testid={`budget-item-${key}`}
             className="p-4 border border-surface-200 rounded-2xl bg-white shadow-sm space-y-3 transition-all hover:border-primary-200"
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input
-                label="Category Name"
-                value={label}
-                onChange={(e) => onBudgetChange(key, { label: e.target.value })}
-                placeholder="e.g. Groceries"
-              />
+              <div data-testid="input-group-budget-name">
+                <Input
+                  label="Category Name"
+                  value={label}
+                  onChange={(e) => onBudgetChange(key, { label: e.target.value })}
+                  placeholder="e.g. Groceries"
+                />
+              </div>
               
-              <Input
-                label="Monthly Limit"
-                type="number"
-                step="0.01"
-                prefix="$"
-                value={amount}
-                onChange={(e) =>
-                  onBudgetChange(key, {
-                    amount: e.target.value === "" ? "" : parseFloat(e.target.value),
-                  })
-                }
-                placeholder="0.00"
-              />
+              <div data-testid="input-group-budget-limit">
+                <Input
+                  label="Monthly Limit"
+                  type="number"
+                  step="0.01"
+                  prefix="$"
+                  value={amount}
+                  onChange={(e) =>
+                    onBudgetChange(key, {
+                      amount: e.target.value === "" ? "" : parseFloat(e.target.value),
+                    })
+                  }
+                  placeholder="0.00"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -159,6 +165,7 @@ export default function BudgetsForm({
             onClick={onSaveBudgets}
             variant="primary"
             icon={CheckCircle2}
+            data-testid="btn-save-budgets"
           >
             Save Budgets
           </Button>

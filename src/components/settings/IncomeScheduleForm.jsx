@@ -38,9 +38,7 @@ export default function IncomeScheduleForm({
 
       <div className="space-y-3 text-[11px]">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-slate-500">
-            Partner H income (per paycheque)
-          </div>
+          <div className="text-slate-500">Partner H income (per paycheque)</div>
           <input
             type="number"
             step="0.01"
@@ -48,13 +46,12 @@ export default function IncomeScheduleForm({
             value={income.husband === "" ? "" : income.husband}
             onChange={(e) => onIncomeChange("husband", e.target.value)}
             data-testid="input-income-husband"
+            aria-label="Partner H income (per paycheque)"
           />
         </div>
 
         <div className="flex items-center justify-between gap-2">
-          <div className="text-slate-500">
-            Partner W income (per paycheque)
-          </div>
+          <div className="text-slate-500">Partner W income (per paycheque)</div>
           <input
             type="number"
             step="0.01"
@@ -62,6 +59,7 @@ export default function IncomeScheduleForm({
             value={income.wife === "" ? "" : income.wife}
             onChange={(e) => onIncomeChange("wife", e.target.value)}
             data-testid="input-income-wife"
+            aria-label="Partner W income (per paycheque)"
           />
         </div>
 
@@ -81,9 +79,9 @@ export default function IncomeScheduleForm({
               max={28}
               className="w-20 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-right text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
               value={schedule.day1}
-              onChange={(e) =>
-                onScheduleChange("day1", Number(e.target.value))
-              }
+              onChange={(e) => onScheduleChange("day1", Number(e.target.value))}
+              data-testid="input-pay-day1"
+              aria-label="First pay date (day)"
             />
           </div>
 
@@ -93,6 +91,8 @@ export default function IncomeScheduleForm({
               className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-right text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
               value={schedule.day2}
               onChange={(e) => onScheduleChange("day2", e.target.value)}
+              data-testid="select-pay-day2"
+              aria-label="Second pay date"
             >
               <option value="last">Last day of month</option>
               <option value="15">15</option>
