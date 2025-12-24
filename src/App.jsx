@@ -33,13 +33,37 @@ function FirebaseSyncHelper() {
 }
 
 export default function App() {
-  // 1. Determine Mode
-  const isDemo = typeof window !== "undefined" && window.location.search.includes("agentDemo=1");
+  // 1. Determine E2E Mode
+  // E2E is an explicit opt-in via ?e2e=1 on staging/localhost.
+  // In E2E we:
+  //  - sign in anonymously (no Google OAuth)
+  //  - avoid Firebase sync (so local persisted seeding is deterministic)
+  const isE2E = useMemo(() => {
+    if (typeof window === "undefined") return false;
+
+    const params = new URLSearchParams(window.location.search);
+    const e2eParam = params.get("e2e") === "1";
+    if (!e2eParam) return false;
+
+    const allowManual = params.get("e2eAllowManual") === "1";
+    const isAutomation =
+      (typeof navigator !== "undefined" && navigator.webdriver === true) ||
+      /HeadlessChrome/i.test(navigator?.userAgent || "");
+
+    const host = window.location.hostname;
+    const allowedHost =
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.includes("staging");
+
+    return allowedHost && (isAutomation || allowManual);
+  }, []);
+
   const { isOnline } = useNetworkStatus();
 
   // 2. Access Global Store
   const store = useCashflowStore();
-  
+
   const {
     userProfile,
     startDate,
@@ -67,29 +91,42 @@ export default function App() {
   const [personScope, setPersonScope] = useState("self");
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
 
-  // --- Demo Seeding Effect ---
-  useEffect(() => {
-    if (isDemo && userProfile?.uid !== "demo-user") {
-      console.log("Agent Demo detected: Seeding mock user.");
-      store.setUserProfile({
-        uid: "demo-user",
-        email: "demo@example.com",
-        displayName: "Agent Demo",
-        role: "H",
-        householdId: "demo-household",
-      });
-      store.setFullPlanData({
-        startDate: new Date().toISOString().slice(0, 10),
-        startingBalance: 0,
-        accounts: [],
-        bills: [],
-        expenses: [],
-        income: { husband: 0, wife: 0 },
-        paySchedule: { type: "semi-monthly", day1: 15, day2: "last" },
-      });
+  // --- Login helper ---
+  const handleLogin = useCallback(async () => {
+    const { user } = (await loginWithGoogle()) || {};
+    if (!user?.uid) return;
+
+    // Ensure the app can enter immediately in E2E (and in general) without
+    // depending on Firebase sync side effects.
+    store.setUserProfile({
+      uid: user.uid,
+      email: user.email || null,
+      displayName: user.displayName || (user.isAnonymous ? "E2E User" : null),
+      role: "H",
+      householdId: user.uid,
+    });
+
+    // Useful for Playwright helpers (optional)
+    try {
+      window.__e2eAuth = { uid: user.uid, isAnonymous: !!user.isAnonymous };
+    } catch {
+      // ignore
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemo, userProfile?.uid]);
+  }, [store]);
+
+  // --- E2E auto-login ---
+  const e2eLoginAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (!isE2E) return;
+    if (e2eLoginAttemptedRef.current) return;
+    if (userProfile?.uid) return;
+
+    e2eLoginAttemptedRef.current = true;
+    handleLogin().catch((err) => {
+      console.warn("E2E anonymous login failed", err);
+      e2eLoginAttemptedRef.current = false;
+    });
+  }, [isE2E, userProfile?.uid, handleLogin]);
 
   // --- Navigation & Warnings ---
   const handleGoToSettingsSection = useCallback((section) => {
@@ -216,54 +253,6 @@ export default function App() {
 
   const activeCashflow = mode === "actual" ? actualCashflow : projectedCashflow;
 
-  // TEMP DEBUG: cashflow logging when ?debugCashflow=1 is present
-  const debugCashflow = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    const params = new URLSearchParams(window.location.search);
-    return params.get("debugCashflow") === "1";
-  }, []);
-  const debugLoggedRef = useRef(false);
-
-  useEffect(() => {
-    if (!debugCashflow || debugLoggedRef.current) return;
-
-    const today = new Date().toISOString().slice(0, 10);
-    const ledger = activeCashflow?.ledger || [];
-    const incomeEvents = ledger.filter((ev) => ev?.kind === "income");
-    const payDatesThisMonth = incomeEvents.filter((ev) => {
-      const date = ev?.date || "";
-      return date.slice(0, 7) === today.slice(0, 7);
-    });
-    const overlayExpenses =
-      mode === "actual"
-        ? ledger.filter((ev) => ev?.kind === "expense")
-        : [];
-
-    console.log("[TEMP DEBUG cashflow]", {
-      today,
-      startDate: safeStartDate,
-      paySchedule,
-      income,
-      accountsCount: accounts.length,
-      billsCount: bills.length,
-      payDatesThisMonth: payDatesThisMonth.map((ev) => ({
-        date: ev.date,
-        amountCents: ev.amountCents,
-      })),
-      sampleIncomeEntries: incomeEvents.slice(0, 5).map((ev) => ({
-        date: ev.date,
-        amountCents: ev.amountCents,
-      })),
-      actualOverlayTransactions: overlayExpenses.slice(0, 5).map((ev) => ({
-        date: ev.date,
-        amountCents: ev.amountCents,
-        description: ev.description,
-      })),
-    });
-
-    debugLoggedRef.current = true;
-  }, [debugCashflow, activeCashflow, mode, safeStartDate, paySchedule, income, accounts.length, bills.length]);
-
   const savingsToDate = useMemo(
     () => (goals || []).reduce((acc, g) => acc + (g.savedSoFar || 0), 0),
     [goals]
@@ -294,7 +283,7 @@ export default function App() {
   if (!canEnter) {
     return (
       <>
-        {!isDemo && <FirebaseSyncHelper />}
+        {!isE2E && <FirebaseSyncHelper />}
         <div className="min-h-screen bg-surface-50 flex flex-col items-center justify-center p-6">
           <div className="max-w-sm w-full">
             <Card variant="elevated">
@@ -308,7 +297,7 @@ export default function App() {
                   <h1 className="text-title-l font-semibold text-surface-900">Budget Tracker</h1>
                   <p className="text-body text-surface-500">Manage your cash flow with ease.</p>
                 </div>
-                <Button onClick={loginWithGoogle} variant="primary" size="md" className="w-full">
+                <Button onClick={handleLogin} variant="primary" size="md" className="w-full">
                   Sign in with Google
                 </Button>
               </CardBody>
@@ -322,7 +311,7 @@ export default function App() {
   // 2. Main App
   return (
     <>
-      {!isDemo && <FirebaseSyncHelper />}
+      {!isE2E && <FirebaseSyncHelper />}
 
       <div className="min-h-screen bg-surface-50 text-surface-900">
         <Layout

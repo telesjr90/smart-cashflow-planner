@@ -10,12 +10,11 @@ import {
   setPersistence,
   browserSessionPersistence,
   inMemoryPersistence,
-  AuthErrorCodes
+  AuthErrorCodes,
+  signInAnonymously,
+  onAuthStateChanged,
 } from 'firebase/auth';
-import {
-  getFirestore,
-  enableIndexedDbPersistence,
-} from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 
 // ✅ Your Firebase project configuration
 const firebaseConfig = {
@@ -33,27 +32,23 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 // ✅ Auth persistence: Strict Session or Memory only (No LocalStorage)
-// We track the mode to determine if redirects are safe to attempt.
-let persistenceMode = "unknown";
+let persistenceMode = 'unknown';
 
-// Initialize persistence chain
-export const persistenceReady = setPersistence(auth, browserSessionPersistence)
+const persistenceReadyInternal = setPersistence(auth, browserSessionPersistence)
   .then(() => {
-    persistenceMode = "session";
+    persistenceMode = 'session';
   })
   .catch(() => {
-    // Fallback to memory if session storage is blocked (e.g. strict privacy settings)
     return setPersistence(auth, inMemoryPersistence).then(() => {
-      persistenceMode = "memory";
+      persistenceMode = 'memory';
     });
   })
   .catch((err) => {
-    persistenceMode = "memory";
-    console.warn("Auth persistence critical failure; defaulting to memory", err);
+    persistenceMode = 'memory';
+    console.warn('Auth persistence critical failure; defaulting to memory', err);
   });
 
 // ✅ Enable offline persistence (Firestore)
-// Wrapped to prevent crashes in environments blocking IndexedDB
 enableIndexedDbPersistence(db)
   .then(() => console.log('Offline persistence enabled'))
   .catch((err) => {
@@ -62,55 +57,138 @@ enableIndexedDbPersistence(db)
     } else if (err.code === 'unimplemented') {
       console.warn('Offline persistence not available (Private browsing/Restricted env)');
     }
-});
+  });
+
+// -------------------------
+// E2E (staging) auth bypass
+// -------------------------
+// Goal: DO NOT rely on Google OAuth in Playwright.
+// Behavior:
+// - If we are on a staging/local host AND the URL contains ?e2e=1 AND
+//   navigator.webdriver === true (Playwright), we automatically sign in anonymously ASAP.
+// - Optional manual override for debugging in a real browser:
+//     https://.../?e2e=1&e2eAllowManual=1
+//
+// Firebase Console requirement:
+//   Authentication -> Sign-in method -> enable "Anonymous" provider.
+function isE2EAnonEnabled() {
+  if (typeof window === 'undefined') return false;
+
+  const host = String(window.location.hostname || '').toLowerCase();
+  const isAllowedHost =
+    host.includes('staging') ||
+    host === 'localhost' ||
+    host === '127.0.0.1';
+
+  if (!isAllowedHost) return false;
+
+  const params = new URLSearchParams(window.location.search);
+
+  // Explicit opt-in: must be running with ?e2e=1
+  const e2eParam = params.get('e2e') === '1';
+  if (!e2eParam) return false;
+
+  // Optional manual override for debugging in a real browser
+  const allowManual = params.get('e2eAllowManual') === '1';
+
+  const isAutomation =
+    window.navigator?.webdriver === true ||
+    /HeadlessChrome/i.test(window.navigator?.userAgent || '');
+
+  return isAutomation || allowManual;
+}
+
+let e2eAnonInflight = null;
+
+async function ensureE2EAnonUser() {
+  if (!isE2EAnonEnabled()) return null;
+
+  await persistenceReadyInternal;
+
+  if (auth.currentUser) return auth.currentUser;
+  if (e2eAnonInflight) return e2eAnonInflight;
+
+  e2eAnonInflight = signInAnonymously(auth)
+    .then((cred) => cred.user)
+    .catch((err) => {
+      console.warn('E2E anonymous sign-in failed', err);
+      return null;
+    })
+    .finally(() => {
+      e2eAnonInflight = null;
+    });
+
+  return e2eAnonInflight;
+}
+
+export const persistenceReady = persistenceReadyInternal
+  .then(async () => {
+    await ensureE2EAnonUser();
+  })
+  .catch((err) => {
+    console.warn('persistenceReady failed (continuing)', err);
+  });
 
 // ✅ Auth helpers
 const provider = new GoogleAuthProvider();
 let inflightLogin = null;
 
-// Handle Redirect Results
-// Only attempt this if we are NOT in memory mode, as redirects wipe memory state.
 persistenceReady.then(() => {
-  if (persistenceMode !== "memory") {
+  if (isE2EAnonEnabled()) return;
+
+  if (persistenceMode !== 'memory') {
     getRedirectResult(auth).catch((err) => {
-      console.warn("Redirect result handling failed", err);
-      // We do not throw here to prevent app crash on load
+      console.warn('Redirect result handling failed', err);
     });
   }
 });
 
+try {
+  onAuthStateChanged(auth, (user) => {
+    if (!user) void ensureE2EAnonUser();
+  });
+} catch {}
+
 export const loginWithGoogle = async () => {
   await persistenceReady;
 
-  // If previous attempt is still running, return it to prevent duplicate popups/redirects
+  if (isE2EAnonEnabled()) {
+    const user = await ensureE2EAnonUser();
+    if (!user) {
+      const e = new Error(
+        'E2E anonymous sign-in failed. Ensure Firebase Auth Anonymous provider is enabled for this project.'
+      );
+      e.code = 'e2e/anon-auth-failed';
+      throw e;
+    }
+    return { user };
+  }
+
   if (inflightLogin) return inflightLogin;
 
-  // Helper to determine if we can use redirects
-  const isRedirectSupported = persistenceMode !== "memory";
-  
-  // Check for force-redirect flags or headless environments
+  const isRedirectSupported = persistenceMode !== 'memory';
+
   const forceRedirect =
     typeof window !== 'undefined' &&
     (window.location.search.includes('redirectAuth=1') ||
       window.navigator?.userAgent?.includes('Headless'));
 
-  // 1. Attempt Redirect if forced and supported
   if (forceRedirect) {
     if (!isRedirectSupported) {
-      const error = new Error("Redirect authentication is not supported in this browser environment (Memory-only persistence).");
+      const error = new Error(
+        'Redirect authentication is not supported in this browser environment (Memory-only persistence).'
+      );
       error.code = 'auth/operation-not-supported-in-this-environment';
       throw error;
     }
-    inflightLogin = signInWithRedirect(auth, provider); // Returns promise that resolves on next page load
+    inflightLogin = signInWithRedirect(auth, provider);
     return inflightLogin;
   }
 
-  // 2. Standard Flow: Try Popup first
   inflightLogin = signInWithPopup(auth, provider)
     .catch(async (err) => {
       const errorCode = err?.code;
-      
-      // Handle Popup Blocking
+
       if (
         errorCode === AuthErrorCodes.POPUP_BLOCKED ||
         errorCode === AuthErrorCodes.POPUP_CLOSED_BY_USER ||
@@ -118,39 +196,34 @@ export const loginWithGoogle = async () => {
       ) {
         console.warn('Popup blocked or closed. Attempting fallback...');
 
-        // If we are in Memory mode, we CANNOT Redirect.
-        // The user must enable Popups or allow Cookies (to get Session persistence).
         if (!isRedirectSupported) {
-          const fatalError = new Error("Authentication failed. Popups are blocked and strict privacy settings prevent redirect authentication. Please enable popups or third-party cookies for this site.");
+          const fatalError = new Error(
+            'Authentication failed. Popups are blocked and strict privacy settings prevent redirect authentication. Please enable popups or third-party cookies for this site.'
+          );
           fatalError.code = 'auth/configuration-not-supported';
           throw fatalError;
         }
 
-        // If Session persistence exists, we can safely Redirect
-        try {
-          await signInWithRedirect(auth, provider);
-          // signInWithRedirect doesn't return a user credential immediately; it reloads.
-          // We return a pending promise to keep UI in "loading" state.
-          return new Promise(() => {}); 
-        } catch (redirectErr) {
-          throw redirectErr;
-        }
+        await signInWithRedirect(auth, provider);
+        return new Promise(() => {});
       }
-      
-      // Propagate other errors (e.g. network issues, wrong password)
+
+      if (errorCode === 'auth/unauthorized-domain') {
+        const e = new Error(
+          [
+            'Google sign-in failed: auth/unauthorized-domain.',
+            'Fix: Firebase Console -> Authentication -> Settings -> Authorized domains:',
+            'add the current hostname (e.g. cashflow-a1c11-staging.web.app).',
+          ].join('\n')
+        );
+        e.code = errorCode;
+        throw e;
+      }
+
       throw err;
     })
     .finally(() => {
-      // Clear inflight flag ONLY if we aren't redirecting (redirects wipe page anyway)
-      // If we successfully triggered a redirect, we leave this non-null (though page will reload)
-      if (persistenceMode === 'memory') { 
-         inflightLogin = null; 
-      } else {
-        // Checking if the promise rejected allows us to clear it. 
-        // If it resolved (popup success), we clear it.
-        // If it's a redirect pending, we let page reload handle it.
-        inflightLogin = null; 
-      }
+      inflightLogin = null;
     });
 
   return inflightLogin;

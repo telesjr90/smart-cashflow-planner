@@ -54,12 +54,8 @@ test('auth: prod interactive login', async ({ page, context }, testInfo) => {
 
   const baseUrl = process.env.PW_BASE_URL || 'https://cashflow-a1c11.web.app/';
 
-  // Prefer the same deterministic entry as the rest of the E2E suite.
-  const appUrl = new URL(baseUrl);
-  appUrl.searchParams.set('agentDemo', '1');
-
-  // Avoid pausing on a blank/empty initial navigation.
-  await page.goto(appUrl.toString(), { waitUntil: 'domcontentloaded' });
+  // Navigate to the app root. (No demo/query modes.)
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
 
   // Wait for *some* DOM to exist so screenshots / pause are meaningful.
   await page.waitForFunction(() => document.readyState === 'interactive' || document.readyState === 'complete', {
@@ -125,7 +121,31 @@ test('auth: prod interactive login', async ({ page, context }, testInfo) => {
 
   // After resume: don’t assume we landed back on the app route that renders the shell.
   // Force navigation back to the deterministic app entry, then assert.
-  await page.goto(appUrl.toString(), { waitUntil: 'domcontentloaded' });
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+
+  // If Google blocked the login during the pause, fail with an actionable message.
+  if (await googleBlocked.isVisible().catch(() => false)) {
+    throw new Error(
+      [
+        'Google sign-in blocked this browser: "This browser or app may not be secure."',
+        '',
+        'This is a Google restriction on automated browsers. For reliable E2E:',
+        '- Prefer an Email/Password (or custom token) test user for staging/prod E2E, OR',
+        '- Generate storageState manually in a normal Chrome session and reuse it in Playwright.',
+      ].join('\n')
+    );
+  }
+
+  // If we are still on the login screen, the manual login was not completed.
+  if (await loginHint.isVisible().catch(() => false)) {
+    throw new Error(
+      [
+        'Still seeing a login affordance after resuming the auth setup test.',
+        'Complete sign-in in the Playwright inspector window, then click Resume.',
+        `URL: ${page.url()}`,
+      ].join('\n')
+    );
+  }
 
   // Assert logged in using a stable post-login anchor
   await expect(loggedInNav).toBeVisible({ timeout: 60_000 });
