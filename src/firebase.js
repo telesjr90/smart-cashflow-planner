@@ -1,4 +1,4 @@
-// src/firebase.js
+// path: src/firebase.js
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -64,10 +64,8 @@ enableIndexedDbPersistence(db)
 // -------------------------
 // Goal: DO NOT rely on Google OAuth in Playwright.
 // Behavior:
-// - If we are on a staging/local host AND the URL contains ?e2e=1 AND
-//   navigator.webdriver === true (Playwright), we automatically sign in anonymously ASAP.
-// - Optional manual override for debugging in a real browser:
-//     https://.../?e2e=1&e2eAllowManual=1
+// - If we are on a staging/local host AND the URL contains ?e2e=1,
+//   we automatically sign in anonymously ASAP.
 //
 // Firebase Console requirement:
 //   Authentication -> Sign-in method -> enable "Anonymous" provider.
@@ -85,17 +83,8 @@ function isE2EAnonEnabled() {
   const params = new URLSearchParams(window.location.search);
 
   // Explicit opt-in: must be running with ?e2e=1
-  const e2eParam = params.get('e2e') === '1';
-  if (!e2eParam) return false;
-
-  // Optional manual override for debugging in a real browser
-  const allowManual = params.get('e2eAllowManual') === '1';
-
-  const isAutomation =
-    window.navigator?.webdriver === true ||
-    /HeadlessChrome/i.test(window.navigator?.userAgent || '');
-
-  return isAutomation || allowManual;
+  // We trust this param on allowed hosts (staging/local).
+  return params.get('e2e') === '1';
 }
 
 let e2eAnonInflight = null;
@@ -108,8 +97,12 @@ async function ensureE2EAnonUser() {
   if (auth.currentUser) return auth.currentUser;
   if (e2eAnonInflight) return e2eAnonInflight;
 
+  console.log('Starting E2E Anonymous Sign-In...');
   e2eAnonInflight = signInAnonymously(auth)
-    .then((cred) => cred.user)
+    .then((cred) => {
+      console.log('E2E Anonymous Sign-In Success:', cred.user.uid);
+      return cred.user;
+    })
     .catch((err) => {
       console.warn('E2E anonymous sign-in failed', err);
       return null;

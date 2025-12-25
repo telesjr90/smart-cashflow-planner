@@ -1,3 +1,4 @@
+// path: playwright.config.js
 import { defineConfig, devices } from '@playwright/test';
 
 // NOTE: Default target is STAGING (no demo modes).
@@ -68,7 +69,8 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         baseURL: STAGING_URL,
-        storageState: stagingStorageState,
+        // REMOVED storageState to rely on pure E2E anonymous bypass via ?e2e=1
+        // storageState: stagingStorageState, 
       },
     },
 

@@ -1,3 +1,4 @@
+// path: src/App.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "./components/layout/Layout";
 import Home from "./pages/Home";
@@ -35,28 +36,18 @@ function FirebaseSyncHelper() {
 export default function App() {
   // 1. Determine E2E Mode
   // E2E is an explicit opt-in via ?e2e=1 on staging/localhost.
-  // In E2E we:
-  //  - sign in anonymously (no Google OAuth)
-  //  - avoid Firebase sync (so local persisted seeding is deterministic)
   const isE2E = useMemo(() => {
     if (typeof window === "undefined") return false;
 
     const params = new URLSearchParams(window.location.search);
-    const e2eParam = params.get("e2e") === "1";
-    if (!e2eParam) return false;
-
-    const allowManual = params.get("e2eAllowManual") === "1";
-    const isAutomation =
-      (typeof navigator !== "undefined" && navigator.webdriver === true) ||
-      /HeadlessChrome/i.test(navigator?.userAgent || "");
-
     const host = window.location.hostname;
     const allowedHost =
       host === "localhost" ||
       host === "127.0.0.1" ||
       host.includes("staging");
 
-    return allowedHost && (isAutomation || allowManual);
+    // Must be allowed host AND have explicit e2e param
+    return allowedHost && params.get("e2e") === "1";
   }, []);
 
   const { isOnline } = useNetworkStatus();
@@ -91,6 +82,13 @@ export default function App() {
   const [personScope, setPersonScope] = useState("self");
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
 
+  // --- Expose Store for E2E Debugging ---
+  useEffect(() => {
+    if (isE2E && typeof window !== "undefined") {
+      window.__cashflowStore = store;
+    }
+  }, [isE2E, store]);
+
   // --- Login helper ---
   const handleLogin = useCallback(async () => {
     const { user } = (await loginWithGoogle()) || {};
@@ -106,7 +104,7 @@ export default function App() {
       householdId: user.uid,
     });
 
-    // Useful for Playwright helpers (optional)
+    // Useful for Playwright helpers
     try {
       window.__e2eAuth = { uid: user.uid, isAnonymous: !!user.isAnonymous };
     } catch {

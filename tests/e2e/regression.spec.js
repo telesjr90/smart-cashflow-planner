@@ -1,13 +1,18 @@
-// File: tests/e2e/regression.spec.js
+// path: tests/e2e/regression.spec.js
 import { test, expect } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 
 const BASE_URL = process.env.PW_BASE_URL || 'https://cashflow-a1c11-staging.web.app';
-const AUTH_FILE = path.join(process.cwd(), 'playwright', '.auth', 'staging.json');
 
-const useConfig = { baseURL: BASE_URL };
-if (fs.existsSync(AUTH_FILE)) useConfig.storageState = AUTH_FILE;
+// We explicitly DO NOT want storageState for regression tests using ?e2e=1.
+// These tests rely on the application's internal "E2E Anonymous" mode triggering
+// automatically when the URL parameter is present on an allowed host.
+const useConfig = { 
+  baseURL: BASE_URL,
+  storageState: undefined, // Ensure no auth state is injected
+};
+
 test.use(useConfig);
 
 // --- Helpers ---
@@ -135,8 +140,24 @@ async function expectAppLoaded(page) {
   const navHome = page.getByTestId('nav-home');
   const navAdd = page.getByTestId('nav-add');
 
+  // We expect the navigation to appear. If it doesn't, we debug why.
   const navVisible = await navHome.isVisible({ timeout: 15000 }).catch(() => false);
+  
   if (!navVisible) {
+    // Gather debug info from the page context
+    const debugInfo = await page.evaluate(() => {
+      const store = window.__cashflowStore?.getState?.();
+      return {
+        url: window.location.href,
+        hasE2EParam: window.location.search.includes('e2e=1'),
+        storeExposed: !!window.__cashflowStore,
+        userProfile: store?.userProfile,
+        canEnter: !!store?.userProfile?.uid,
+      };
+    }).catch(() => 'Unable to evaluate debug info');
+
+    console.log('DEBUG: App load failed.', JSON.stringify(debugInfo, null, 2));
+
     const maybeLoginBtn = page
       .getByRole('button', { name: /sign in|log in|continue with google|google/i })
       .first();
@@ -149,6 +170,7 @@ async function expectAppLoaded(page) {
           ? 'It looks like you are on an authentication screen. Ensure E2E anonymous sign-in is enabled and you are using ?e2e=1.'
           : 'If staging is slow, increase timeouts or confirm the app renders nav testids (nav-home/nav-add).',
         `URL: ${page.url()}`,
+        `Debug Info: ${JSON.stringify(debugInfo)}`
       ].join('\n')
     );
   }
