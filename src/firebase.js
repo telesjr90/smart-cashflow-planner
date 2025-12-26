@@ -81,7 +81,7 @@ function isE2EAnonEnabled() {
   if (hasE2EParam) {
     if (!isAllowedHost) {
       try {
-      console.warn(`E2E mode requested via query param on unexpected host: ${host}; proceeding anyway.`);
+        console.warn(`E2E mode requested via query param on unexpected host: ${host}; proceeding anyway.`);
       } catch {
         /* ignore logging errors */
       }
@@ -123,7 +123,23 @@ async function ensureE2EAnonUser() {
       }
 
       const result = await signInAnonymously(auth);
-      return result?.user ?? null;
+      const anonUser = result?.user;
+      // If Firebase returned no user object or no UID, treat it as a failure and fall back to a mock user.
+      if (!anonUser?.uid) {
+        try {
+          console.warn('signInAnonymously returned no user; using mock user');
+        } catch {
+          /* ignore logging errors */
+        }
+        return {
+          uid: 'e2e-mock-user-id',
+          isAnonymous: true,
+          email: null,
+          displayName: 'E2E Mock User',
+          getIdToken: async () => 'mock-token',
+        };
+      }
+      return anonUser;
     } catch (error) {
       // Log error before falling back to a mock user
       try {
