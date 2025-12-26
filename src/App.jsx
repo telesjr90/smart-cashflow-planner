@@ -93,7 +93,12 @@ export default function App() {
 
   // --- Login helper ---
   const handleLogin = useCallback(async () => {
-    const { user } = (await loginWithGoogle()) || {};
+    // Log the start of the login attempt
+    console.log('handleLogin: starting e2e login attempt');
+    const result = await loginWithGoogle();
+    const user = result?.user;
+    // Log the auth result returned from Firebase/E2E anon login
+    console.log('handleLogin: auth result:', user);
     if (!user?.uid) return;
 
     // Ensure the app can enter immediately in E2E (and in general) without
@@ -118,7 +123,7 @@ export default function App() {
   const e2eLoginAttemptedRef = useRef(false);
   useEffect(() => {
     if (!isE2E) return;
-    // Removed hydration gate; always attempt login if not already authenticated.
+    // Always attempt login if not already authenticated; no hydration gate.
     if (e2eLoginAttemptedRef.current) return;
     if (userProfile?.uid) return;
 

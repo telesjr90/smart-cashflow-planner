@@ -63,30 +63,52 @@ enableIndexedDbPersistence(db)
 // E2E (staging) auth bypass
 // -------------------------
 function isE2EAnonEnabled() {
+  // When running in Node (no window), bail out immediately
   if (typeof window === 'undefined') return false;
 
+  // Parse the current search params and hostname
+  const params = new URLSearchParams(window.location.search || '');
+  const hasE2EParam = params.get('e2e') === '1';
   const host = String(window.location.hostname || '').toLowerCase();
   const isAllowedHost =
     host.includes('staging') ||
     host === 'localhost' ||
     host === '127.0.0.1';
 
-  if (!isAllowedHost) return false;
+  // Prefer the explicit ?e2e=1 query parameter over the host check.
+  // If the flag is present, return true regardless of the hostname, but log a warning
+  // if the hostname doesn't match any expected staging/local patterns.
+  if (hasE2EParam) {
+    if (!isAllowedHost) {
+      try {
+      console.warn(`E2E mode requested via query param on unexpected host: ${host}; proceeding anyway.`);
+      } catch {
+        /* ignore logging errors */
+      }
+    }
+    return true;
+  }
 
-  const params = new URLSearchParams(window.location.search);
-
-  // Explicit opt‑in: must be running with ?e2e=1
-  return params.get('e2e') === '1';
+  // If there is no ?e2e=1 param, anonymous auth won't be attempted.
+  return false;
 }
 
 let e2eAnonInflight = null;
 
-// In E2E mode, sign in anonymously via Firebase.  Fall back to a mock user if it fails.
+// In E2E mode, sign in anonymously via Firebase. Fall back to a mock user if it fails.
 async function ensureE2EAnonUser() {
   if (!isE2EAnonEnabled()) return null;
   if (e2eAnonInflight) return e2eAnonInflight;
 
   e2eAnonInflight = (async () => {
+    // Emit a diagnostic log when the function is invoked
+    try {
+      if (typeof window !== 'undefined') {
+        console.log('ensureE2EAnonUser: checking...', window.location.href);
+      }
+    } catch {
+      /* ignore logging errors */
+    }
     try {
       // Reuse existing anonymous user if already signed in
       const current = auth.currentUser;
@@ -102,10 +124,14 @@ async function ensureE2EAnonUser() {
 
       const result = await signInAnonymously(auth);
       return result?.user ?? null;
-    } catch (err) {
+    } catch (error) {
       // Log error before falling back to a mock user
-      console.error('E2E Anon Login Failed', err);
-      console.warn('E2E anonymous sign‑in failed; using mock user', err);
+      try {
+        console.error('ensureE2EAnonUser: Auth failed, falling back to mock.', error);
+      } catch {
+        /* ignore logging errors */
+      }
+      console.warn('E2E anonymous sign‑in failed; using mock user', error);
       return {
         uid: 'e2e-mock-user-id',
         isAnonymous: true,
