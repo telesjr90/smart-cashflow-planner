@@ -532,7 +532,7 @@ async function readWeekRowAmounts(page, weekLabelRegex = /Week 1/i) {
     if ((await row.count()) === 0) row = weekCell.locator('..');
   }
 
-  const currencyTexts = await row.locator('text=/\\$[0-9,]+\\.\\d{2}/').allTextContents();
+  const currencyTexts = await row.locator('text=/\\$[0-9,]+\.\d{2}/').allTextContents();
   const amounts = currencyTexts.map((t) => parseCurrencyToNumber(t));
   return { row, currencyTexts, amounts };
 }
@@ -805,6 +805,8 @@ function aggregateBudgetsFromBills(bills) {
 
 test.describe('Expanded Functional Regression (staging)', () => {
   test.beforeEach(async ({ page }) => {
+    // Subscribe to console logs to debug auth failures
+    page.on('console', msg => console.log(`BROWSER: ${msg.text()}`));
     await page.goto('/?e2e=1');
     await expectAppLoaded(page);
   });
