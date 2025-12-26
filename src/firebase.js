@@ -75,30 +75,44 @@ function isE2EAnonEnabled() {
 
   const params = new URLSearchParams(window.location.search);
 
-  // Explicit opt-in: must be running with ?e2e=1
-  // We trust this param on allowed hosts (staging/local).
+  // Explicit opt‑in: must be running with ?e2e=1
   return params.get('e2e') === '1';
 }
 
 let e2eAnonInflight = null;
 
+// In E2E mode, sign in anonymously via Firebase.  Fall back to a mock user if it fails.
 async function ensureE2EAnonUser() {
   if (!isE2EAnonEnabled()) return null;
-
-  // IMPORTANT: Do NOT await persistence or call Firebase Auth in E2E mode.
-  // Time travel in tests can cause Firebase SDK to hang or reject tokens.
-  // We return a mock user immediately to guarantee UI entry.
   if (e2eAnonInflight) return e2eAnonInflight;
 
-  console.log('E2E Mode: Returning Mock User immediately (Bypassing Firebase Auth)');
-  
-  e2eAnonInflight = Promise.resolve({
-    uid: 'e2e-mock-user-id',
-    isAnonymous: true,
-    email: null,
-    displayName: 'E2E Mock User',
-    getIdToken: async () => 'mock-token'
-  });
+  e2eAnonInflight = (async () => {
+    try {
+      // Reuse existing anonymous user if already signed in
+      const current = auth.currentUser;
+      if (current?.uid) {
+        return {
+          uid: current.uid,
+          isAnonymous: !!current.isAnonymous,
+          email: current.email,
+          displayName: current.displayName,
+          getIdToken: async () => current.getIdToken(),
+        };
+      }
+
+      const result = await signInAnonymously(auth);
+      return result?.user ?? null;
+    } catch (err) {
+      console.warn('E2E anonymous sign‑in failed; using mock user', err);
+      return {
+        uid: 'e2e-mock-user-id',
+        isAnonymous: true,
+        email: null,
+        displayName: 'E2E Mock User',
+        getIdToken: async () => 'mock-token',
+      };
+    }
+  })();
 
   return e2eAnonInflight;
 }
@@ -124,9 +138,9 @@ persistenceReady.then(() => {
 
 try {
   onAuthStateChanged(auth, (user) => {
-    // Only auto-sign-in if NOT in E2E mode (since E2E handles it manually via hook)
+    // Only auto‑sign‑in if NOT in E2E mode (since E2E handles it manually via hook)
     if (!user && !isE2EAnonEnabled()) {
-       // logic for normal anon fallback if needed
+      // logic for normal anon fallback if needed
     }
   });
 } catch {}
@@ -153,7 +167,7 @@ export const loginWithGoogle = async () => {
   if (forceRedirect) {
     if (!isRedirectSupported) {
       const error = new Error(
-        'Redirect authentication is not supported in this browser environment (Memory-only persistence).'
+        'Redirect authentication is not supported in this browser environment (Memory‑only persistence).'
       );
       error.code = 'auth/operation-not-supported-in-this-environment';
       throw error;
@@ -175,7 +189,7 @@ export const loginWithGoogle = async () => {
 
         if (!isRedirectSupported) {
           const fatalError = new Error(
-            'Authentication failed. Popups are blocked and strict privacy settings prevent redirect authentication. Please enable popups or third-party cookies for this site.'
+            'Authentication failed. Popups are blocked and strict privacy settings prevent redirect authentication. Please enable popups or third‑party cookies for this site.'
           );
           fatalError.code = 'auth/configuration-not-supported';
           throw fatalError;
@@ -188,7 +202,7 @@ export const loginWithGoogle = async () => {
       if (errorCode === 'auth/unauthorized-domain') {
         const e = new Error(
           [
-            'Google sign-in failed: auth/unauthorized-domain.',
+            'Google sign‑in failed: auth/unauthorized-domain.',
             'Fix: Firebase Console -> Authentication -> Settings -> Authorized domains:',
             'add the current hostname (e.g. cashflow-a1c11-staging.web.app).',
           ].join('\n')

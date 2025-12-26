@@ -35,7 +35,7 @@ function FirebaseSyncHelper() {
 
 export default function App() {
   // 1. Determine E2E Mode
-  // E2E is an explicit opt-in via ?e2e=1 on staging/localhost.
+  // E2E is an explicit opt‑in via ?e2e=1 on staging/localhost.
   const isE2E = useMemo(() => {
     if (typeof window === "undefined") return false;
 
@@ -73,6 +73,7 @@ export default function App() {
     paidBills = {},
     mode,
     loading,
+    hasHydrated,
   } = store;
 
   // --- UI State ---
@@ -112,10 +113,12 @@ export default function App() {
     }
   }, [store]);
 
-  // --- E2E auto-login ---
+  // --- E2E auto‑login ---
   const e2eLoginAttemptedRef = useRef(false);
   useEffect(() => {
     if (!isE2E) return;
+    // wait until the Zustand store has hydrated to avoid losing the user profile
+    if (!hasHydrated) return;
     if (e2eLoginAttemptedRef.current) return;
     if (userProfile?.uid) return;
 
@@ -124,7 +127,7 @@ export default function App() {
       console.warn("E2E anonymous login failed", err);
       e2eLoginAttemptedRef.current = false;
     });
-  }, [isE2E, userProfile?.uid, handleLogin]);
+  }, [isE2E, hasHydrated, userProfile?.uid, handleLogin]);
 
   // --- Navigation & Warnings ---
   const handleGoToSettingsSection = useCallback((section) => {
