@@ -1,89 +1,10 @@
 # Page snapshot
 
 ```yaml
-- generic [ref=e5]:
-  - banner [ref=e6]:
-    - generic [ref=e7]:
-      - generic [ref=e8]:
-        - img "Profile" [ref=e10]
-        - generic [ref=e11]:
-          - generic [ref=e12]: Welcome Back
-          - generic [ref=e13]: E2E
-      - generic [ref=e14]:
-        - button "Toggle Dark Mode" [ref=e15] [cursor=pointer]:
-          - img [ref=e16]
-        - button "Notifications" [ref=e18] [cursor=pointer]:
-          - img [ref=e19]
-  - main [ref=e22]:
-    - generic [ref=e23]:
-      - generic [ref=e24]:
-        - generic [ref=e25]:
-          - heading "Good morning, E2E Mock User" [level=1] [ref=e26]
-          - paragraph [ref=e27]: Here's your financial snapshot
-        - link "H" [ref=e28] [cursor=pointer]:
-          - /url: /settings
-          - generic [ref=e29]: H
-      - generic [ref=e30]:
-        - generic [ref=e32]:
-          - generic [ref=e33]:
-            - img [ref=e34]
-            - generic [ref=e37]: Starting Balance
-          - generic [ref=e38]: $0.00
-        - generic [ref=e40]:
-          - generic [ref=e41]:
-            - img [ref=e42]
-            - generic [ref=e44]: My Bills Due
-          - generic [ref=e45]: $0.00
-      - generic [ref=e46]:
-        - link "Forecast" [ref=e48] [cursor=pointer]:
-          - /url: /planner
-          - button "Forecast" [ref=e49]:
-            - img [ref=e50]
-            - text: Forecast
-        - button "Pay Bills" [ref=e54] [cursor=pointer]:
-          - img [ref=e55]
-          - text: Pay Bills
-        - link "Add Account" [ref=e58] [cursor=pointer]:
-          - /url: /accounts
-          - button "Add Account" [ref=e59]:
-            - img [ref=e60]
-            - text: Add Account
-      - generic [ref=e61]:
-        - generic [ref=e62]:
-          - heading "Cash Flow" [level=3] [ref=e63]
-          - link "View Report" [ref=e64] [cursor=pointer]:
-            - /url: /planner
-            - text: View Report
-            - img [ref=e65]
-        - generic [ref=e69]: Not enough data to show cash flow yet. Add accounts, income, and bills to see a projection.
-      - generic [ref=e70]:
-        - generic [ref=e71]:
-          - heading "My Accounts" [level=3] [ref=e72]
-          - link "See All" [ref=e73] [cursor=pointer]:
-            - /url: /accounts
-        - generic [ref=e75]: No accounts found for you.
-      - button [ref=e76] [cursor=pointer]:
-        - img [ref=e77]
-  - navigation [ref=e78]:
-    - generic [ref=e79]:
-      - button "Home" [ref=e80] [cursor=pointer]:
-        - img [ref=e81]
-        - generic [ref=e84]: Home
-      - button "Accounts" [ref=e85] [cursor=pointer]:
-        - img [ref=e86]
-        - generic [ref=e89]: Accounts
-      - button "Planner" [ref=e90] [cursor=pointer]:
-        - img [ref=e91]
-        - generic [ref=e95]: Planner
-      - button "Add Transaction" [ref=e97] [cursor=pointer]:
-        - img [ref=e98]
-      - button "Expenses" [ref=e99] [cursor=pointer]:
-        - img [ref=e100]
-        - generic [ref=e103]: Expenses
-      - button "Bills" [ref=e104] [cursor=pointer]:
-        - img [ref=e105]
-        - generic [ref=e108]: Bills
-      - button "Settings" [ref=e109] [cursor=pointer]:
-        - img [ref=e110]
-        - generic [ref=e113]: Settings
+- generic [ref=e7]:
+  - img [ref=e9]
+  - generic [ref=e11]:
+    - heading "Budget Tracker" [level=1] [ref=e12]
+    - paragraph [ref=e13]: Manage your cash flow with ease.
+  - button "Sign in with Google" [ref=e14] [cursor=pointer]
 ```

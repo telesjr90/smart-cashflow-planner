@@ -103,6 +103,8 @@ async function ensureE2EAnonUser() {
       const result = await signInAnonymously(auth);
       return result?.user ?? null;
     } catch (err) {
+      // Log error before falling back to a mock user
+      console.error('E2E Anon Login Failed', err);
       console.warn('E2E anonymous sign‑in failed; using mock user', err);
       return {
         uid: 'e2e-mock-user-id',
