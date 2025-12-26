@@ -30,21 +30,21 @@
             - generic [ref=e41]: Dec 26
             - generic [ref=e43]:
               - generic [ref=e45]: "0"
-              - generic [ref=e47]: "250"
-              - generic [ref=e49]: "500"
-              - generic [ref=e51]: "750"
-              - generic [ref=e53]: "1000"
+              - generic [ref=e47]: "500"
+              - generic [ref=e49]: "1000"
+              - generic [ref=e51]: "1500"
+              - generic [ref=e53]: "2000"
         - generic [ref=e58]:
           - generic [ref=e60]:
             - generic [ref=e61]:
               - paragraph [ref=e62]: Lowest Balance
               - img [ref=e64]
-            - heading "$955.00" [level=4] [ref=e68]
+            - heading "$1,955.00" [level=4] [ref=e68]
           - generic [ref=e70]:
             - generic [ref=e71]:
               - paragraph [ref=e72]: Peak Balance
               - img [ref=e74]
-            - heading "$955.00" [level=4] [ref=e79]
+            - heading "$1,955.00" [level=4] [ref=e79]
         - generic [ref=e81]:
           - generic [ref=e82]:
             - paragraph [ref=e83]: Financial Runway
@@ -75,10 +75,10 @@
                   - generic [ref=e114]: Using your share of income and bills.
                 - generic [ref=e115]:
                   - generic [ref=e116]: Starting Balance
-                  - generic [ref=e117]: $1,000.00
+                  - generic [ref=e117]: $2,000.00
                 - generic [ref=e118]:
                   - generic [ref=e119]: Actual End Balance
-                  - generic [ref=e120]: $955.00
+                  - generic [ref=e120]: $1,955.00
                 - generic [ref=e123]:
                   - generic [ref=e124]: On track
                   - generic [ref=e125]: Based on end-of-month cash
@@ -103,7 +103,7 @@
                 - generic [ref=e150]:
                   - generic [ref=e151]:
                     - generic [ref=e152]: Week 1
-                    - generic [ref=e153]: $1,000.00 → $1,000.00
+                    - generic [ref=e153]: $2,000.00 → $2,000.00
                   - generic [ref=e154]:
                     - generic [ref=e155]:
                       - generic [ref=e156]: Income
@@ -118,7 +118,7 @@
                 - generic [ref=e165]:
                   - generic [ref=e166]:
                     - generic [ref=e167]: Week 2
-                    - generic [ref=e168]: $1,000.00 → $1,000.00
+                    - generic [ref=e168]: $2,000.00 → $2,000.00
                   - generic [ref=e169]:
                     - generic [ref=e170]:
                       - generic [ref=e171]: Income
@@ -133,7 +133,7 @@
                 - generic [ref=e180]:
                   - generic [ref=e181]:
                     - generic [ref=e182]: Week 3
-                    - generic [ref=e183]: $1,000.00 → $1,000.00
+                    - generic [ref=e183]: $2,000.00 → $2,000.00
                   - generic [ref=e184]:
                     - generic [ref=e185]:
                       - generic [ref=e186]: Income
@@ -148,7 +148,7 @@
                 - generic [ref=e195]:
                   - generic [ref=e196]:
                     - generic [ref=e197]: Week 4
-                    - generic [ref=e198]: $1,000.00 → $955.00
+                    - generic [ref=e198]: $2,000.00 → $1,955.00
                   - generic [ref=e199]:
                     - generic [ref=e200]:
                       - generic [ref=e201]: Income
@@ -163,7 +163,7 @@
                 - generic [ref=e210]:
                   - generic [ref=e211]:
                     - generic [ref=e212]: Week 5
-                    - generic [ref=e213]: $955.00 → $955.00
+                    - generic [ref=e213]: $1,955.00 → $1,955.00
                   - generic [ref=e214]:
                     - generic [ref=e215]:
                       - generic [ref=e216]: Income

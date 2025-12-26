@@ -28,7 +28,7 @@
           - generic [ref=e33]:
             - img [ref=e34]
             - generic [ref=e37]: My Balance
-          - generic [ref=e38]: $0.00
+          - generic [ref=e38]: $10.00
         - generic [ref=e40]:
           - generic [ref=e41]:
             - img [ref=e42]
@@ -63,9 +63,9 @@
             - /url: /accounts
         - generic [ref=e76]:
           - generic [ref=e77]:
-            - paragraph [ref=e78]: Demo Checking
+            - paragraph [ref=e78]: Planner Bank
             - paragraph
-          - paragraph [ref=e80]: $0.00
+          - paragraph [ref=e80]: $10.00
       - button [ref=e81] [cursor=pointer]:
         - img [ref=e82]
   - navigation [ref=e83]:
