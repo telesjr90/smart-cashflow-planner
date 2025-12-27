@@ -1,58 +1,47 @@
-Investigation Tasks: Fixing R.6 and R.7 E2E Failures
-This document outlines a set of tasks that need to be completed to diagnose and remediate the remaining
-E2E failures in tests R.6 (Planner) and R.7 (Income auto‑posts). Focus on understanding why the current
-“forced state” fixes are inadequate and how to make the injected state and seeds behave predictably.
-Task 1 – Debug the “Invisible Seed” in R.7
-Verify initialization timing. The test uses installPersistedSeed() to seed IndexedDB and
-localStorage before navigation. Confirm that the window.sessionStorage.setItem('e2eseeded','true') call happens before expectAppLoaded executes. Use console logs or
-page.evaluate() to print sessionStorage.getItem('e2e-seeded') at various points
-(immediately after navigation, inside expectAppLoaded , etc.) to ensure the flag is present when it
-needs to be.
-Check seed content. Open the basePersisted object used in R.7 and confirm whether it
-contains a non‑null userProfile . If userProfile.uid is missing, expectAppLoaded will
-treat the page as unseeded and overwrite the seed. Hypothesis: the seeding may correctly write
-IndexedDB but leaves userProfile empty, triggering the fallback.
-Determine order of effects. Investigate if the initial auto‑login effect runs before the persisted state
-hydrates. If the init script writes the seed to storage after expectAppLoaded already decided to
-inject, the seed gets clobbered. Look at the Playwright beforeEach hook order to identify any race
-conditions.
-Task 2 – Fix R.7 Data Integrity
-Modify the seed to include a user. Update the basePersisted object in R.7 so that
-state.userProfile contains a valid uid , role , householdId , etc. This ensures that when
-the seed hydrates, expectAppLoaded sees a non‑null UID and skips the forced injection.
-Confirm session flag. Ensure that the init script sets sessionStorage.e2e-seeded before the
-first navigation. If necessary, move the installPersistedSeed() call earlier (e.g. before
-page.goto() in R.7) to guarantee the flag is available.
-Task 3 – Complete Data for R.6 Injection
-Replicate plannerSettings. The forced injection in expectAppLoaded currently inserts only a bare
-userProfile , a zero‑balance account, and minimal planner settings. The Planner UI expects fields
-such as startDate , startingBalance , income , and a full paySchedule similar to what R.7
-seeds. Copy the relevant structure from the plannerSettings in R.7 (start date, income object,
-semi‑monthly pay schedule) into the fallback state for R.6 so that “Week 1” calculations are possible.
-Ensure an initial balance. For R.6, after creating the “Planner Bank” account with 1 000, confirm that
-the account is reflected in the store with the correct balance , balanceCents ,
-•
-•
-•
-•
-•
-•
-•
-1
-currentBalance , and currentBalanceCents . If the UI fails to update these fields due to
-Firestore errors, add a helper to patch the store in the test after calling createAccount() .
-Task 4 – State Dump Logging
-Add debug output. Inside expectAppLoaded , add console.log('State dump:',
-window.__cashflowStore?.getState?.()) at the point where it decides to inject the fallback
-state (or chooses not to). Also log immediately after injection. This will record the exact Zustand state
-at the moment of decision, allowing you to verify whether the userProfile, accounts, and planner
-settings are present or missing.
-Propagate logs to the terminal. Ensure the Playwright test prints these logs to stdout. Subscribe to
-page.on('console', ...) at the start of each test so that browser console messages appear in
-the terminal, as you did previously.
-Once these investigative tasks are completed and the causes are identified, you can modify the test helpers
-accordingly (e.g., adjust expectAppLoaded to respect sessionStorage.e2e-seeded , update the seed
-objects, and enrich the fallback state) so that R.6 and R.7 pass reliably.
-•
-•
-2
+Investigation Tasks: Resolving the Seed vs. Hydration Issue
+
+This document outlines the next set of tasks aimed at diagnosing and correcting the lingering problems in the R.6 and R.7 Playwright tests. The key concern is that the expectAppLoaded helper sometimes overwrites a pre‑seeded store even when a user profile is present, causing planners to render empty weeks or the auto‑salary test to fail. The tasks below will help isolate the root cause and guide code changes.
+
+Task 1 – Examine the force‑injection condition
+
+Read the current expectAppLoaded logic. Identify exactly which property triggers the fallback injection. Does it check state.userProfile or state.userProfile.uid? The log seed-flag-but-missing-user suggests that a non‑null userProfile without a defined uid is treated as missing.
+
+Update the check. Modify the injection condition so it only triggers when state.userProfile is null/undefined or when state.userProfile.uid is an empty string. Use a strict check: if (!state.userProfile?.uid) return; to avoid overwriting a seeded profile that lacks other fields.
+
+Respect the seed flag. Add a guard that reads window.sessionStorage.getItem('e2e-seeded'). If the flag is truthy, skip injection unless the store has no userProfile at all. The idea is to trust the seed when the test indicates it is present.
+
+Task 2 – Verify and correct R.7 seed structure
+
+Inspect basePersisted. Ensure the object used in R.7 has a state.userProfile with a valid uid (e.g., 'seeded-user-id') as well as role, householdId, and any other fields the app expects. Without these values, the hydrated store will contain a userProfile with uid: null, leading to forced injection.
+
+Match Zustand’s persist schema. The persisted payload must follow { state: { … }, version: 0 }. Place userProfile inside the state object, not at the top level. Verify that all other persisted fields (accounts, plannerSettings, etc.) are correctly nested.
+
+Seed timing. Confirm that installPersistedSeed() runs before the first navigation and that the session flag (e2e-seeded) is set before expectAppLoaded runs. If the order is wrong, reorder the calls so the seed is in place when the page loads.
+
+Task 3 – Improve fallback state for R.6
+
+Copy planner settings from R.7. The fallback injection currently inserts only a user profile and a default account. To allow the planner to compute weekly flows, the injected plannerSettings should include realistic defaults: startDate, startingBalance, income with zero values, a semi‑monthly pay schedule, and a mode (e.g. 'planned'). Use the structure from the R.7 plannerSettings as a template.
+
+Initial balance. After creating an account in R.6, make sure the balance fields in the store (balance, balanceCents, currentBalance, currentBalanceCents) reflect the value entered via the UI. If Firestore writes fail, add a test helper that directly sets these fields via store.setState() after account creation.
+
+Task 4 – Add state dump logging
+
+Before injection, log the entire store. In expectAppLoaded, when deciding whether to inject fallback state, call window.__cashflowStore.getState() and log the result via console.log('Pre‑inject state:', JSON.stringify(state)). Include both state.userProfile and sessionStorage.e2e-seeded in the log.
+
+After injection, log again. Immediately after performing an injection, log the new state. This will show exactly what was injected and help verify that the fallback state includes the necessary fields.
+
+Ensure logs reach the test output. Continue to subscribe to page.on('console', ...) in the beforeEach hook so that these logs are visible in the terminal. This will greatly aid in correlating state snapshots with test outcomes.
+
+Expected Outcome
+
+By following these tasks, you should be able to:
+
+Avoid overwriting valid seeded data when a userProfile is present (Task 1).
+
+Ensure the persisted seed used by R.7 contains a valid user profile and matches the expected schema (Task 2).
+
+Provide a richer fallback state for R.6 so that the planner renders meaningful data without Firestore (Task 3).
+
+Gain visibility into the store’s contents at the moment of injection, making future debugging easier (Task 4).
+
+Once these adjustments are made, the E2E tests should pass reliably without depending on external Firestore reads.

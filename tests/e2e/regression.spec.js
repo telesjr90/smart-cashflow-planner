@@ -167,6 +167,54 @@ async function safeNavClick(page, testId) {
 async function expectAppLoaded(page) {
   await page.waitForLoadState('domcontentloaded');
 
+  const readSeedStatus = async () =>
+    page.evaluate(() => {
+      const sessionFlag = (() => {
+        try {
+          return window.sessionStorage.getItem('e2e-seeded');
+        } catch {
+          return null;
+        }
+      })();
+
+      let persistedUser = null;
+      try {
+        const persisted = JSON.parse(localStorage.getItem('cashflow-storage') || '{}');
+        persistedUser = persisted?.state?.userProfile || null;
+        if (!sessionFlag && persistedUser?.uid) {
+          window.sessionStorage.setItem('e2e-seeded', 'true');
+        }
+      } catch {
+        // ignore
+      }
+
+      const storeState = window.__cashflowStore?.getState?.() || null;
+      const userProfile = storeState?.userProfile;
+      const userProfileMissing = userProfile === null || userProfile === undefined;
+      const uid = userProfile?.uid;
+      const uidEmptyString = typeof uid === 'string' && uid.trim() === '';
+      const hasUid = uid !== undefined && uid !== null && uid !== '';
+      const hasValidUid = hasUid && !uidEmptyString;
+
+      const payload = { sessionFlag: sessionFlag || null, persistedUser, state: storeState };
+      try {
+        console.log('Pre-inject state:', JSON.stringify(payload));
+      } catch (e) {
+        console.log('Pre-inject state: stringify failed', String(e), payload);
+      }
+
+      return {
+        isSeeded: !!(sessionFlag || persistedUser?.uid),
+        hasHydrated: !!storeState?.hasHydrated,
+        hasUserProfile: !userProfileMissing,
+        userProfileMissing,
+        uidEmptyString,
+        hasUid,
+        hasValidUid,
+        sessionFlag: !!sessionFlag,
+      };
+    });
+
   const injectFallbackState = async (reason) => {
     await page
       .waitForFunction(
@@ -179,96 +227,142 @@ async function expectAppLoaded(page) {
     await page.evaluate((context) => {
       try {
         const store = window.__cashflowStore;
-        if (!store?.setState) return;
+        if (!store?.setState || !store?.getState) return;
+
+        const sessionFlag = (() => {
+          try {
+            return window.sessionStorage.getItem('e2e-seeded');
+          } catch {
+            return null;
+          }
+        })();
+        const preState = store.getState?.() || {};
+        const hasSeedFlag = !!sessionFlag;
+        const userProfile = preState?.userProfile;
+        const userProfileMissing = userProfile === null || userProfile === undefined;
+        const uid = userProfile?.uid;
+        const uidEmptyString = typeof uid === 'string' && uid.trim() === '';
+        const hasUid = uid !== undefined && uid !== null && uid !== '';
+        const shouldInject = userProfileMissing || uidEmptyString;
+        const seedFlagBlocksInjection = hasSeedFlag && !userProfileMissing;
+        try {
+          console.log('Pre-inject state:', JSON.stringify({ sessionFlag, state: preState }));
+        } catch (e) {
+          console.log('Pre-inject state: stringify failed', String(e), { sessionFlag });
+        }
+
+        if (seedFlagBlocksInjection || !shouldInject || (hasUid && !uidEmptyString)) {
+          console.log('Test Helper: Skipping fallback injection.', {
+            reason: context?.reason,
+            seedFlag: hasSeedFlag,
+            userProfileMissing,
+            uidEmptyString,
+            hasUid,
+          });
+          return;
+        }
 
         const plannerAccountId = 'planner-bank'; // Match the ID expected by R.6
-        const baselineState = {
-          userProfile: {
-            uid: 'e2e-force-injected-id',
-            email: 'e2e@force.test',
-            displayName: 'Forced E2E User',
-            role: 'H',
-            householdId: 'e2e-force-injected-id',
-          },
-          accounts: [
-            {
-              id: plannerAccountId,
-              name: 'Planner Bank',
-              ownerRole: 'H',
-              openingBalance: 1000,
-              balance: 1000,
-              currentBalance: 1000,
-              balanceCents: 100000,
-              currentBalanceCents: 100000,
-            },
-          ],
-          plannerSettings: {
-            startDate: '2025-01-01',
-            startingBalance: 1000,
-            income: { husband: 2127.08, wife: 0 },
-            paySchedule: { type: 'semi-monthly', day1: 15, day2: 30 },
-            billSharing: { mode: 'manual', percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] },
-            residualAccountId: plannerAccountId,
-            mode: 'planned',
-          },
-          transactions: [],
-          expenses: [],
-          recurringBills: [],
-          categoryBudgets: {},
-          goals: [],
-          extraIncomes: [],
-          allocationRules: [],
-          paidBills: {},
-          confirmedDiscretionary: {},
-          lastAutoPostRunISO: null,
+        const fallbackProfile = {
+          uid: 'e2e-force-injected-id',
+          email: 'e2e@force.test',
+          displayName: 'Forced E2E User',
+          role: 'H',
+          householdId: 'e2e-force-injected-id',
+        };
+        const fallbackPlannerSettings = {
+          startDate: '2025-01-01',
+          startingBalance: 0,
+          income: { husband: 0, wife: 0 },
+          paySchedule: { type: 'semi-monthly', day1: 15, day2: 30 },
+          billSharing: { mode: 'manual', percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] },
+          residualAccountId: plannerAccountId,
           mode: 'planned',
+        };
+
+        const existing = preState || {};
+        const existingAccounts = Array.isArray(existing.accounts) ? existing.accounts : [];
+        const hasAccounts = existingAccounts.length > 0;
+        const accounts = hasAccounts
+          ? existingAccounts
+          : [
+              {
+                id: plannerAccountId,
+                name: 'Planner Bank',
+                ownerRole: 'H',
+                openingBalance: 1000,
+                balance: 1000,
+                currentBalance: 1000,
+                balanceCents: 100000,
+                currentBalanceCents: 100000,
+              },
+            ];
+
+        const plannerSettings = {
+          ...fallbackPlannerSettings,
+          ...(existing.plannerSettings || {}),
+        };
+        if (!plannerSettings.residualAccountId && accounts[0]) {
+          plannerSettings.residualAccountId = accounts[0].id;
+        }
+
+        const nextState = {
+          ...existing,
+          userProfile: existing.userProfile && !uidEmptyString ? { ...existing.userProfile, uid: existing.userProfile.uid || fallbackProfile.uid } : fallbackProfile,
+          accounts,
+          startDate: existing.startDate ?? plannerSettings.startDate,
+          startingBalance: existing.startingBalance ?? plannerSettings.startingBalance,
+          income: existing.income ?? plannerSettings.income,
+          paySchedule: existing.paySchedule ?? plannerSettings.paySchedule,
+          billSharing: existing.billSharing ?? plannerSettings.billSharing,
+          residualAccountId: existing.residualAccountId ?? plannerSettings.residualAccountId,
+          plannerSettings: {
+            ...plannerSettings,
+            startDate: plannerSettings.startDate,
+            startingBalance: plannerSettings.startingBalance,
+            income: plannerSettings.income,
+            paySchedule: plannerSettings.paySchedule,
+            billSharing: plannerSettings.billSharing,
+            residualAccountId: plannerSettings.residualAccountId,
+            mode: plannerSettings.mode || 'planned',
+          },
+          postedPaychecks: existing.postedPaychecks || {},
+          paidBills: existing.paidBills || {},
+          confirmedDiscretionary: existing.confirmedDiscretionary || {},
+          lastAutoPostRunISO: existing.lastAutoPostRunISO ?? null,
+          actualOpeningBalanceCents: existing.actualOpeningBalanceCents ?? null,
+          actualOpeningBalanceAsOfISO: existing.actualOpeningBalanceAsOfISO ?? null,
+          mode: existing.mode || 'planned',
           hasHydrated: true,
         };
 
-        store.setState(baselineState);
+        store.setState(nextState);
         try {
           window.sessionStorage.setItem('e2e-seeded', 'true');
         } catch {
           // ignore
         }
         console.log('Test Helper: Force-injected baseline state for E2E.', { reason: context?.reason });
-        console.log('State dump after fallback injection:', store.getState?.());
+        const afterState = store.getState?.();
+        const afterSessionFlag = (() => {
+          try {
+            return window.sessionStorage.getItem('e2e-seeded');
+          } catch {
+            return null;
+          }
+        })();
+        try {
+          console.log('State dump after fallback injection:', JSON.stringify({ sessionFlag: afterSessionFlag, state: afterState }));
+        } catch (e) {
+          console.log('State dump after fallback injection (raw):', afterState);
+        }
       } catch (e) {
         console.log('Test Helper: Failed to inject baseline state', String(e));
       }
     }, { reason });
   };
 
-  const seedStatus = await page.evaluate(() => {
-    const sessionFlag = (() => {
-      try {
-        return window.sessionStorage.getItem('e2e-seeded');
-      } catch {
-        return null;
-      }
-    })();
-
-    let persistedUser = null;
-    try {
-      const persisted = JSON.parse(localStorage.getItem('cashflow-storage') || '{}');
-      persistedUser = persisted?.state?.userProfile || null;
-      if (!sessionFlag && persistedUser?.uid) {
-        window.sessionStorage.setItem('e2e-seeded', 'true');
-      }
-    } catch {
-      // ignore
-    }
-
-    const storeState = window.__cashflowStore?.getState?.();
-    console.log('Test Helper: expectAppLoaded pre-check state dump', storeState);
-    console.log('Test Helper: expectAppLoaded session flag', sessionFlag);
-
-    return {
-      isSeeded: !!(sessionFlag || persistedUser?.uid),
-      hasStoreUser: !!storeState?.userProfile?.uid,
-      hasHydrated: !!storeState?.hasHydrated,
-    };
-  });
+  let seedStatus = await readSeedStatus();
 
   if (seedStatus.isSeeded) {
     await page
@@ -286,19 +380,19 @@ async function expectAppLoaded(page) {
       )
       .catch(() => {});
 
-    const postHydrate = await page.evaluate(() => {
-      const state = window.__cashflowStore?.getState?.();
-      console.log('Test Helper: expectAppLoaded post-hydration state dump', state);
-      return {
-        hasUser: !!state?.userProfile?.uid,
-      };
-    });
+    seedStatus = await readSeedStatus();
+  }
 
-    if (!postHydrate.hasUser) {
-      await injectFallbackState('seed-flag-but-missing-user');
-    }
-  } else {
-    await injectFallbackState('no-seed-flag');
+  const shouldInject = seedStatus.sessionFlag
+    ? seedStatus.userProfileMissing
+    : seedStatus.userProfileMissing || seedStatus.uidEmptyString;
+
+  if (shouldInject) {
+    let reason = 'no-seed-no-user-profile';
+    if (seedStatus.isSeeded) reason = 'seed-flag-no-user-profile';
+    else if (seedStatus.uidEmptyString) reason = 'no-seed-empty-uid';
+    else if (!seedStatus.hasUid) reason = 'no-seed-missing-uid';
+    await injectFallbackState(reason);
   }
 
   const navHome = page.getByTestId('nav-home');
@@ -484,7 +578,7 @@ async function ensureAccountInStore(page, { id, name, balance, ownerRole = 'H' }
       }
 
       const fallbackId =
-        idx >= 0 ? accounts[idx]?.id : id || `acct-${(lowerName || 'account').replace(/[^a-z0-9]+/g, '-') || '1'}`;
+        id || (idx >= 0 ? accounts[idx]?.id : `acct-${(lowerName || 'account').replace(/[^a-z0-9]+/g, '-') || '1'}`);
       const existing = idx >= 0 ? accounts[idx] : {};
 
       const next = {
@@ -1227,15 +1321,27 @@ test.describe('Expanded Functional Regression (staging)', () => {
     // Include a timeline (in months) for the goal so the helper can set a target date
     const goal = { name: 'Save 3000 in 6 months', targetAmount: 3000, monthlyContribution: 500, timeline: 6 };
 
+    const baseUserProfile = {
+      uid: 'test-user-h',
+      email: 'h@test.com',
+      displayName: 'Test User H',
+      role: 'H',
+      householdId: 'test-household',
+    };
+
+    const basePlannerSettings = {
+      startDate: '2025-01-01',
+      startingBalance: 0,
+      income: { husband: 0, wife: 0 },
+      paySchedule: { type: 'semi-monthly', day1: 15, day2: 30 },
+      billSharing: { mode: 'manual', percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] },
+      residualAccountId: accountId,
+      mode: 'planned',
+    };
+
     const basePersisted = {
       state: {
-        userProfile: {
-          uid: 'test-user-h',
-          email: 'h@test.com',
-          displayName: 'Test User H',
-          role: 'H',
-          householdId: 'test-household',
-        },
+        userProfile: baseUserProfile,
         accounts: [
           {
             id: accountId,
@@ -1248,25 +1354,27 @@ test.describe('Expanded Functional Regression (staging)', () => {
             currentBalanceCents: 0,
           },
         ],
+        startDate: basePlannerSettings.startDate,
+        startingBalance: basePlannerSettings.startingBalance,
+        income: basePlannerSettings.income,
+        paySchedule: basePlannerSettings.paySchedule,
+        billSharing: basePlannerSettings.billSharing,
+        residualAccountId: basePlannerSettings.residualAccountId,
+        plannerSettings: basePlannerSettings,
         transactions: [],
         expenses: [],
+        bills: [],
         recurringBills: [],
-        plannerSettings: {
-          startDate: '2025-01-01',
-          startingBalance: 0,
-          income: { husband: 0, wife: 0 },
-          paySchedule: { type: 'semi-monthly', day1: 15, day2: 30 },
-          billSharing: { mode: 'manual', percentageSplit: { H: 0.5, W: 0.5 }, sharedBillIds: [] },
-          residualAccountId: accountId,
-          mode: 'planned',
-        },
-        paidBills: {},
         categoryBudgets: {},
         goals: [],
         extraIncomes: [],
         allocationRules: [],
+        paidBills: {},
         confirmedDiscretionary: {},
+        postedPaychecks: {},
         lastAutoPostRunISO: null,
+        actualOpeningBalanceCents: null,
+        actualOpeningBalanceAsOfISO: null,
         mode: 'planned',
         hasHydrated: true,
       },

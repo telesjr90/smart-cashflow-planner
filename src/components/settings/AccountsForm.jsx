@@ -34,6 +34,16 @@ export default function AccountsForm({
     setPendingDelete(acct);
   };
 
+  const handleSaveAccountsClick = async () => {
+    try {
+      await Promise.resolve(onSaveAccounts?.());
+      showToast({ type: "success", message: "Accounts saved." });
+    } catch (err) {
+      console.error("Failed to save accounts", err);
+      showToast({ type: "error", message: "Failed to save accounts." });
+    }
+  };
+
   const handleConfirmDelete = async () => {
     if (!pendingDelete || deletingId) return;
     setDeletingId(pendingDelete.id);
@@ -96,6 +106,7 @@ export default function AccountsForm({
                         data-testid="input-account-name"
                         placeholder="Account name"
                         aria-invalid={nameError}
+                        required
                       />
                       {nameError && (
                         <p className="text-caption text-danger-500">Name is required.</p>
@@ -145,8 +156,8 @@ export default function AccountsForm({
 
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
             <div className="flex items-center gap-2 w-full md:w-auto">
-              <span className="text-caption text-surface-600">Residual account</span>
               <Select
+                label="Residual account"
                 value={residualAccountId || ""}
                 onChange={(e) => onResidualChange(e.target.value)}
                 className="min-w-[160px]"
@@ -163,7 +174,7 @@ export default function AccountsForm({
             {dirtyAccounts && (
               <Button
                 type="button"
-                onClick={onSaveAccounts}
+                onClick={handleSaveAccountsClick}
                 data-testid="btn-save-accounts"
                 variant="primary"
                 size="sm"

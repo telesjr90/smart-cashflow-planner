@@ -1,10 +1,12 @@
 // File: src/components/settings/GoalsForm.jsx
 import React, { useState } from "react";
 import { Target, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import ConfirmModal from "../ui/modals/ConfirmModal";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
 import { Button } from "../ui/Button";
 import { DateInput } from "../ui/DateInput";
+import { useToast } from "../ui/toast/useToast";
 
 /**
  * Goals configuration card content.
@@ -27,6 +29,9 @@ export default function GoalsForm({
   onSaveGoals,
 }) {
   const [errors, setErrors] = useState({});
+  const { showToast } = useToast();
+  const [pendingDeleteGoal, setPendingDeleteGoal] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const handleAddGoal = () => {
     const defaultGoal = {
@@ -69,6 +74,58 @@ export default function GoalsForm({
     });
   };
 
+  const validateAllGoals = () => {
+    const nextErrors = {};
+    visibleGoals.forEach((goal) => {
+      const goalErrors = {};
+      if (!goal.name || !goal.name.trim()) goalErrors.name = "Name is required.";
+      if (!(goal.targetAmount > 0)) goalErrors.targetAmount = "Target must be greater than 0.";
+      if (Object.keys(goalErrors).length > 0) {
+        nextErrors[goal.id] = goalErrors;
+      }
+    });
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleDeleteRequest = (goal) => setPendingDeleteGoal(goal);
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteGoal || deletingId) return;
+    setDeletingId(pendingDeleteGoal.id);
+    try {
+      await Promise.resolve(onDeleteGoal?.(pendingDeleteGoal.id));
+      showToast({ type: "success", message: "Goal deleted." });
+    } catch (err) {
+      console.error("Failed to delete goal", err);
+      showToast({ type: "error", message: "Failed to delete goal." });
+    } finally {
+      setDeletingId(null);
+      setPendingDeleteGoal(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    if (deletingId) return;
+    setPendingDeleteGoal(null);
+  };
+
+  const handleSaveGoalsClick = async () => {
+    const valid = validateAllGoals();
+    if (!valid) {
+      showToast({ type: "error", message: "Please fix validation errors before saving." });
+      return;
+    }
+    try {
+      await Promise.resolve(onSaveGoals?.());
+      showToast({ type: "success", message: "Goals saved." });
+      setErrors({});
+    } catch (err) {
+      console.error("Failed to save goals", err);
+      showToast({ type: "error", message: "Failed to save goals." });
+    }
+  };
+
   return (
     <>
       <div className="flex items-center justify-between mb-4">
@@ -94,7 +151,9 @@ export default function GoalsForm({
       )}
 
       <div className="space-y-4">
-        {visibleGoals.map((goal) => (
+        {visibleGoals.map((goal) => {
+          const sharedTotal = (Number(goal.contributions?.H) || 0) + (Number(goal.contributions?.W) || 0);
+          return (
           <div
             key={goal.id}
             data-testid={`goal-card-${goal.id}`}
@@ -106,10 +165,14 @@ export default function GoalsForm({
                 <Input
                   label="Name"
                   value={goal.name}
-                  onChange={(e) => onGoalChange(goal.id, { name: e.target.value })}
+                  onChange={(e) => {
+                    onGoalChange(goal.id, { name: e.target.value });
+                    validateField(goal.id, "name", e.target.value);
+                  }}
                   onBlur={(e) => validateField(goal.id, "name", e.target.value)}
                   placeholder="e.g. New Car"
                   error={errors[goal.id]?.name}
+                  aria-invalid={Boolean(errors[goal.id]?.name)}
                 />
               </div>
 
@@ -120,14 +183,17 @@ export default function GoalsForm({
                   step="0.01"
                   prefix="$"
                   value={goal.targetAmount}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
                     onGoalChange(goal.id, {
-                      targetAmount: e.target.value === "" ? 0 : parseFloat(e.target.value),
-                    })
-                  }
+                      targetAmount: value,
+                    });
+                    validateField(goal.id, "targetAmount", value);
+                  }}
                   onBlur={(e) => validateField(goal.id, "targetAmount", parseFloat(e.target.value))}
                   placeholder="0.00"
                   error={errors[goal.id]?.targetAmount}
+                  aria-invalid={Boolean(errors[goal.id]?.targetAmount)}
                 />
               </div>
 
@@ -147,7 +213,7 @@ export default function GoalsForm({
                     Monthly Total
                   </span>
                   <div className="h-11 px-4 flex items-center bg-surface-100 rounded-2xl text-body font-semibold text-surface-700">
-                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(goal.perMonth ?? 0)}
+                    {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(sharedTotal)}
                   </div>
                 </div>
               )}
@@ -245,20 +311,21 @@ export default function GoalsForm({
                 size="sm"
                 variant="ghost"
                 className="text-danger-500 hover:bg-danger-50 hover:text-danger-600"
-                onClick={() => onDeleteGoal(goal.id)}
+                onClick={() => handleDeleteRequest(goal)}
                 icon={Trash2}
               >
                 Delete
               </Button>
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {dirtyGoals && (
         <div className="mt-4 flex justify-end">
           <Button
-            onClick={onSaveGoals}
+            onClick={handleSaveGoalsClick}
             variant="primary"
             icon={CheckCircle2}
             data-testid="btn-save-goals"
@@ -267,6 +334,17 @@ export default function GoalsForm({
           </Button>
         </div>
       )}
+
+      <ConfirmModal
+        open={Boolean(pendingDeleteGoal)}
+        title="Delete goal?"
+        message={pendingDeleteGoal ? `Delete goal "${pendingDeleteGoal.name || "this goal"}"?` : ""}
+        confirmLabel={deletingId ? "Deleting..." : "Delete"}
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        variant="danger"
+      />
     </>
   );
 }

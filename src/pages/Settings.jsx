@@ -30,6 +30,7 @@ import StartingBalanceCard from "../components/settings/StartingBalanceCard";
 import BalancesSummaryCard from "../components/settings/BalancesSummaryCard";
 import { Card, CardBody } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { useToast } from "../components/ui/toast/useToast";
 
 // Services
 import { scanBudgetSheet } from "../services/receiptScanner";
@@ -51,6 +52,13 @@ export default function Settings({
   isOnline = true,
 }) {
   const actionsDisabled = !isOnline;
+  const { showToast } = useToast();
+
+  const scrollToTopSmooth = () => {
+    if (typeof window !== "undefined" && window.scrollTo) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   // 1. Fetch Data
   const userProfile = useCashflowStore((state) => state.userProfile || {});
@@ -289,8 +297,11 @@ export default function Settings({
   }, [startingBalance]);
 
   const handleSaveStartingBalance = () => {
+    if (actionsDisabled) return;
     handleUpdateStartingBalance(localStartingBalance === "" ? 0 : Number(localStartingBalance) || 0);
     setDirtyStartingBalance(false);
+    showToast({ type: "success", message: "Starting balance saved." });
+    scrollToTopSmooth();
   };
 
   const handleStartingBalanceChange = (value) => {
@@ -315,8 +326,11 @@ export default function Settings({
   };
 
   const handleSaveProfile = () => {
+    if (actionsDisabled) return;
     handleUpdateProfile({ householdId: localHouseholdId, role: localRoleState });
     setDirtyProfile(false);
+    showToast({ type: "success", message: "Profile updated." });
+    scrollToTopSmooth();
   };
 
   const [localAccounts, setLocalAccounts] = useState(accounts);
@@ -358,8 +372,11 @@ export default function Settings({
   };
 
   const handleSaveAccounts = () => {
+    if (actionsDisabled) return;
     handleUpdateAccounts(localAccounts, localResidualId);
     setDirtyAccounts(false);
+    showToast({ type: "success", message: "Accounts saved." });
+    scrollToTopSmooth();
   };
 
   const handleResidualChange = (value) => {
@@ -427,8 +444,11 @@ export default function Settings({
   };
 
   const handleSaveRules = () => {
+    if (actionsDisabled) return;
     handleUpdateAllocationRules(localRules);
     setDirtyRules(false);
+    showToast({ type: "success", message: "Allocation rules saved." });
+    scrollToTopSmooth();
   };
 
   const [localIncome, setLocalIncome] = useState(income);
@@ -454,6 +474,7 @@ export default function Settings({
   };
 
   const handleSaveIncomeSchedule = () => {
+    if (actionsDisabled) return;
     const cleanedIncome = {
       husband: Number(localIncome.husband) || 0,
       wife: Number(localIncome.wife) || 0,
@@ -465,6 +486,8 @@ export default function Settings({
     };
     handleUpdateIncomeAndPaySchedule(cleanedIncome, cleanedSchedule);
     setDirtyIncomeSchedule(false);
+    showToast({ type: "success", message: "Income & schedule saved." });
+    scrollToTopSmooth();
   };
 
   const normalizeGoal = (goal, role) => ({
@@ -558,8 +581,11 @@ export default function Settings({
   };
 
   const handleSaveGoals = () => {
+    if (actionsDisabled) return;
     handleUpdateGoals(localGoals);
     setDirtyGoals(false);
+    showToast({ type: "success", message: "Goals saved." });
+    scrollToTopSmooth();
   };
 
   const visibleGoals = useMemo(() => localGoals, [localGoals]);
@@ -599,8 +625,11 @@ export default function Settings({
   };
 
   const handleSaveBudgets = () => {
+    if (actionsDisabled) return;
     handleUpdateBudgets(localBudgets);
     setDirtyBudgets(false);
+    showToast({ type: "success", message: "Budgets updated." });
+    scrollToTopSmooth();
   };
 
   const visibleBudgets = useMemo(() => {
@@ -633,12 +662,15 @@ export default function Settings({
   };
 
   const handleSaveBillSharing = () => {
+    if (actionsDisabled) return;
     const next = {
       ...localBillSharing,
       sharedBillIds: localBillSharing.sharedBillIds || [],
     };
     handleUpdateBillSharing(next);
     setDirtyBillSharing(false);
+    showToast({ type: "success", message: "Bill sharing saved." });
+    scrollToTopSmooth();
   };
 
   const [activeSection, setActiveSection] = useState("profile");

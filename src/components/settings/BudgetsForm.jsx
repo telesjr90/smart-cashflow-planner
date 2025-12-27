@@ -1,9 +1,10 @@
 // File: src/components/settings/BudgetsForm.jsx
-import React from "react";
+import React, { useState } from "react";
 import { PieChart, Plus, Trash2, CheckCircle2 } from "lucide-react";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
 import { Button } from "../ui/Button";
+import { useToast } from "../ui/toast/useToast";
 
 /**
  * Budgets configuration card content.
@@ -19,6 +20,23 @@ export default function BudgetsForm({
   onDeleteBudget,
   onSaveBudgets,
 }) {
+  const { showToast } = useToast();
+  const [saving, setSaving] = useState(false);
+
+  const handleSaveBudgets = async () => {
+    if (!onSaveBudgets || saving) return;
+    try {
+      setSaving(true);
+      await Promise.resolve(onSaveBudgets());
+      showToast({ type: "success", message: "Budgets updated." });
+    } catch (err) {
+      console.error("Failed to save budgets", err);
+      showToast({ type: "error", message: "Failed to save budgets." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
       <div className="flex items-center justify-between mb-4">
@@ -159,15 +177,16 @@ export default function BudgetsForm({
         ))}
       </div>
 
-      {dirtyBudgets && (
+      {(dirtyBudgets || saving) && (
         <div className="mt-4 flex justify-end">
           <Button
-            onClick={onSaveBudgets}
+            onClick={handleSaveBudgets}
             variant="primary"
             icon={CheckCircle2}
             data-testid="btn-save-budgets"
+            disabled={saving}
           >
-            Save Budgets
+            {saving ? "Saving..." : "Save Budgets"}
           </Button>
         </div>
       )}

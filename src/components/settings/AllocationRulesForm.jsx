@@ -24,6 +24,7 @@ export default function AllocationRulesForm({
   const { showToast } = useToast();
   const [pendingDelete, setPendingDelete] = useState(null);
   const [isDeletingId, setIsDeletingId] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const handleDeleteRequest = (rule) => setPendingDelete(rule);
 
@@ -46,6 +47,20 @@ export default function AllocationRulesForm({
   const handleCancelDelete = () => {
     if (isDeletingId) return;
     setPendingDelete(null);
+  };
+
+  const handleSaveRulesClick = async () => {
+    if (!onSaveRules || saving) return;
+    try {
+      setSaving(true);
+      await Promise.resolve(onSaveRules());
+      showToast({ type: "success", message: "Allocation rules saved." });
+    } catch (err) {
+      console.error("Failed to save allocation rules", err);
+      showToast({ type: "error", message: "Failed to save allocation rules." });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -183,14 +198,15 @@ export default function AllocationRulesForm({
         ))}
       </div>
 
-      {dirtyRules && (
+      {(dirtyRules || saving) && (
         <div className="mt-4 flex justify-end">
           <Button
-            onClick={onSaveRules}
+            onClick={handleSaveRulesClick}
             variant="primary"
             icon={CheckCircle2}
+            disabled={saving}
           >
-            Save Rules
+            {saving ? "Saving..." : "Save Rules"}
           </Button>
         </div>
       )}
